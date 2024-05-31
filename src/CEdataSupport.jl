@@ -40,7 +40,7 @@ display(A)
 # Get pointgroup operations in lattice coordinates and Cartesian
 LG,G = pointGroup(A)
 # Parse structure information and store in a vector of enumStr types
-str = Vector{enumStr}(undef,length(lines));
+str = Vector{enumStr}();
 for (i,iline) ∈ enumerate(lines[16:end])
     atomPos = zeros(3,3)
     d = parse.(Int,split(iline))
@@ -49,16 +49,11 @@ for (i,iline) ∈ enumerate(lines[16:end])
     snf = diagm(d[9:11])
     hnf = [d[12] 0 0; d[13] d[14] 0; d[15] d[16] d[17]]
     L = [d[18] 0 0; d[19] d[20] 0; d[21] d[22] d[23]]
-    energy = en[i]
-    str[i] = enumStr(A*hnf,[0,1],n,atomPos,hnf,snf,L,labeling,energy)
+    energy = en[i]/n
+    push!(str,enumStr(A*hnf,[0,1],n,atomPos,hnf,snf,L,labeling,energy))
 end
-
+return str
 end
-
-
-
-
-
 
 # nA = [parse.(Int,split(iline))[7] for iline ∈ lines]
 # c = [count('1',String(split(iline)[end])) for iline ∈ lines]./nA
