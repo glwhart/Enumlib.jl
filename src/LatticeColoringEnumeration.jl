@@ -2,6 +2,7 @@
 #using LinearAlgebra
 #export getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs
 # Might be convenient to have fixing ops and/or group in one of these structs
+export checkCartesianPt
 
 """ Define a type for a supercell of a parent lattice, its HNF, SNF, gpoints, etc. 
 
@@ -183,15 +184,36 @@ end
 """ All interior points in Cartesian coordinates
 
     getCartesianPts(A,H): A is the parent lattice, H defines the supercell. Output is a list of all interior points, in Cartesian coordinates. """
-function getCartesianPts(A,H)
+function getCartesianPts(A,H;mink=true)
     sdiag=smith(H).SNF
     L = smith(H).Sinv # Get the left SNF transform
     n = prod(sdiag)
     # Convert gspace vector to lattice coordinates of supercell, mod into first tile, then convert to Cartesian coordinates (right to left)
-    cPts = [A*H*mod.(inv(H)*inv(L)*ordinalToGcoords(i,sdiag),1) for i in 1:n] 
-#    cPts = [minkReduce(A*H)*mod.(inv(H)*inv(L)*ordinalToGcoords(i,sdiag),1) for i in 1:n]    
+    if !mink
+        cPts = [A*H*mod.(inv(H)*inv(L)*ordinalToGcoords(i,sdiag),1) for i in 1:n] 
+    # If we are going to mink reduce, then H needs to be the "mink reduced" HNF
+    else
+        H = inv(A)*minkReduce(A*H)
+        cPts = [minkReduce(A*H)*mod.(inv(H)*inv(L)*ordinalToGcoords(i,sdiag),1) for i in 1:n]    
+    end
     return cPts
 end
+
+""" Check that a Cartesian point is a lattice point 
+
+    checkCartesianPts(A,cPts): A is the parent lattice, cPts is a 3 vector. Returns true if the point is a lattice point."""
+function checkCartesianPt(A,c)
+    Ai = inv(A)
+    if norm(Ai*c - round.(Ai*c)) < 1e-13
+        return true
+    else
+        return false
+    end 
+end
+
+""" Build all clusters of a given size 
+
+    buildClusters(A,n,HNFs,G,adds): A is the parent lattice, n is the size of the cluster, HNFs is a list of HNFs, G is the group of the parent lattice, adds is the number of additional lattice points to add to the cluster. Output is a list of all clusters. """
 
 
 """ get_nonzero_index(m,reps=1e-13) """
