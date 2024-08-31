@@ -1,4 +1,4 @@
-export readStructEnum, readEnergies, structEnum
+export readStructEnum, readEnergies
 
 """ Extract energies from concatenated vasp results. Output is sorted by structure number.   
 
@@ -28,7 +28,7 @@ end
 
     readStructEnum(filename,energies)"""
 function readStructEnum(filename,en)
-filename = "data/struct_enum.out.1-10_fcc_binary"
+#filename = "data/struct_enum.out.1-10_fcc_binary"
 lines=readlines(filename) # Skip the lattice info at the head
 println("Reading in: ",filename)
 print("Description:",lines[1])
@@ -54,18 +54,3 @@ for (i,iline) ∈ enumerate(lines[16:end])
 end
 return str
 end
-
-# nA = [parse.(Int,split(iline))[7] for iline ∈ lines]
-# c = [count('1',String(split(iline)[end])) for iline ∈ lines]./nA
-
-# # Plot energy/atom vs. concentration
-# default(msw=0,st=:scatter,legend=:none,ms=2)
-# plot(c,epa)
-
-# # Plot formation enthalpy vs. concentration
-# h = epa .- (1.0.-c)*epa[1] .- c*epa[2]
-# plot(c,h)
-
-# # Energy per atom
-# epa = en./nA
-# # concentration of each structure
