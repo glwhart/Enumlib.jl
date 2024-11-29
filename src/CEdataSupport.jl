@@ -22,6 +22,8 @@ struct enumStr
     L::Matrix{Int}  # Left transformation matrix for converting HNF to SNF
     coloring::String # Atomic type of each lattice point 
     energy::Float64 # Energy of the structure
+    concentration::Float64 # Concentration of each atom type !! This only works right now for the binary case
+    enthalpy::Float64 # Enthalpy of the structure
 end
 
 """ Extract structure information from struct_enum.out-formatted file. Attach energies to each structure. 
@@ -50,7 +52,12 @@ for (i,iline) ∈ enumerate(lines[16:end])
     hnf = [d[12] 0 0; d[13] d[14] 0; d[15] d[16] d[17]]
     L = [d[18] 0 0; d[19] d[20] 0; d[21] d[22] d[23]]
     energy = en[i]/n
-    push!(str,enumStr(A*hnf,[0,1],n,atomPos,hnf,snf,L,labeling,energy))
+    # Right now concentration is only defined for binary systems
+    concentration = count('1', labeling)/n
+    enthalpy = energy - (1-concentration)*en[1] - concentration*en[2] 
+    push!(str,enumStr(A*hnf,[0,1],n,atomPos,hnf,snf,L,labeling,energy,concentration,enthalpy))
 end
 return str
 end
+
+
