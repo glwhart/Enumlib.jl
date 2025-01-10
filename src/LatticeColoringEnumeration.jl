@@ -181,7 +181,7 @@ function getOrdinalsFromCartesian(cPts,A,L,SNF)
 end
 
 
-""" All interior points in Cartesian coordinates
+""" Genererate all interior points of a unit cell, in Cartesian coordinates
 
     getCartesianPts(A,H): A is the parent lattice, H defines the supercell. Output is a list of all interior points, in Cartesian coordinates. """
 function getCartesianPts(A,H;mink=true)
