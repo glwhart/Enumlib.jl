@@ -12,25 +12,24 @@ energies=[parse(Float64,split(i)[5]) for i ∈ filter(x->occursin("free",x),line
 return energies
 end
 
+""" Structure type for enumerated configurations """
 struct enumStr
     basis::Matrix{Float64} # Basis vectors of the superstructure in Cartesian coordinates
     n::Int # Number of atoms in the structure
     atomPos::Matrix{Float64} # Atomic positions (columns) in Cartesian coordinates
-    HNF::Matrix{Int} # Not necessarily in HNF form, but an integer matrix
+    HNF::Matrix{Int} # Not necessarily in HNF form, but an integer matrix, A*HNF=SL
     SNF::Vector{Int} # SNF form of HNF (diagonal entries only)
     L::Matrix{Int}  # Left transformation matrix for converting HNF to SNF
     coloring::String # Atomic type of each lattice point 
-    energy::Float64 # Energy of the structure
-    # If these last two elements are included then we can't read in old jld2 files that stored enumStr data that didn't have them. 
     concentration::Vector{Float64} # Concentration of each atom type 
+    energy::Float64 # Energy of the structure
     enthalpy::Float64 # Enthalpy of the structure
 end
 
-""" Extract structure information from struct_enum.out-formatted file. Attach energies to each structure. << Warning >> This assumes that the order of structure and the order of the energies match up. 
+""" Extract structure information from struct_enum.out-formatted file. Attach an energy to each structure. << Warning >> This assumes that the order of structures and the order of the energies match up. 
 
     readStructenumout(filename,energies)"""
 function readStructenumout(filename,en)
-#filename = "data/struct_enum.out.1-10_fcc_binary"
 lines=readlines(filename) # Skip the lattice info at the head
 println("Reading in: ",filename)
 print("Description:",lines[1])
@@ -56,7 +55,7 @@ for (i,iline) ∈ enumerate(lines[16:end])
     concentration = [count(string(i),labeling) for i ∈ 0:k-1]./n
     # Enthalpy calculation assumes first k entries are the pure species
     enthalpy = energy - sum([concentration[i]*en[i] for i ∈ 1:k])
-    push!(str,enumStr(A*hnf,n,atomPos,hnf,snf,L,labeling,energy,concentration,enthalpy))
+    push!(str,enumStr(A*hnf,n,atomPos,hnf,snf,L,labeling,concentration,energy,enthalpy))
 end
 return str
 end
