@@ -36,14 +36,14 @@ struct ParentLattice
 
     function ParentLattice(A)
         Ainv = inv(A)
-        G = pointGroup(A)[2]
+        G = pointGroup(A)[1]
         new(A,Ainv,G)
     end
 end
 
 """ Generate all of the HNF matrices of with determinant n """
 function getAllHNFs(n)
-# Even for n≈65 (>10,000 HNFs), this takes less than a second. No need for anything fancier because HNFs of such size are beyond current requirements.
+# Even for n≈65 (>10,000 HNFs), this takes less than a second. No need for anything fancier because HNFs of such size are way beyond current requirements.
     diags = tripletList(n) # All possible diagonal entries of HNF matrices with determinant n
     nHNF = sum([iD[2]*iD[3]^2 for iD ∈ diags]) # Number of HNF matrices to generate
     HNFs = zeros(Int,3,3,nHNF) # Preallocate array to store all HNFs
@@ -53,6 +53,7 @@ function getAllHNFs(n)
             for d2 ∈ 0:iD[3]-1 # Loop over row-three, column-1 entries
                 for d3 ∈ 0:iD[3]-1 # Loop over row-three, column-2 entries
                     HNFs[:,:,iH] = [iD[1] 0 0; d1 iD[2] 0; d2 d3 iD[3]]
+
                     iH += 1 # Increment HNF counter
                 end
             end
@@ -153,30 +154,28 @@ end
 
     gCoordsToOrdinals(gPts,SNF): gPts is 3xN mixed-radix numbers, output is N-vector"""
 function gCoordsToOrdinals(gPts,SNF)
-    placeVals = [SNF[2]*SNF[3],SNF[3],1]
-    siteOrdinals = [sum(i.*placeVals)+1 for i in eachcol(gPts)] # Convert to base-10
-    # Sort into canonical order for easy comparison. (is this ever necessary?) 
-    #siteOrdinals = sortslices(siteOrdinals,dims=2) 
-    return siteOrdinals
+    placeVals = [SNF[2]*SNF[3],SNF[3],1] # Second element SNF[2] or SNF[3]?
+    siteOrdinals = [sum(i.*placeVals)+1 for i in eachcol(gPts)] # Convert to base-10, 1-indexed
+    return convert(Vector{Int},siteOrdinals)
 end
 
 """ Convert an ordinal index (site # in the supercell) to g-space coordinates 
 
     ordinalToGCoords(o,z): o is an integer (site #, 1..n), z is an integer 3-vector (SNF), output is 3-vector (g-space coordinates)"""
 function ordinalToGcoords(o,z)
-    placeVals = [z[2]*z[3],z[3],1]
+    placeVals = [z[2]*z[3],z[3],1] # Second element z[2] or z[3]?
     gCoords = mod.((o-1) .÷ placeVals,z)
     return gCoords
 end
 
-""" getOrdinalsFromCartesian(cPts,SNF)
+""" getOrdinalsFromCartesian(cPts,A,L,SNF)
 
-cPts is a 3xN vector Cartesian coordinates, SNF is Smith Normal Form for this cell.
+cPts is a 3xN vector Cartesian coordinates, A is the parent lattice, L is the left SNF transform, SNF is Smith Normal Form for this cell.
 output is N-vector of ordinals"""
 # Map Cartesian coordinates to lattice coordinates, map into first tile, then convert to g-space coordinates, then to ordinal indices.
 function getOrdinalsFromCartesian(cPts,A,L,SNF)
     T = L*inv(A) # Transformation from lattice to g-space coordinates
-    gPts = T*cPts
+    gPts = convert.(Int,T*cPts)
     return gCoordsToOrdinals(gPts,SNF)
 end
 

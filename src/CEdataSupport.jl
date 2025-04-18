@@ -1,4 +1,4 @@
-export readStructEnum, readEnergies
+export readStructenumout, readEnergies
 
 """ Extract energies from concatenated vasp results. Output is sorted by structure number.   
 
@@ -13,23 +13,23 @@ return energies
 end
 
 struct enumStr
-    basis::Matrix{Float64} # Basis vectors of the superstructure in Cartesian coordinates 
-    atomTypes::Vector{Int} # Not sure what I intended here...
+    basis::Matrix{Float64} # Basis vectors of the superstructure in Cartesian coordinates
     n::Int # Number of atoms in the structure
     atomPos::Matrix{Float64} # Atomic positions (columns) in Cartesian coordinates
     HNF::Matrix{Int} # Not necessarily in HNF form, but an integer matrix
-    SNF::Matrix{Int} # SNF form of HNF (diagonal entries only)
+    SNF::Vector{Int} # SNF form of HNF (diagonal entries only)
     L::Matrix{Int}  # Left transformation matrix for converting HNF to SNF
     coloring::String # Atomic type of each lattice point 
     energy::Float64 # Energy of the structure
-    concentration::Float64 # Concentration of each atom type !! This only works right now for the binary case
+    # If these last two elements are included then we can't read in old jld2 files that stored enumStr data that didn't have them. 
+    concentration::Vector{Float64} # Concentration of each atom type 
     enthalpy::Float64 # Enthalpy of the structure
 end
 
-""" Extract structure information from struct_enum.out-formatted file. Attach energies to each structure. 
+""" Extract structure information from struct_enum.out-formatted file. Attach energies to each structure. << Warning >> This assumes that the order of structure and the order of the energies match up. 
 
-    readStructEnum(filename,energies)"""
-function readStructEnum(filename,en)
+    readStructenumout(filename,energies)"""
+function readStructenumout(filename,en)
 #filename = "data/struct_enum.out.1-10_fcc_binary"
 lines=readlines(filename) # Skip the lattice info at the head
 println("Reading in: ",filename)
@@ -39,6 +39,7 @@ print(lines[2])
 A = stack([[parse(Float64,i) for i ∈ split(j)[1:3]] for j ∈ lines[3:5]],dims=2)
 print("Basis vectors:")
 display(A)
+k = parse(Int,lines[8][1:2]) # Get number of species in this file
 # Get pointgroup operations in lattice coordinates and Cartesian
 LG,G = pointGroup(A)
 # Parse structure information and store in a vector of enumStr types
@@ -48,16 +49,17 @@ for (i,iline) ∈ enumerate(lines[16:end])
     d = parse.(Int,split(iline))
     labeling = String(split(iline)[end])    
     n = d[7]
-    snf = diagm(d[9:11])
+    snf = d[9:11]
     hnf = [d[12] 0 0; d[13] d[14] 0; d[15] d[16] d[17]]
     L = [d[18] 0 0; d[19] d[20] 0; d[21] d[22] d[23]]
     energy = en[i]/n
-    # Right now concentration is only defined for binary systems
-    concentration = count('1', labeling)/n
-    enthalpy = energy - (1-concentration)*en[1] - concentration*en[2] 
-    push!(str,enumStr(A*hnf,[0,1],n,atomPos,hnf,snf,L,labeling,energy,concentration,enthalpy))
+    concentration = [count(string(i),labeling) for i ∈ 0:k-1]./n
+    # Enthalpy calculation assumes first k entries are the pure species
+    enthalpy = energy - sum([concentration[i]*en[i] for i ∈ 1:k])
+    push!(str,enumStr(A*hnf,n,atomPos,hnf,snf,L,labeling,energy,concentration,enthalpy))
 end
 return str
 end
+
 
 
