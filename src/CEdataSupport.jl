@@ -1,4 +1,4 @@
-export readStructenumout, readEnergies
+export readStructenumout, readEnergies, readStrIn
 
 """ Extract energies from concatenated vasp results. Output is sorted by structure number.   
 
@@ -60,5 +60,50 @@ end
 return str
 end
 
+""" Read an UNCLE-type structures.in file and return a vector of configurations as enumStr types.
 
-
+    readStrIn(filename)
+"""
+function readStrIn(filename)
+    testfile=filename
+    lines=readlines(testfile)[5:end]
+    k = length(split(lines[6]))
+    nStr = count(x->contains(x,"Direct"),lines)
+    str = Vector{enumStr}(undef,nStr)
+    en = zeros(Float64,nStr) # Need the first k energies to compute enthalpy 
+    A = hcat([parse.(Float64,split(lines[i])) for i ∈ 3:5]...)
+    iStr = 0
+    while !isempty(lines)
+        iStr += 1
+        println("\nstructure:" ,popfirst!(lines))
+        #popfirst!(lines) # Skip over structure name
+        popfirst!(lines) # Throw away lattice parameter. Maybe we should keep it but don't need it for standard CE
+        sv = hcat([parse.(Float64,split(popfirst!(lines))) for i ∈ 1:3]...)
+        sl = convert(Matrix{Int},inv(A)*sv) # Convert to lattice coordinates
+        #println("Lattice vectors: ",sv)
+        iconc =  parse.(Int,split(popfirst!(lines))[1:k]) # Integer concentration vector
+        #println("Concentration: ",iconc)
+        n = sum(iconc)
+        popfirst!(lines) # Throw away "Direct" label
+        dcPts = hcat([parse.(Float64,split(popfirst!(lines))[1:3]) for i ∈ 1:n]...)
+        #println(dcPts)
+        L = convert(Matrix{Int},smith(sl).Sinv)
+        SNF = convert(Vector{Int},smith(sl).SNF)
+        # Get ordinals from gCoords
+        gCoords = mod.(round.(L*sl*dcPts,digits=8),SNF)
+        idx = gCoordsToOrdinals(gCoords,SNF)
+        lab = vcat([fill(i-1,j) for (i,j) ∈ enumerate(iconc)]...)
+        lab = join(lab[idx]) # Reindex the labeling and convert to a string
+        en[iStr] = parse(Float64,popfirst!(lines))/n # Get energy per atom of this structure
+    
+        # compute enthalpy
+        enthalpy = en[iStr] - sum([iconc[i]*en[i] for i ∈ 1:k])./n
+        conc = [count(i->i==j,lab) for j ∈ 0:k-1]./n
+        popfirst!(lines) # Throw away "Energy" comment
+        popfirst!(lines) # Throw away ###### divider
+        #println("Str. #: ",iStr," Energy: ",en[iStr]," Enthalpy: ",enthalpy)
+        str[iStr] = enumStr(sv,n,sl*dcPts,sl,SNF,L,lab,conc,en[iStr],enthalpy)
+    end
+    println("Read ",nStr," structures from: ",filename)
+    return str
+end
