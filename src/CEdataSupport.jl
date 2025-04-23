@@ -1,3 +1,5 @@
+using CodecZlib
+
 export readStructenumout, readEnergies, readStrIn
 
 """ Extract energies from concatenated vasp results. Output is sorted by structure number.   
@@ -32,12 +34,8 @@ end
 function readStructenumout(filename,en)
 lines=readlines(filename) # Skip the lattice info at the head
 println("Reading in: ",filename)
-print("Description:",lines[1])
-print(lines[2])
 # Get basis vectors (read in 3 vectors, make them columns)
 A = stack([[parse(Float64,i) for i ∈ split(j)[1:3]] for j ∈ lines[3:5]],dims=2)
-print("Basis vectors:")
-display(A)
 k = parse(Int,lines[8][1:2]) # Get number of species in this file
 # Get pointgroup operations in lattice coordinates and Cartesian
 LG,G = pointGroup(A)
@@ -65,8 +63,19 @@ end
     readStrIn(filename)
 """
 function readStrIn(filename)
-    testfile=filename
-    lines=readlines(testfile)[5:end]
+    if (endswith(filename,".gz"))
+        gzfile = GzipDecompressorStream(open(filename))
+        try
+            lines = collect(eachline(gzfile))
+            close(gzfile)
+            lines = lines[5:end]
+        catch e
+            close(gzfile)
+            rethrow(e)
+        end
+    else
+        lines=readlines(filename)[5:end]
+    end
     k = length(split(lines[6]))
     nStr = count(x->contains(x,"Direct"),lines)
     str = Vector{enumStr}(undef,nStr)
@@ -75,11 +84,11 @@ function readStrIn(filename)
     iStr = 0
     while !isempty(lines)
         iStr += 1
-        println("\nstructure:" ,popfirst!(lines))
-        #popfirst!(lines) # Skip over structure name
+        #println("\nstructure:" ,popfirst!(lines))
+        popfirst!(lines) # Skip over structure name
         popfirst!(lines) # Throw away lattice parameter. Maybe we should keep it but don't need it for standard CE
         sv = hcat([parse.(Float64,split(popfirst!(lines))) for i ∈ 1:3]...)
-        sl = convert(Matrix{Int},inv(A)*sv) # Convert to lattice coordinates
+        sl = round.(Int,inv(A)*sv) # Convert to lattice coordinates
         #println("Lattice vectors: ",sv)
         iconc =  parse.(Int,split(popfirst!(lines))[1:k]) # Integer concentration vector
         #println("Concentration: ",iconc)
