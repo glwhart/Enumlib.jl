@@ -6,7 +6,7 @@ using MinkowskiReduction
 using SmithNormalForm
 using StaticArrays
 
-export genHNFs, isequivbases, gencolorings, getinequivHNFs, plotSuperTile, SuperTile, convertGtoOrd, convertCarttoG, gettransgroup, getrotationgroup, getpermgroup, genallcolorings, reducecolorings, removesuperperiodic
+export genHNFs, isequivbases, gencolorings, getinequivHNFs, plotSuperTile, SuperTile, convertGtoOrd, convertCarttoG, gettransgroup, getrotationgroup, getpermgroup, genallcolorings, reducecolorings, removesuperperiodic, plotcoloring
 
 """
     SuperTile(HNF::Matrix{Int})
