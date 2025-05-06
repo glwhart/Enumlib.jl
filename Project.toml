@@ -23,7 +23,6 @@ NormalForms = "109d20d8-9763-411c-9b60-7eb2a068657f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Pluto = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
-SmithNormalForm = { git = "https://github.com/wildart/SmithNormalForm.jl", rev = "master" }
 Spacey = "6fa23216-6d9f-473e-ad34-00be7be2628b"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
