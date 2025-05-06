@@ -96,8 +96,10 @@ function readStrIn(filename)
         popfirst!(lines) # Throw away "Direct" label
         dcPts = hcat([parse.(Float64,split(popfirst!(lines))[1:3]) for i ∈ 1:n]...)
         #println(dcPts)
-        L = convert(Matrix{Int},smith(sl).Sinv)
-        SNF = convert(Vector{Int},smith(sl).SNF)
+        #L = convert(Matrix{Int},smith(sl).Sinv)
+        L = snf(sl).U
+        #SNF = convert(Vector{Int},smith(sl).SNF)
+        SNF = diag(snf(sl).S)
         # Get ordinals from gCoords
         gCoords = mod.(round.(L*sl*dcPts,digits=8),SNF)
         idx = gCoordsToOrdinals(gCoords,SNF)

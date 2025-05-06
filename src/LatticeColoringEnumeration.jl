@@ -1,8 +1,8 @@
 #module LatticeColoringEnumeration
 #using LinearAlgebra
-#export getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs
+#export getAllHNFs, tripletList, basesAreEquiv, equivHNFs
 # Might be convenient to have fixing ops and/or group in one of these structs
-export checkCartesianPt
+export checkCartesianPt, getFixingLatticeOps
 
 """ Define a type for a supercell of a parent lattice, its HNF, SNF, gpoints, etc. 
 
@@ -15,8 +15,8 @@ struct SuperTile # A supercell of a parent lattice and some of its group propert
     SNF::Vector{Int64} # Smith normal form of the supercell
     gPts::Array{Int64,2} # columns are supercell sites in group coordinates
     function SuperTile(n,HNF)
-        L = smith(HNF).Sinv # inverse because 'smith' package defines the transformation differently than enumlib
-        SNF = smith(HNF).SNF
+        L = snf(HNF).U # inverse because 'smith' package defines the transformation differently than enumlib
+        SNF = daig((HNF).S)
         gPts = hcat([[i,j,k] for i ∈ 0:SNF[1]-1 for j ∈ 0:SNF[2]-1 for k ∈ 0:SNF[3]-1]...)
         new(n,HNF,L,SNF,gPts)
     end
@@ -46,13 +46,14 @@ function getAllHNFs(n)
 # Even for n≈65 (>10,000 HNFs), this takes less than a second. No need for anything fancier because HNFs of such size are way beyond current requirements.
     diags = tripletList(n) # All possible diagonal entries of HNF matrices with determinant n
     nHNF = sum([iD[2]*iD[3]^2 for iD ∈ diags]) # Number of HNF matrices to generate
-    HNFs = zeros(Int,3,3,nHNF) # Preallocate array to store all HNFs
+    #HNFs = zeros(Int,3,3,nHNF) # Preallocate array to store all HNFs
+    HNFs = Vector{Matrix{Int}}(undef, nHNF) 
     iH = 1 # Counter for HNFs
     for iD ∈ diags # Loop over all possible diagonal entries
         for d1 ∈ 0:iD[2]-1 # Loop over row two off-diagonal entries
             for d2 ∈ 0:iD[3]-1 # Loop over row-three, column-1 entries
                 for d3 ∈ 0:iD[3]-1 # Loop over row-three, column-2 entries
-                    HNFs[:,:,iH] = [iD[1] 0 0; d1 iD[2] 0; d2 d3 iD[3]]
+                    HNFs[iH] = [iD[1] 0 0; d1 iD[2] 0; d2 d3 iD[3]]
 
                     iH += 1 # Increment HNF counter
                 end
@@ -86,6 +87,8 @@ end
     Two equivalent superlattices are related by a unimodular transformation. 
     This function checks, for every allowed g ∈ G, if two bases are 
     equivalent by checking if the transformation matrix is unimodular. 
+
+        *** Finite precision issues could be avoided by doing this all in integers using HNFer ***
 """
 function basesAreEquiv(HNF1,HNF2,pLat,G)
     # This routine assumes det(HNF1) == det(HNF2)
@@ -106,17 +109,17 @@ getSymInequivHNFs(n,pLat,G) returns the symmetry-inequivalent HNFs, of size n, u
 """
 function getSymInequivHNFs(d,pLat,G)
 HNFList = getAllHNFs(d)
-n = size(HNFList,3)
+n = length(HNFList)
 mask = trues(n)
     for i ∈ 1:n-1
         for j ∈ i+1:n
             if !mask[j] continue end
-            if basesAreEquiv(HNFList[:,:,i],HNFList[:,:,j],pLat,G)
+            if basesAreEquiv(HNFList[i],HNFList[j],pLat,G)
                 mask[j] = false
             end
         end
     end
-    return [HNFList[:,:,i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
+    return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
 end
 
 """ Return a mask marking the symmetries in G that fix the superlattice of given HNF
@@ -133,6 +136,20 @@ function getFixingOps(hnf,pLat,G)
     end
     return mask
 end  
+
+"""
+    getFixingLatticeOps(hnf,LG)
+
+    Return a mask identifying the elements of the symmetry group (expressed in lattice coordinates) that fix the superlattice defined by the HNF. (Compare to getFixingOps, which uses Cartesian coords.)
+"""    
+function getFixingLatticeOps(hnf,LG)
+    mask = falses(length(LG))
+    B = hnfc(hnf).H
+    for (i,g) ∈ enumerate(LG)
+        hnfc(g*B).H == B ? mask[i] = true : nothing
+    end
+    return mask
+end 
 
 """ Make the composite cyclic group that represents the translation group of the superlattice
    
@@ -184,8 +201,8 @@ end
 
     getCartesianPts(A,H): A is the parent lattice, H defines the supercell. Output is a list of all interior points, in Cartesian coordinates. """
 function getCartesianPts(A,H;mink=true)
-    sdiag=smith(H).SNF
-    L = smith(H).Sinv # Get the left SNF transform
+    sdiag=diag(snf(H).S)
+    L = snf(H).U # Get the left SNF transform
     n = prod(sdiag)
     # Convert gspace vector to lattice coordinates of supercell, mod into first tile, then convert to Cartesian coordinates (right to left)
     if !mink
@@ -203,7 +220,7 @@ end
     checkCartesianPts(A,cPts): A is the parent lattice, cPts is a 3 vector. Returns true if the point is a lattice point."""
 function checkCartesianPt(A,c)
     Ai = inv(A)
-    if norm(Ai*c - round.(Ai*c)) < 1e-13
+    if norm(Ai*c - round.(Ai*c)) < 1e-10
         return true
     else
         return false
