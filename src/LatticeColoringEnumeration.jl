@@ -192,7 +192,7 @@ output is N-vector of ordinals"""
 # Map Cartesian coordinates to lattice coordinates, map into first tile, then convert to g-space coordinates, then to ordinal indices.
 function getOrdinalsFromCartesian(cPts,A,L,SNF)
     T = L*inv(A) # Transformation from lattice to g-space coordinates
-    gPts = convert.(Int,T*cPts)
+    gPts = mod.(round.(Int,T*cPts),SNF)
     return gCoordsToOrdinals(gPts,SNF)
 end
 
@@ -220,7 +220,7 @@ end
     checkCartesianPts(A,cPts): A is the parent lattice, cPts is a 3 vector. Returns true if the point is a lattice point."""
 function checkCartesianPt(A,c)
     Ai = inv(A)
-    if norm(Ai*c - round.(Ai*c)) < 1e-10
+    if norm(Ai*c - round.(Ai*c)) < 1e-10 # eps was chosen to be large enough to pass all unit tests
         return true
     else
         return false
