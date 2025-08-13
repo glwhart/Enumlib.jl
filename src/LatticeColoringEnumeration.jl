@@ -103,11 +103,30 @@ function basesAreEquiv(HNF1,HNF2,pLat,G)
     return false
 end
 
+""" Check if two bases are equivalent under the action a group 
+
+    Two equivalent superlattices are related by a unimodular transformation. 
+    This function checks, for every allowed g ∈ LG, if two bases are 
+    equivalent by checking if the transformation matrix is unimodular. 
+"""
+function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int}})
+    # This routine assumes det(HNF1) == det(HNF2)
+    invB2 = inv(HNF2)
+    for g ∈ LG
+        T = invB2*g*HNF1
+        if norm(T - round.(Int,T)) < 1e-8 # Check if T is an integer matrix
+            return true
+        end 
+    end  
+    return false
+end
+
+
 """ Get symmetry-inequivalent HNFs under the parent lattice group 
 
 getSymInequivHNFs(n,pLat,G) returns the symmetry-inequivalent HNFs, of size n, under the action of the group G, the symmetries of the parent lattice.
 """
-function getSymInequivHNFs(d,pLat,G)
+function getSymInequivHNFs(d,pLat,G::Vector{Matrix{Float64}})
 HNFList = getAllHNFs(d)
 n = length(HNFList)
 mask = trues(n)
@@ -115,6 +134,25 @@ mask = trues(n)
         for j ∈ i+1:n
             if !mask[j] continue end
             if basesAreEquiv(HNFList[i],HNFList[j],pLat,G)
+                mask[j] = false
+            end
+        end
+    end
+    return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
+end
+
+""" Get symmetry-inequivalent HNFs under the parent lattice group 
+
+getSymInequivHNFs(n,LG) returns the symmetry-inequivalent HNFs, of size n, under the action of the group LG, the symmetries of the parent lattice in lattice coordinates.
+"""
+function getSymInequivHNFs(d,LG::Vector{Matrix{Int}})
+    HNFList = getAllHNFs(d)
+    n = length(HNFList)
+    mask = trues(n)
+    for i ∈ 1:n-1
+        for j ∈ i+1:n
+            if !mask[j] continue end
+            if basesAreEquiv(HNFList[i],HNFList[j],LG)
                 mask[j] = false
             end
         end
