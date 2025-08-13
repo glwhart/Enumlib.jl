@@ -65,8 +65,8 @@ end
 
 """ Generate all integer triplets a*b*c = n """
 function tripletList(n)
-# Even for cases n ≈ 100, this takes only a couple of μs. No need for anything fancier.
-triples = Vector{Vector{Int64}}()
+    # Even for cases n ≈ 100, this takes only a couple of μs. No need for anything fancier.
+    triples = Vector{Vector{Int64}}()
     # Loop over all triplets that a*b*c = n
     for i ∈ 1:n
         for j ∈ 1:n
@@ -94,7 +94,7 @@ function basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Float64}})
     # This routine assumes det(HNF1) == det(HNF2)
     invB2 = inv(pLat*HNF2)
     for g ∈ G
-        T = invB2*g*(pLat*HNF1)
+        T = invB2*inv(g)*(pLat*HNF1)
         # The epsilon should be smaller than 1/det(B1) for numerical stability.
         if norm(T - round.(Int,T)) < 1e-6 # Check if T is an integer matrix
             return true
@@ -103,17 +103,21 @@ function basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Float64}})
     return false
 end
 
-""" Check if two bases are equivalent under the action a group 
+""" 
+    basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
+
+Check if two bases are equivalent under the action a group 
 
     Two equivalent superlattices are related by a unimodular transformation. 
     This function checks, for every allowed g ∈ LG, if two bases are 
     equivalent by checking if the transformation matrix is unimodular. 
 """
-function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int}})
+function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
     # This routine assumes det(HNF1) == det(HNF2)
     invB2 = inv(HNF2)
     for g ∈ LG
         T = invB2*g*HNF1
+        # The epsilon should be smaller than 1/det(B1) for numerical stability.
         if norm(T - round.(Int,T)) < 1e-6 # Check if T is an integer matrix
             return true
         end 
@@ -197,22 +201,22 @@ end
     makeTransGroup(z): Given the diagonal entries of the SNF (integer vector, z), compute the automorphisms of the lattice sites that represent the translation group of the superlattice.
 """
 function getTransGroup(z)
-# Define "gspace" points, 3D points that represent the lattice sites in the group notation
-GspcSites = [[i,j,k] for i ∈ 0:z[1]-1 for j ∈ 0:z[2]-1 for k ∈ 0:z[3]-1]
-# Compute the automorphism group of the lattice by adding each group element to the entire group (and then modding components by the SNF entries)
-GspcG = [[mod.(j.+i,z) for i ∈ GspcSites] for j ∈ GspcSites] 
-# Convert translations expressed as gspace point orbits to permutation group elements. The 3d gspace points are three digits, mixed-radix numbers. "Hash" them to base 10.
-placeVals = [z[2]*z[3],z[3],1] # Place values for each digit of the mixed-radix number representing group elements
-tGrp =[[sum(i.*placeVals)+1 for i in j] for j in GspcG] # Convert to base-10
-sort!(tGrp) # Put identity first  
-return tGrp
+    # Define "gspace" points, 3D points that represent the lattice sites in the group notation
+    GspcSites = [[i,j,k] for i ∈ 0:z[1]-1 for j ∈ 0:z[2]-1 for k ∈ 0:z[3]-1]
+    # Compute the automorphism group of the lattice by adding each group element to the entire group (and then modding components by the SNF entries)
+    GspcG = [[mod.(j.+i,z) for i ∈ GspcSites] for j ∈ GspcSites] 
+    # Convert translations expressed as gspace point orbits to permutation group elements. The 3d gspace points are three digits, mixed-radix numbers. "Hash" them to base 10.
+    placeVals = [z[2]*z[3],z[3],1] # Place values for each digit of the mixed-radix number representing group elements
+    tGrp =[[sum(i.*placeVals)+1 for i in j] for j in GspcG] # Convert to base-10
+    sort!(tGrp) # Put identity first  
+    return tGrp
 end
 
 """ Convert a list of points in g-space coordinates to ordinal indices in the supercell 
 
     gCoordsToOrdinals(gPts,SNF): gPts is 3xN mixed-radix numbers, output is N-vector"""
 function gCoordsToOrdinals(gPts,SNF)
-    placeVals = [SNF[2]*SNF[3],SNF[3],1] 
+    placeVals = [SNF[2]*SNF[3],SNF[3],1]
     siteOrdinals = [sum(i.*placeVals)+1 for i in eachcol(gPts)] # Convert to base-10, 1-indexed
     return convert(Vector{Int},siteOrdinals)
 end
@@ -221,7 +225,7 @@ end
 
     ordinalToGCoords(o,z): o is an integer (site #, 1..n), z is an integer 3-vector (SNF), output is 3-vector (g-space coordinates)"""
 function ordinalToGcoords(o,z)
-    placeVals = [z[2]*z[3],z[3],1] 
+    placeVals = [z[2]*z[3],z[3],1]
     gCoords = mod.((o-1) .÷ placeVals,z)
     return gCoords
 end
@@ -267,6 +271,7 @@ function checkCartesianPt(A,c)
         return false
     end 
 end
+
 """ get_nonzero_index(m,reps=1e-13) """
 function get_nonzero_index(m; reps=1e-13)
     mask = findall(abs.(diag(m)).>reps)
