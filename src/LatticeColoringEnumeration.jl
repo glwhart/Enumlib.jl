@@ -192,14 +192,14 @@ output is N-vector of ordinals"""
 # Map Cartesian coordinates to lattice coordinates, map into first tile, then convert to g-space coordinates, then to ordinal indices.
 function getOrdinalsFromCartesian(cPts,A,L,SNF)
     T = L*inv(A) # Transformation from lattice to g-space coordinates
-    gPts = convert.(Int,T*cPts)
+    gPts = mod.(round.(Int,T*cPts),SNF)
     return gCoordsToOrdinals(gPts,SNF)
 end
 
 
 """ Genererate all interior points of a unit cell, in Cartesian coordinates
 
-    getCartesianPts(A,H): A is the parent lattice, H defines the supercell. Output is a list of all interior points, in Cartesian coordinates. """
+    getCartesianPts(A,H;mink=true): A is the parent lattice, H defines the supercell. Output is a list of all interior points, in Cartesian coordinates. """
 function getCartesianPts(A,H;mink=true)
     sdiag=diag(snf(H).S)
     L = snf(H).U # Get the left SNF transform
@@ -220,7 +220,7 @@ end
     checkCartesianPts(A,cPts): A is the parent lattice, cPts is a 3 vector. Returns true if the point is a lattice point."""
 function checkCartesianPt(A,c)
     Ai = inv(A)
-    if norm(Ai*c - round.(Ai*c)) < 1e-10
+    if norm(Ai*c - round.(Ai*c)) < 1e-10 # eps was chosen to be large enough to pass all unit tests
         return true
     else
         return false
