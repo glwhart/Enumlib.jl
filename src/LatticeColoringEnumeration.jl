@@ -271,7 +271,6 @@ function checkCartesianPt(A,c)
         return false
     end 
 end
-
 """ get_nonzero_index(m,reps=1e-13) """
 function get_nonzero_index(m; reps=1e-13)
     mask = findall(abs.(diag(m)).>reps)
