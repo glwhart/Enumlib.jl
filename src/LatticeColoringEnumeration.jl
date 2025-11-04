@@ -103,28 +103,6 @@ function basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Float64}})
     return false
 end
 
-""" 
-    basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Int64}})
-
-Check if two bases are equivalent under the action a group 
-
-    Two equivalent superlattices are related by a unimodular transformation. 
-    This function checks, for every allowed g ∈ G, if two bases are 
-    equivalent by checking if the transformation matrix is unimodular. 
-"""
-function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
-    # This routine assumes det(HNF1) == det(HNF2)
-    invB2 = inv(HNF2)
-    for g ∈ LG
-        T = invB2*g*HNF1
-        # The epsilon should be smaller than 1/det(B1) for numerical stability.
-        if norm(T - round.(Int,T)) < 1e-6 # Check if T is an integer matrix
-            return true
-        end 
-    end  
-    return false
-end
-
 """ Check if two bases are equivalent under the action a group 
 
     Two equivalent superlattices are related by a unimodular transformation. 
@@ -136,7 +114,7 @@ function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int}})
     invB2 = inv(HNF2)
     for g ∈ LG
         T = invB2*g*HNF1
-        if norm(T - round.(Int,T)) < 1e-8 # Check if T is an integer matrix
+        if norm(T - round.(Int,T)) < 1e-6 # Check if T is an integer matrix
             return true
         end 
     end  
@@ -286,7 +264,6 @@ function checkCartesianPt(A,c)
         return false
     end 
 end
-
 """ get_nonzero_index(m,reps=1e-13) """
 function get_nonzero_index(m; reps=1e-13)
     mask = findall(abs.(diag(m)).>reps)

@@ -25,10 +25,11 @@ for hnf in rhnfs
     push!(rhnfs2, hnf)
 end
 r = [cellRadius(A*i) for i in rhnfs2]
-hnfs = [h for (h,radius) in zip(rhnfs2,r) if radius < 1.66]
+hnfs = [h for (h,radius) in zip(rhnfs2,r) if radius < 1.23]
 
 #fcc binary 1.51 (16450)
 #fcc ternary 1.29 (17195)
+#fcc ternary 1.23 (2977)
 #bcc binary 1.88 (15239)
 #bcc ternary 1.66 (31719)
 
@@ -42,7 +43,7 @@ end
 println("rcolorings: ", sum(length.(rcolorings)))
 
 
-dirpath= "poscars/bcc_ternary_r166"
+dirpath= "poscars/fcc_ternary_r123"
 atoms = ["a", "b", "c"]
 natoms = length(atoms)
 counter = 0
@@ -89,6 +90,8 @@ for h in eachindex(hnfs)
 end
 
 
+
+
 function compare_directories(dir1, dir2)
     files1 = sort(readdir(dir1))
     files2 = sort(readdir(dir2))
@@ -113,4 +116,4 @@ function compare_directories(dir1, dir2)
     end
 end
 
-compare_directories("poscars/fcc_binary_r151", "poscars/fcc_binary_r151 2")
+compare_directories("poscars/fcc_ternary_r123", "poscars/fcc_ternary_r123 2")
