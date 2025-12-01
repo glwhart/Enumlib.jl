@@ -5,32 +5,36 @@ using LinearAlgebra
 using MinkowskiReduction
 using Plots
 
+# This list has  already been mink reduced.
 BravaisLatticeList=Dict([
-("Centered monoclinic 1",     ([1.0  1.0 0.5; 1.1 -1.1 0.0; 0.0 0.0 0.7],4)),
-("Simple monoclinic 1",      ( [1.0  0.0 0.1; 0.0  1.1 0.0; 0.0 0.0 0.7],4)),
-("Base-centered orthorhombic 1",([1.0  0.0 0.5; 0.0  1.1 0.0; 0.0 0.0 0.7] ,8)),
-("Triclinic 1",([1.0  0.1 0.2; 0.2  1.1 0.0; 0.3 0.0 0.7] ,2)),
-("FCC unreduced 1",([0.0 0.5 1.0; 0.5 0.0 1.0; 0.5 0.5 1.0],48)),
-("Rhombohedral 1",([1.0  1.0 .5; 1.0  .5 1.0; .5 1.0 1.0],12)),
-("hexagonal 1",([1.0 0.5 0.0; 0.0  √(.75) 0.0; 0.0 0.0 1.6],24)),
-("Base-Centered orthorhombic 2",([1.1 1.9 0.0; -1.1 1.9 0.0; 0.0 0.0 1.3],8)),
-("Body-centered orthorhombic 1",([1.1 0.0 0.55; 0.0 1.9 0.95; 0.0 0.0 0.7],8)),
-("Face-centered orthorhombic 1",([0.55 0.0 0.55; 0.95 0.95 0.0; 0.0 0.35 0.35],8)),
-("BCTet",([0.0 0.5 0.5; 0.5 0.0 0.5; 0.54 0.54 0.0],16)),
-("FCC",([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],48)),
-("BCC",([-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0],48)),
-("Simple cubic",([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],48)),
-("Simple orthorhombic",([1.1 0.0 0.0; 0.0 1.2 0.0; 0.0 0.0 1.3],8)),
-("Simple tetragonal",([1.1 0.0 0.0; 0.0 1.1 0.0; 0.0 0.0 1.3],16))
+    "Simple monoclinic 1"          => ([1.0 0.0 0.1; 0.0 1.1 0.0; 0.0 0.0 0.7], 4)
+    "Body-centered orthorhombic 1" => ([1.1 0.0 0.55; 0.0 1.9 0.95; 0.0 0.0 0.7], 8)
+    "Simple orthorhombic"          => ([1.1 0.0 0.0; 0.0 1.2 0.0; 0.0 0.0 1.3], 8)
+    "Base-Centered orthorhombic 2" => ([1.1 1.9 0.0; -1.1 1.9 0.0; 0.0 0.0 1.3], 8)
+    "Face-centered orthorhombic 1" => ([0.55 0.0 0.55; 0.95 0.95 0.0; 0.0 0.35 0.35], 8)
+    "Triclinic 1"                  => ([1.0 0.1 0.2; 0.2 1.1 0.0; 0.3 0.0 0.7], 2)
+    "FCC"                          => ([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0], 48)
+    "hexagonal 1"                  => ([1.0 0.5 0.0; 0.0 0.866025 0.0; 0.0 0.0 1.6], 24)
+    "BCTet"                        => ([0.0 0.5 0.5; 0.5 0.0 0.5; 0.54 0.54 0.0], 16)
+    "Rhombohedral 1"               => ([1.0 1.0 0.5; 1.0 0.5 1.0; 0.5 1.0 1.0], 12)
+    "Centered monoclinic 1"        => ([1.0 1.0 0.5; 1.1 -1.1 0.0; 0.0 0.0 0.7], 4)
+    "Base-centered orthorhombic 1" => ([1.0 0.0 0.5; 0.0 1.1 0.0; 0.0 0.0 0.7], 8)
+    "Simple tetragonal"            => ([1.1 0.0 0.0; 0.0 1.1 0.0; 0.0 0.0 1.3], 16)
+    "FCC unreduced 1"              => ([0.0 0.5 1.0; 0.5 0.0 1.0; 0.5 0.5 1.0], 48)
+    "Simple cubic"                 => ([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], 48)
+    "BCC"                          => ([-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0], 48)
 ])
 
+""" radiusEnumeration(A;maxVol=15)
 
+Enumerate all symmetry-inequivalent superlattices up to volume maxVol, and return a radius-sorted list of the HNFs, radii, and volumes.
+"""
 function radiusEnumeration(A;maxVol=15)
     LG,G=pointGroup(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:maxVol
-        append!(hnfs, getAllHNFs(i))
-        #append!(hnfs, getSymInequivHNFs(i,LG))
+        #append!(hnfs, getAllHNFs(i))
+        append!(hnfs, getSymInequivHNFs(i,LG))
     end
     hnfs = [round.(Int,inv(A)*minkReduce(A*h)) for h in hnfs]
     radii = [cellRadius(A*h) for h in hnfs]
@@ -39,6 +43,43 @@ function radiusEnumeration(A;maxVol=15)
     return hnfs[idx], radii[idx], volumes[idx]
 end
  
+res=[radiusEnumeration(minkReduce(BravaisLatticeList[i][1]);maxVol=24) for i ∈ keys(BravaisLatticeList)]
+@show length.([i[1] for i in res])
+
+# Plot all 16 series of radii (distances)
+lattice_names = collect(keys(BravaisLatticeList))
+p = plot(xlabel="HNF Index", ylabel="Radius (Distance)", title="Radius vs Index for All 16 Lattice Types (up to size 20)", legend=:bottomright, size=(1000, 600),msw=0,ms=2,yscale=:log10)
+vol = [abs(det(BravaisLatticeList[i][1])) for i in keys(BravaisLatticeList) ]
+
+for (idx, name) in enumerate(lattice_names)
+    radii = res[idx][2] 
+    v = abs(det(BravaisLatticeList[name][1])) # Get the matrix (first element of tuple) and compute its determinant
+    plot!(p, 1:length(radii), radii/v, label=name, linewidth=1.5, markersize=2, msw=0, marker=:circle, alpha=0.7)
+end
+
+display(p)
+plot!(p, yscale=:log10)
+savefig(p, "figures/radiusEnumerationAllLattices.png")
+
+""" getHNFColorings(h,k,LG)
+
+For a given HNF, enumerate all the colorings, 
+"""
+function getHNFColorings(h,k,LG::Vector{Matrix{Int64}}) 
+    fixingOps = getFixingLatticeOps(h,LG)
+    permG = getPermG(h,fixingOps,LG)
+    return getUniqueColorings(k,permG)
+end
+
+LG, _ = pointGroup(BravaisLatticeList["Centered monoclinic 1"][1])
+res[1]
+[getHNFColorings(i,2,LG) for i in res[1][1]]
+
+[minkReduce(BravaisLatticeList[i][1]) for i ∈ keys(BravaisLatticeList)]
+
+
+radiusEnumeration(minkReduce(BravaisLatticeList["Simple cubic"][1]))[3]|>length
+
 
 function radEnumByXcellRadius(A,x)
     rCell = cellRadius(A)
@@ -100,8 +141,11 @@ end
 A = BravaisLatticeList["FCC"][1]
 LG,G=pointGroup(A)
 
-@time hnfs, radii, volumes = getSymInequivHNFsByCellRadius(BravaisLatticeList["FCC"][1],1.8)
-volumes
+@time hnfs, radii, volumes = getSymInequivHNFsByCellRadius(BravaisLatticeList["FCC"][1],0.7)
+
+# Bulletproof this function
+m, dia, vo =getRenumDesignMatrix(BravaisLatticeList["Simple cubic"][1],1.5,2)
+
 # What I need to do is enumerate now that I have all the HNFs.
 
 #hnfs=vcat([getSymInequivHNFs(i,LG) for i ∈ 1:4]...)
