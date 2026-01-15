@@ -29,7 +29,7 @@ BravaisLatticeList=Dict([
 
 Enumerate all symmetry-inequivalent superlattices up to volume maxVol, and return a radius-sorted list of the HNFs, radii, and volumes.
 """
-function radiusEnumeration(A;maxVol=15)
+function radiusEnumHNFs(A;maxVol=15)
     LG,G=pointGroup(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:maxVol
@@ -43,8 +43,9 @@ function radiusEnumeration(A;maxVol=15)
     return hnfs[idx], radii[idx], volumes[idx]
 end
  
-res=[radiusEnumeration(minkReduce(BravaisLatticeList[i][1]);maxVol=24) for i ∈ keys(BravaisLatticeList)]
+res=[radiusEnumHNFs(minkReduce(BravaisLatticeList[i][1]);maxVol=24) for i ∈ keys(BravaisLatticeList)]
 @show length.([i[1] for i in res])
+# 
 
 # Plot all 16 series of radii (distances)
 lattice_names = collect(keys(BravaisLatticeList))
@@ -71,7 +72,7 @@ function getHNFColorings(h,k,LG::Vector{Matrix{Int64}})
     return getUniqueColorings(k,permG)
 end
 
-LG, _ = pointGroup(BravaisLatticeList["Centered monoclinic 1"][1])
+tLG, _ = pointGroup(BravaisLatticeList["Centered monoclinic 1"][1])
 res[1]
 [getHNFColorings(i,2,LG) for i in res[1][1]]
 
@@ -138,23 +139,35 @@ function getSymInequivHNFsByCellRadius(A,x;maxVol=20)
     return hnfs[mask], radii[mask], abs.(round.(Int,det.(hnfs[mask])))
 end
 
-A = BravaisLatticeList["FCC"][1]
+rcut = 2.0
+A = BravaisLatticeList["BCC"][1]
 LG,G=pointGroup(A)
 
-@time hnfs, radii, volumes = getSymInequivHNFsByCellRadius(BravaisLatticeList["FCC"][1],0.7)
+@time hnfs, radii, volumes = getSymInequivHNFsByCellRadius(A,rcut)
+println("Number of HNFs: ", length(hnfs))
+scatter(unique(sort(radii)),ylabel="Radius",msw=0,ms=2,legend=false,yticks=0:.1:rcut+.1,ylims=(0,rcut+.1))
 
 # Bulletproof this function
 m, dia, vo =getRenumDesignMatrix(BravaisLatticeList["Simple cubic"][1],1.5,2)
 
 # What I need to do is enumerate now that I have all the HNFs.
 
+
+
 #hnfs=vcat([getSymInequivHNFs(i,LG) for i ∈ 1:4]...)
-colorings = coloringsOfHNFList(hnfs,2,LG)
-vcat(colorings...)
+colorings = coloringsOfHNFList(hnfs,3,LG)
+println("Number of colorings: ", length(vcat(colorings...)))
 plot(volumes,xlabel="HNF index (sorted by volume)",ylabel="Volume/Number of colorings",title="Number of colorings vs volume",msw=0,ms=2,yscale=:log10)
 scatter!(length.(colorings),msw=0,ms=2,color=:red,yscale=:log10)
 scatter(volumes,radii,msw=0,ms=4,xlabel="Volume",ylabel="Radius",title="Radius vs Volume",legend=false,color=:green)
 hColorings = length.(colorings)
+
+
+# Generate the poscars for David
+dirpath = "data"
+using NormalForms
+genPOSCARs(dirpath, hnfs, colorings, ["a", "b", "c"])
+
 
 using CairoMakie
 fig = Figure(resolution=(900, 700))
