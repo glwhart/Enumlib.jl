@@ -7,20 +7,20 @@ using Plots
 
 # This list has  already been mink reduced.
 BravaisLatticeList=Dict([
-    "Simple monoclinic 1"          => ([1.0 0.0 0.1; 0.0 1.1 0.0; 0.0 0.0 0.7], 4)
-    "Body-centered orthorhombic 1" => ([1.1 0.0 0.55; 0.0 1.9 0.95; 0.0 0.0 0.7], 8)
+    "Simple monoclinic 1"          => ([0.1 1.0 0.0; 0.0 0.0 1.1; 0.7 0.0 0.0], 4)
+    "Body-centered orthorhombic 1" => ([1.1 0.55 0.55; 0.0 0.95 0.95; 0.0 0.7 -0.7], 8)
     "Simple orthorhombic"          => ([1.1 0.0 0.0; 0.0 1.2 0.0; 0.0 0.0 1.3], 8)
-    "Base-Centered orthorhombic 2" => ([1.1 1.9 0.0; -1.1 1.9 0.0; 0.0 0.0 1.3], 8)
-    "Face-centered orthorhombic 1" => ([0.55 0.0 0.55; 0.95 0.95 0.0; 0.0 0.35 0.35], 8)
-    "Triclinic 1"                  => ([1.0 0.1 0.2; 0.2 1.1 0.0; 0.3 0.0 0.7], 2)
+    "Base-Centered orthorhombic 2" => ([0.0 1.1 1.9; 0.0 -1.1 1.9; 1.3 0.0 0.0], 8)
+    "Face-centered orthorhombic 1" => ([0.55 0.55 0.0; 0.0 0.0 0.95; 0.35 -0.35 -0.35], 8)
+    "Triclinic 1"                  => ([0.2 0.8 0.1; 0.0 0.2 1.1; 0.7 -0.4 0.0], 2)
     "FCC"                          => ([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0], 48)
-    "hexagonal 1"                  => ([1.0 0.5 0.0; 0.0 0.866025 0.0; 0.0 0.0 1.6], 24)
-    "BCTet"                        => ([0.0 0.5 0.5; 0.5 0.0 0.5; 0.54 0.54 0.0], 16)
-    "Rhombohedral 1"               => ([1.0 1.0 0.5; 1.0 0.5 1.0; 0.5 1.0 1.0], 12)
-    "Centered monoclinic 1"        => ([1.0 1.0 0.5; 1.1 -1.1 0.0; 0.0 0.0 0.7], 4)
-    "Base-centered orthorhombic 1" => ([1.0 0.0 0.5; 0.0 1.1 0.0; 0.0 0.0 0.7], 8)
+    "hexagonal 1"                  => ([0.5 0.5 0.0; sqrt(3)/2 -sqrt(3)/2 0.0; 0.0 0.0 1.6], 24)
+    "BCTet"                        => ([0.5 0.5 0.5; 0.5 -0.5 0.0; 0.0 0.0 0.54], 16)
+    "Rhombohedral 1"               => ([0.0 -0.5 0.5; -0.5 0.0 1.0; 0.5 0.5 1.0], 12)
+    "Centered monoclinic 1"        => ([0.5 0.5 0.5; 0.0 1.1 -1.1; 0.7 -0.7 -0.7], 4)
+    "Base-centered orthorhombic 1" => ([0.5 0.5 0.0; 0.0 0.0 1.1; 0.7 -0.7 0.0], 8)
     "Simple tetragonal"            => ([1.1 0.0 0.0; 0.0 1.1 0.0; 0.0 0.0 1.3], 16)
-    "FCC unreduced 1"              => ([0.0 0.5 1.0; 0.5 0.0 1.0; 0.5 0.5 1.0], 48)
+    #"FCC unreduced 1"              => ([0.0 0.5 1.0; 0.5 0.0 1.0; 0.5 0.5 1.0], 48)
     "Simple cubic"                 => ([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0], 48)
     "BCC"                          => ([-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0], 48)
 ])
@@ -30,7 +30,7 @@ BravaisLatticeList=Dict([
 Enumerate all symmetry-inequivalent superlattices up to volume maxVol, and return a radius-sorted list of the HNFs, radii, and volumes.
 """
 function radiusEnumHNFs(A;maxVol=15)
-    LG,G=pointGroup(A)
+    LG,_=pointGroup(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:maxVol
         #append!(hnfs, getAllHNFs(i))
@@ -43,11 +43,21 @@ function radiusEnumHNFs(A;maxVol=15)
     return hnfs[idx], radii[idx], volumes[idx]
 end
  
-res=[radiusEnumHNFs(minkReduce(BravaisLatticeList[i][1]);maxVol=24) for i ∈ keys(BravaisLatticeList)]
+res=[radiusEnumHNFs(BravaisLatticeList[i][1];maxVol=14) for i ∈ keys(BravaisLatticeList)]
 @show length.([i[1] for i in res])
-# 
+# The number of enumerated HNFs depends on the lattice type (because of symmetry)
+# Check out how the number correlates with maxVol and pointgroupsize
+pgs = [length(pointGroup(BravaisLatticeList[i][1])[1]) for i ∈ keys(BravaisLatticeList)]
 
+
+@show [(i,isMinkReduced(BravaisLatticeList[i][1])) for i ∈ keys(BravaisLatticeList)]
+
+[(i,minkReduce(BravaisLatticeList[i][1])) for i ∈ keys(BravaisLatticeList)]
 # Plot all 16 series of radii (distances)
+
+
+
+
 lattice_names = collect(keys(BravaisLatticeList))
 p = plot(xlabel="HNF Index", ylabel="Radius (Distance)", title="Radius vs Index for All 16 Lattice Types (up to size 20)", legend=:bottomright, size=(1000, 600),msw=0,ms=2,yscale=:log10)
 vol = [abs(det(BravaisLatticeList[i][1])) for i in keys(BravaisLatticeList) ]
