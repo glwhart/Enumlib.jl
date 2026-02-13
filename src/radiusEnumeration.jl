@@ -25,6 +25,15 @@ BravaisLatticeList=Dict([
     "BCC"                          => ([-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0], 48)
 ])
 
+
+lat = BravaisLatticeList["FCC"][1]
+LG,_=pointGroup(lat)
+@time pairs=getPairClustersInSphere(lat,LG,9);
+cartPairs = [lat*p for p in pairs]
+radii = norm.(cartPairs)
+
+
+
 """ radiusEnumeration(A;maxVol=15)
 
 Enumerate all symmetry-inequivalent superlattices up to volume maxVol, and return a radius-sorted list of the HNFs, radii, and volumes.
