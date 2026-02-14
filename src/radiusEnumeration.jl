@@ -27,14 +27,91 @@ BravaisLatticeList=Dict([
 
 
 lat = BravaisLatticeList["FCC"][1]
-LG,_=pointGroup(lat)
-@time pairs=getPairClustersInSphere(lat,LG,9);
-cartPairs = [lat*p for p in pairs]
+cellRadius(lat) # Get some scale for the lattice so we can pick a pair cutoff
+LG,_=pointGroup(lat) # Nee the pointgroup for the pair enumeration
+@time pairs=getPairClustersInSphere(lat,LG,3); # ~30 secs for fcc and Rmax=9
+cartPairs = [lat*p for p in pairs] # Convert the pairs to Cartesian coordinates
 radii = norm.(cartPairs)
+plot(radii,msw=0,ms=2,legend=false,color=:red)
+
+m, diam, vertOrd = getRenumDesignMatrix(lat,1.5,2,1);
+rank(m)
+mred, li = leftmostIndependentColumns(m,10)
+col = fill(:blue,size(m,2))
+col[li] .= :red
+scatter(diam,msw=0,color=col,ms=2,legend=:none)
+# cellVecVerts = 1 gave rank = 391
+
+m2, diam2, vertOrd2 = getRenumDesignMatrix(lat,1.5,2,2);
+rank(m2)
+mred2, li2 = leftmostIndependentColumns(m2,30)
+col2 = fill(:blue,size(m2,2))
+col2[li2] .= :red
+scatter(diam2,msw=0,color=col2,ms=2,legend=:none)
+# cellVecVerts = 2 gave rank = 391 (same as 1)
 
 
+coldiff=[[:red,:red,:blue,:green,:orange,:purple,:tan,:pink,:black][vertOrd[li][i]+1] for i in 1:391]
 
-""" radiusEnumeration(A;maxVol=15)
+plot(diam[li]- diam2[li2],st=:scatter,msw=0,ms=2,color=coldiff,legend=false)
+# The l.i. clusters seem to be the same for pairs and about 1/2 the 3 bodies. Then the second case seems to pick up 
+
+diffs = abs.(diam[li]-diam2[li2])
+diffs[39]
+cond(mred)
+cond(mred2)
+
+m3, diam3, vertOrd3 = getRenumDesignMatrix(lat,1.5,2,3);
+rank(m3)
+cond(m3)
+mred3, li3 = leftmostIndependentColumns(m3,60)
+col3 = fill(:blue,size(m3,2))
+col3[li3] .= :red
+scatter(diam3,msw=0,color=col3,ms=2,legend=:none)
+# cellVecVerts = 3 gave rank = 415 (full rank)
+# Wow, the condition number is 1000x better than the incomplete cases
+# The questions though is what clusters were added that helped? Was it pairs? triplets? quadruplets?
+
+# To figure this out, will have to find the li columns of the matrix and see what clusters they correspond to.
+
+# Find the matching columns in m2. assums the same order but extra columns here and there in m2.
+marker = 1; maplist = Vector{Int64}(); abort = false;
+for (j,i) ∈ enumerate(eachcol(m))
+    while norm(i-m2[:,marker]) > 1e-4
+        marker += 1
+        println("$j diff: ", round(norm(i-m2[:,marker]),digits=10))
+        if marker > size(m,2) abort = true; break end
+    end
+    if abort break end
+    push!(maplist,marker)
+end
+maplist
+plot(maplist,st=:scatter,msw=0,ms=2) 
+
+[norm(m[:,128]-m2[:,i]) for i in 141:size(m2,2)]|> plot
+[norm(m[:,i] - m2[:,i]) for i in 1:40]|> plot
+
+# Find the matching columns in m2 for each column in m. Makes no assumption about the order of the columns in m2.
+matchList = Vector{Vector{Int64}}()
+for i in 1:size(m,2)
+    for j in 1:size(m2,2)
+       if norm(m[:,i]-m2[:,j]) < 1e-4
+        push!(matchList,[i,j])
+        break
+       end
+    end
+end
+hcat(matchList...)'
+scatter(hcat(matchList...)',msw=0,ms=2)
+
+""" findCommonColumns(m1,m2)
+
+Returns the indices (list of integers) of columns in m2 that match m1. """ 
+function findCommonColumns(m1,m2)   
+    return findall(in(eachcol(m1)),eachcol(m2))
+end
+
+"""radiusEnumeration(A;maxVol=15)
 
 Enumerate all symmetry-inequivalent superlattices up to volume maxVol, and return a radius-sorted list of the HNFs, radii, and volumes.
 """
@@ -63,9 +140,6 @@ pgs = [length(pointGroup(BravaisLatticeList[i][1])[1]) for i ∈ keys(BravaisLat
 
 [(i,minkReduce(BravaisLatticeList[i][1])) for i ∈ keys(BravaisLatticeList)]
 # Plot all 16 series of radii (distances)
-
-
-
 
 lattice_names = collect(keys(BravaisLatticeList))
 p = plot(xlabel="HNF Index", ylabel="Radius (Distance)", title="Radius vs Index for All 16 Lattice Types (up to size 20)", legend=:bottomright, size=(1000, 600),msw=0,ms=2,yscale=:log10)
