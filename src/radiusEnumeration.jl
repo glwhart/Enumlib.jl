@@ -26,29 +26,119 @@ BravaisLatticeList=Dict([
 ])
 
 
-lat = BravaisLatticeList["FCC"][1]
-cellRadius(lat) # Get some scale for the lattice so we can pick a pair cutoff
-LG,_=pointGroup(lat) # Nee the pointgroup for the pair enumeration
+A = BravaisLatticeList["FCC"][1]
+primR = cellRadius(A) # Get some scale for the lattice so we can pick a pair cutoff
+LG,_=pointGroup(A) # Need the pointgroup for the pair enumeration
+# need to limit the number and size of HNFs by doing an enumeration and then cutting of a the radius, and then the size when the break between radii jumps too suddenly.
+nmax = 16
+println("Calculating HNFs up to size ",nmax)
+begin
+hnfs = Vector{Matrix{Int64}}()
+hnfLengths = Vector{Int64}()
+for i ∈ 1:nmax
+    hnfList = getSymInequivHNFs(i,LG)
+    r = sortperm(cellRadius.(hnfList))
+        append!(hnfs, hnfList[r])
+        append!(hnfLengths,length(hnfList))
+end
+end
+println("hnfs lengths: ",hnfLengths)
+# Mink reduce the unit cells
+hnfs=[round.(Int,inv(A)*minkReduce(A*h)) for h ∈ hnfs]
+radii = [cellRadius(A*h) for h in hnfs]
+szColors =[fill([:red,:blue,:green,:orange,:purple,:tan,:pink,:black,:red,:blue,:green,:orange,:purple,:tan,:pink,:black][i],hnfLengths[i]) for i in eachindex(hnfLengths)]
+szColors=vcat(szColors...)
+plot(radii,legend=:none,ylabel="radius",st=:scatter,color=szColors,ylim=(0.7,1.5))
+println("cell radii: ",[cellRadius(A*h) for h in hnfs])
+uqr=unique(sort(radii))
+plot(uqr[2:end]-uqr[1:end-1],yscale=:log10)
+# sort the hnfs by radius. Then enumerate colorings for each HNF in turn. Quit if we are over budget. Each coloring costs ln(Natoms)*Natoms^2/size(PG). But we only check the budget at the end of each HNF.
+
+# in this scheme we are ordering the HNFs first by radius, then by volume. Imagine concentric ellipses with a very large horizontal aspect ratio. We slowly increase the radius of the ellipses, including the next ellipses that come in. If we slightly decrease the aspect ratio, we will pick up smaller volume, larger radius cells before some large volume small radius cells. Picking that aspect ratio is a hyperparameter, I guess.
+spHNF = sortperm([cellRadius(A*h) for h in hnfs])
+plot(radii[spHNF],color=szColors[spHNF],st=:scatter,ylim=(0.7,1.5))
+
+# Ellipses centered at origin, same eccentricity e (drawn first so scatter points appear on top)
+# For (x/a)² + (y/b)² = 1 with a ≥ b: e = √(1 - (b/a)²)  =>  b = a√(1 - e²)
+θ = range(0, 2π; length=100)
+e = .999   # eccentricity (0 = circle, 1 = degenerate)
+# .9 does almost straight volume
+# .99 weights volume and radius about the same
+# .999 Decides almost solely on radius
+
+## But you could also just do straight lines with different slopes. Basically just an l1 ball with different aspect ratios.
+## that would simplify things and no reason to think it wouldn't be better, or at least as good.
+
+
+p = plot(xlabel="Volume", ylabel="Radius", legend=false)
+for a in range(1, 40, step=0.5)   # semi-major axis (volume direction)
+    b = a * sqrt(1 - e^2)               # semi-minor axis (radius direction)
+    plot!(p, a*cos.(θ), b*sin.(θ); linewidth=1, color=:gray)
+end
+scatter!(p, abs.(det.(hnfs[spHNF])), radii[spHNF], color=szColors[spHNF],xlims=(0,16),ylims=(0.0,1.5))
+
+cond(m2[:,1:end-2])
+
+m2qr = qr(m2,ColumnNorm())
+qrCol = fill(:cyan,length(diam2))
+qrCol[m2qr.p[1:405]] .= :blue
+plot(diam2,st=:scatter,msw=0,ms=1,color=qrCol)
+# Wow, the qr didn't take the big ones, it just took a fairly uniform sampling. Not sure these are worse from a physical intuition perspective
+
+
+# eliminate hnfs bigger than Rmax
+hnfs = hnfs[findall([cellRadius(A*h) < Rmax for h in hnfs])]
+println("Number of hnfs: ",length(hnfs))
+println("Volume of selected hnfs: ",[round(Int,abs(det(h))) for h in hnfs])
+# Get the interior points for each HNF, accumulate them in a list
+# Tried using just the shortest cell vector from each HNF for sizes N=8,9,10 and it all worked. Condition numbers were good too.
+
+# In this call, the second argument has been made irrelevant. I need to change the buildClusters function to not require that argument. It's not really needed---it can be determined from the hnf list.
+clusterPool,diameters,vertOrders = buildClusters_orig(A,1,hnfs,LG,cellVecVerts)
+
+println("Unique clusters: ",length(clusterPool))
+colorings = Vector{Vector{Vector{Int64}}}()
+for iH ∈ axes(hnfs,1) # few milliseconds
+    fixingOps = getFixingOps(hnfs[iH],A,G)
+    permG = getPermG(hnfs[iH],fixingOps,A,G)
+    push!(colorings,getUniqueColorings(k,permG))
+end
+println("colorings: ", sum(length.(colorings)))
+
+
+
 @time pairs=getPairClustersInSphere(lat,LG,3); # ~30 secs for fcc and Rmax=9
 cartPairs = [lat*p for p in pairs] # Convert the pairs to Cartesian coordinates
 radii = norm.(cartPairs)
 plot(radii,msw=0,ms=2,legend=false,color=:red)
+[count(vertOrd3[li3].==i) for i in 0:8]'
 
-m, diam, vertOrd = getRenumDesignMatrix(lat,1.5,2,1);
+
+m, diam, vertOrd = getRenumDesignMatrix(lat,1.3,2,1);
 rank(m)
-mred, li = leftmostIndependentColumns(m,10)
+mred, li = leftmostIndependentColumns(m,100)
 col = fill(:blue,size(m,2))
 col[li] .= :red
-scatter(diam,msw=0,color=col,ms=2,legend=:none)
+sz =repeat([2],length(diam))
+sz[li] .= 3
+scatter(diam,msw=0,color=col,ms=sz,legend=:none,
+dpi=300,
+xlabel="Cluster index",ylabel="Radius",title="Binary fcc, rcut=1.5, cellVecVerts=1 (red lin. ind.)")
 # cellVecVerts = 1 gave rank = 391
+savefig("figures/fccBinaryRadiusEnumerationAug1.png")
+cond(mred)
 
-m2, diam2, vertOrd2 = getRenumDesignMatrix(lat,1.5,2,2);
+m2, diam2, vertOrd2 = getRenumDesignMatrix(lat,1.31,2,2);
 rank(m2)
-mred2, li2 = leftmostIndependentColumns(m2,30)
+mred2, li2 = leftmostIndependentColumns(m2,100)
+cond(m2)
 col2 = fill(:blue,size(m2,2))
 col2[li2] .= :red
-scatter(diam2,msw=0,color=col2,ms=2,legend=:none)
+scatter(diam2,msw=0,color=col2,ms=2,legend=:none,
+dpi=300,
+xlabel="Cluster index",ylabel="Radius",title="Binary fcc, rcut=1.5, Aug=2 (red lin. ind.)")
 # cellVecVerts = 2 gave rank = 391 (same as 1)
+savefig("figures/fccBinaryRadiusEnumerationAug2.png")
 
 
 coldiff=[[:red,:red,:blue,:green,:orange,:purple,:tan,:pink,:black][vertOrd[li][i]+1] for i in 1:391]
@@ -67,13 +157,20 @@ cond(m3)
 mred3, li3 = leftmostIndependentColumns(m3,60)
 col3 = fill(:blue,size(m3,2))
 col3[li3] .= :red
-scatter(diam3,msw=0,color=col3,ms=2,legend=:none)
+scatter(diam3,msw=0,color=col3,ms=2,legend=:none,
+dpi=300,
+xlabel="Cluster index",ylabel="Radius",title="Binary fcc, rcut=1.5, Aug=3 (red lin. ind.)")
+savefig("figures/fccBinaryRadiusEnumerationAug3.png")
 # cellVecVerts = 3 gave rank = 415 (full rank)
 # Wow, the condition number is 1000x better than the incomplete cases
 # The questions though is what clusters were added that helped? Was it pairs? triplets? quadruplets?
 
 # To figure this out, will have to find the li columns of the matrix and see what clusters they correspond to.
 
+plot()
+for i in [diam[li],diam2[li2],diam3[li3]]
+plot!(i,xlabel="Cluster index",ylabel="Radius",title="Radii of independent clusters",color=:darkgreen,ms=2)
+end
 # Find the matching columns in m2. assums the same order but extra columns here and there in m2.
 marker = 1; maplist = Vector{Int64}(); abort = false;
 for (j,i) ∈ enumerate(eachcol(m))
