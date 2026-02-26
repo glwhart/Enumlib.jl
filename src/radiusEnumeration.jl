@@ -48,7 +48,7 @@ hnfs=[round.(Int,inv(A)*minkReduce(A*h)) for h ∈ hnfs]
 radii = [cellRadius(A*h) for h in hnfs]
 szColors =[fill([:red,:blue,:green,:orange,:purple,:tan,:pink,:black,:red,:blue,:green,:orange,:purple,:tan,:pink,:black][i],hnfLengths[i]) for i in eachindex(hnfLengths)]
 szColors=vcat(szColors...)
-plot(radii,legend=:none,ylabel="radius",st=:scatter,color=szColors,ylim=(0.7,1.5))
+plot(radii,legend=:none,ylabel="radius",st=:scatter,color=szColors,ylim=(0.7,2.5))
 println("cell radii: ",[cellRadius(A*h) for h in hnfs])
 uqr=unique(sort(radii))
 plot(uqr[2:end]-uqr[1:end-1],yscale=:log10)
@@ -82,9 +82,9 @@ cond(m2[:,1:end-2])
 m2qr = qr(m2,ColumnNorm())
 qrCol = fill(:cyan,length(diam2))
 qrCol[m2qr.p[1:405]] .= :blue
-plot(diam2,st=:scatter,msw=0,ms=1,color=qrCol)
+plot(diam2,st=:scatter,msw=0,ms=1,color=:blue)
 # Wow, the qr didn't take the big ones, it just took a fairly uniform sampling. Not sure these are worse from a physical intuition perspective
-
+plot!(m2qr.p[1:405],diam2[m2qr.p[1:405]],st=:scatter,msw=0,ms=2,color=:red)
 
 # eliminate hnfs bigger than Rmax
 hnfs = hnfs[findall([cellRadius(A*h) < Rmax for h in hnfs])]
@@ -94,7 +94,7 @@ println("Volume of selected hnfs: ",[round(Int,abs(det(h))) for h in hnfs])
 # Tried using just the shortest cell vector from each HNF for sizes N=8,9,10 and it all worked. Condition numbers were good too.
 
 # In this call, the second argument has been made irrelevant. I need to change the buildClusters function to not require that argument. It's not really needed---it can be determined from the hnf list.
-clusterPool,diameters,vertOrders = buildClusters_orig(A,1,hnfs,LG,cellVecVerts)
+clusterPool,diameters,vertOrders = buildClusters(A,1,hnfs,LG,cellVecVerts)
 
 println("Unique clusters: ",length(clusterPool))
 colorings = Vector{Vector{Vector{Int64}}}()
@@ -114,9 +114,13 @@ plot(radii,msw=0,ms=2,legend=false,color=:red)
 [count(vertOrd3[li3].==i) for i in 0:8]'
 
 
-m, diam, vertOrd = getRenumDesignMatrix(lat,1.3,2,1);
+# was r=1.3
+m, diam, vertOrd = getRenumDesignMatrix(A,1.0,2,1);
 rank(m)
 mred, li = leftmostIndependentColumns(m,100)
+using JLD2,
+NPZ
+
 col = fill(:blue,size(m,2))
 col[li] .= :red
 sz =repeat([2],length(diam))
@@ -128,9 +132,14 @@ xlabel="Cluster index",ylabel="Radius",title="Binary fcc, rcut=1.5, cellVecVerts
 savefig("figures/fccBinaryRadiusEnumerationAug1.png")
 cond(mred)
 
-m2, diam2, vertOrd2 = getRenumDesignMatrix(lat,1.31,2,2);
+m2, diam2, vertOrd2 = getRenumDesignMatrix(A,1.3,2,2);
 rank(m2)
 mred2, li2 = leftmostIndependentColumns(m2,100)
+save("data/renumFCC_k2_mwide.jld2","m",m2)
+save("data/renumFCC_k2_reducedm.jld2","mred",mred2)
+npzwrite("data/renumFCC_k2_reducedm_python.npz",mred2)
+npzwrite("data/renumFCC_k2_mwide_python.npz",m2)
+
 cond(m2)
 col2 = fill(:blue,size(m2,2))
 col2[li2] .= :red

@@ -164,11 +164,13 @@ mask = trues(n)
     return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
 end
 
-""" Return a mask marking the symmetries in G that fix the superlattice of given HNF
+""" getFixingOps(hnf,pLat,G::Vector{Matrix{Float64}})
+
+Return a mask marking the symmetries in G that fix the superlattice of given HNF
 
     getFixingOps(hnf,pLat,G): Given an HNF, a parent lattice, and the symmetries of the parent lattice, return a mask of the symmetries under which the superlattice is invariant. In other words, it returns the stabilizer subgroup of G.
 """
-function getFixingOps(hnf,pLat,G)
+function getFixingOps(hnf,pLat,G::Vector{Matrix{Float64}})
     mask = falses(length(G))
     B = pLat*hnf
     for (i,g) ∈ enumerate(G)
