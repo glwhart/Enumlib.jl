@@ -105,12 +105,13 @@ function readStrIn(filename)
         idx = gCoordsToOrdinals(gCoords,SNF)
         lab = vcat([fill(i-1,j) for (i,j) ∈ enumerate(iconc)]...)
         lab = join(lab[idx]) # Reindex the labeling and convert to a string
+        popfirst!(lines) # Throw away "Energy" comment
         en[iStr] = parse(Float64,popfirst!(lines))/n # Get energy per atom of this structure
     
         # compute enthalpy
         enthalpy = en[iStr] - sum([iconc[i]*en[i] for i ∈ 1:k])./n
         conc = [count(i->i==j,lab) for j ∈ 0:k-1]./n
-        popfirst!(lines) # Throw away "Energy" comment
+
         popfirst!(lines) # Throw away ###### divider
         #println("Str. #: ",iStr," Energy: ",en[iStr]," Enthalpy: ",enthalpy)
         str[iStr] = enumStr(sv,n,sl*dcPts,sl,SNF,L,lab,conc,en[iStr],enthalpy)
