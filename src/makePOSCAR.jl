@@ -10,11 +10,57 @@ function matrixToString(matrix)
     return join(rows, "\n")
 end
 
+function genPOSCARs(dirpath, hnfs, colorings, atoms)
+    natoms = length(atoms)
+    counter = 0
+    for h in eachindex(hnfs)
+        hnf = hnfs[h]
+
+        SNF = snf(hnf)
+        size_num = abs(det(hnf))
+        rad = cellRadius(A*hnf)
+
+        for k in 1:length(colorings[h])
+            counter += 1
+            atom_indices = [findall(==(i-1), colorings[h][k]) for i in 1:natoms]
+            counts = [length(atom_indices[i]) for i in 1:natoms]
+
+            fname = "POSCAR." * lpad(string(counter),5,'0')
+            fpath = joinpath(dirpath, fname)
+            open(fpath, "w") do f
+                write(f, string(rad))
+                write(f, " ")
+                write(f, join([string(counts[i]/size_num) for i in 1:natoms], " "))
+                #Write radius before concentration
+                write(f, "\n")
+                write(f, "LP")
+                write(f, "\n")
+                write(f, matrixToString(transpose(A*hnf)))
+                write(f, "\n")
+                write(f, join([atoms[i] for i in 1:natoms], " "))
+                write(f, "\n")
+                write(f, join([counts[i] for i in 1:natoms], " "))
+                write(f, "\n")
+                write(f, "Direct\n")
+                for i in 1:natoms
+                    for j in atom_indices[i]
+                            # Convert the g-space coordinates to lattice coordinates
+                            lattice_coord = mod.(inv(hnf) * inv(SNF.U) * ordinalToGcoords(j, diag(SNF.S)),1)
+                            write(f, join(round.(lattice_coord, digits=15), " "))
+                            write(f, "\n")
+                    end
+                end
+            end
+        end
+    end
+end
+
+
 A = [0.5 0.0 0.5; 0.5 0.5 0.0; 0.0 0.5 0.5] # FCC lattice
 # A = [.5 -.5 .5; .5 .5 -.5; -.5 .5 .5] # BCC lattice
 LG,G=pointGroup(A)
 
-n = 20
+n = 16
 @time rhnfs = vcat([getSymInequivHNFs(i,A,G) for i ∈ 1:n]...)
 rhnfs2 = []
 for hnf in rhnfs
@@ -42,53 +88,9 @@ for iH ∈ hnfs
 end
 println("rcolorings: ", sum(length.(rcolorings)))
 
-
-dirpath= "poscars/fcc_ternary_r123"
+dirpath= "poscars/test2"
 atoms = ["a", "b", "c"]
-natoms = length(atoms)
-counter = 0
-for h in eachindex(hnfs)
-    hnf = hnfs[h]
-    
-    SNF = snf(hnf)
-    size_num = abs(det(hnf))
-    rad = cellRadius(A*hnf)
-    
-    for k in 1:length(rcolorings[h])
-        counter += 1
-        atom_indices = [findall(==(i-1), rcolorings[h][k]) for i in 1:natoms]
-        counts = [length(atom_indices[i]) for i in 1:natoms]
-
-        
-        fname = "POSCAR." * lpad(string(counter),5,'0')
-        fpath = joinpath(dirpath, fname)
-        open(fpath, "w") do f
-            write(f, string(rad))
-            write(f, " ")
-            write(f, join([string(counts[i]/size_num) for i in 1:natoms], " "))
-            #Write radius before concentration
-            write(f, "\n")
-            write(f, "LP")
-            write(f, "\n")
-            write(f, matrixToString(transpose(A*hnf)))
-            write(f, "\n")
-            write(f, join([atoms[i] for i in 1:natoms], " "))
-            write(f, "\n")
-            write(f, join([counts[i] for i in 1:natoms], " "))
-            write(f, "\n")
-            write(f, "Direct\n")
-            for i in 1:natoms
-                for j in atom_indices[i]
-                        # Convert the g-space coordinates to lattice coordinates
-                        lattice_coord = mod.(inv(hnf) * inv(SNF.U) * ordinalToGcoords(j, diag(SNF.S)),1)
-                        write(f, join(round.(lattice_coord, digits=15), " "))
-                        write(f, "\n")
-                end
-            end
-        end
-    end
-end
-
+genPOSCARs(dirpath, hnfs, rcolorings, atoms)
 
 
 
