@@ -124,13 +124,14 @@ end
 
 """ Get symmetry-inequivalent HNFs under the parent lattice group 
 
-getSymInequivHNFs(n,pLat,G) returns the symmetry-inequivalent HNFs, of size n, under the action of the group G, the symmetries of the parent lattice.
+getSymInequivHNFs(n,pLat,G) returns the symmetry-inequivalent HNFs, of size d, under the action of the group G, the symmetries of the parent lattice.
 """
 function getSymInequivHNFs(d,pLat,G::Vector{Matrix{Float64}})
 HNFList = getAllHNFs(d)
 n = length(HNFList)
 mask = trues(n)
     for i ∈ 1:n-1
+        if !mask[i] continue end
         for j ∈ i+1:n
             if !mask[j] continue end
             if basesAreEquiv(HNFList[i],HNFList[j],pLat,G)
@@ -160,11 +161,13 @@ function getSymInequivHNFs(d,LG::Vector{Matrix{Int}})
     return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
 end
 
-""" Return a mask marking the symmetries in G that fix the superlattice of given HNF
+""" getFixingOps(hnf,pLat,G::Vector{Matrix{Float64}})
+
+Return a mask marking the symmetries in G that fix the superlattice of given HNF
 
     getFixingOps(hnf,pLat,G): Given an HNF, a parent lattice, and the symmetries of the parent lattice, return a mask of the symmetries under which the superlattice is invariant. In other words, it returns the stabilizer subgroup of G.
 """
-function getFixingOps(hnf,pLat,G)
+function getFixingOps(hnf,pLat,G::Vector{Matrix{Float64}})
     mask = falses(length(G))
     B = pLat*hnf
     for (i,g) ∈ enumerate(G)
@@ -268,4 +271,14 @@ end
 function get_nonzero_index(m; reps=1e-13)
     mask = findall(abs.(diag(m)).>reps)
     return mask
+end
+
+function coloringsOfHNFList(hnfs,k,LG::Vector{Matrix{Int}})
+   colorings = Vector{Vector{Vector{Int64}}}()
+   for iH ∈ eachindex(hnfs) # few milliseconds
+        fixingOps = getFixingLatticeOps(hnfs[iH],LG)
+        permG = getPermG(hnfs[iH],fixingOps,LG)
+        push!(colorings,getUniqueColorings(k,permG))
+    end
+    return colorings
 end

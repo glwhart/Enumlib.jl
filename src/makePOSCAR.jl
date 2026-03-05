@@ -15,16 +15,16 @@ function genPOSCARs(dirpath, hnfs, colorings, atoms)
     counter = 0
     for h in eachindex(hnfs)
         hnf = hnfs[h]
-
+        
         SNF = snf(hnf)
         size_num = abs(det(hnf))
         rad = cellRadius(A*hnf)
-
+        
         for k in 1:length(colorings[h])
             counter += 1
             atom_indices = [findall(==(i-1), colorings[h][k]) for i in 1:natoms]
             counts = [length(atom_indices[i]) for i in 1:natoms]
-
+            
             fname = "POSCAR." * lpad(string(counter),5,'0')
             fpath = joinpath(dirpath, fname)
             open(fpath, "w") do f
@@ -55,12 +55,11 @@ function genPOSCARs(dirpath, hnfs, colorings, atoms)
     end
 end
 
-
 A = [0.5 0.0 0.5; 0.5 0.5 0.0; 0.0 0.5 0.5] # FCC lattice
 # A = [.5 -.5 .5; .5 .5 -.5; -.5 .5 .5] # BCC lattice
 LG,G=pointGroup(A)
 
-n = 16
+n = 20
 @time rhnfs = vcat([getSymInequivHNFs(i,A,G) for i ∈ 1:n]...)
 rhnfs2 = []
 for hnf in rhnfs
@@ -73,12 +72,6 @@ end
 r = [cellRadius(A*i) for i in rhnfs2]
 hnfs = [h for (h,radius) in zip(rhnfs2,r) if radius < 1.23]
 
-#fcc binary 1.51 (16450)
-#fcc ternary 1.29 (17195)
-#fcc ternary 1.23 (2977)
-#bcc binary 1.88 (15239)
-#bcc ternary 1.66 (31719)
-
 k = 3
 rcolorings = Vector{Vector{Vector{Int64}}}()
 for iH ∈ hnfs
@@ -88,9 +81,10 @@ for iH ∈ hnfs
 end
 println("rcolorings: ", sum(length.(rcolorings)))
 
-dirpath= "poscars/test2"
+dirpath= "poscars/fcc_ternary_r123 2"
 atoms = ["a", "b", "c"]
 genPOSCARs(dirpath, hnfs, rcolorings, atoms)
+
 
 
 
