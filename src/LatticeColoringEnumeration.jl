@@ -215,7 +215,7 @@ end
 
     gCoordsToOrdinals(gPts,SNF): gPts is 3xN mixed-radix numbers, output is N-vector"""
 function gCoordsToOrdinals(gPts,SNF)
-    placeVals = [SNF[2]*SNF[3],SNF[3],1] # Second element SNF[2] or SNF[3]?
+    placeVals = [SNF[2]*SNF[3],SNF[3],1]
     siteOrdinals = [sum(i.*placeVals)+1 for i in eachcol(gPts)] # Convert to base-10, 1-indexed
     return convert(Vector{Int},siteOrdinals)
 end
@@ -224,7 +224,7 @@ end
 
     ordinalToGCoords(o,z): o is an integer (site #, 1..n), z is an integer 3-vector (SNF), output is 3-vector (g-space coordinates)"""
 function ordinalToGcoords(o,z)
-    placeVals = [z[2]*z[3],z[3],1] # Second element z[2] or z[3]?
+    placeVals = [z[2]*z[3],z[3],1]
     gCoords = mod.((o-1) .÷ placeVals,z)
     return gCoords
 end
