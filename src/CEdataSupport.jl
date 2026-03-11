@@ -102,7 +102,7 @@ function readStrIn(filename)
         SNF = diag(snf(sl).S)
         # Get ordinals from gCoords
         gCoords = mod.(round.(L*sl*dcPts,digits=8),SNF)
-        idx = gCoordsToOrdinals(gCoords,SNF)
+        idx = sortperm(gCoordsToOrdinals(gCoords,SNF))
         lab = vcat([fill(i-1,j) for (i,j) ∈ enumerate(iconc)]...)
         lab = join(lab[idx]) # Reindex the labeling and convert to a string
         popfirst!(lines) # Throw away "Energy" comment
