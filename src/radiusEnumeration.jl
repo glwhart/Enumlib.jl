@@ -48,7 +48,7 @@ hnfs=[round.(Int,inv(A)*minkReduce(A*h)) for h ∈ hnfs]
 radii = [cellRadius(A*h) for h in hnfs]
 szColors =[fill([:red,:blue,:green,:orange,:purple,:tan,:pink,:black,:red,:blue,:green,:orange,:purple,:tan,:pink,:black][i],hnfLengths[i]) for i in eachindex(hnfLengths)]
 szColors=vcat(szColors...)
-plot(radii,legend=:none,ylabel="radius",st=:scatter,color=szColors,ylim=(0.7,2.5))
+plot(radii,legend=:none,ylabel="radius of cell",st=:scatter,color=szColors,ylim=(0.7,2.5),xlabel="HNF index")
 println("cell radii: ",[cellRadius(A*h) for h in hnfs])
 uqr=unique(sort(radii))
 plot(uqr[2:end]-uqr[1:end-1],yscale=:log10)
@@ -135,12 +135,19 @@ cond(mred)
 m2, diam2, vertOrd2 = getRenumDesignMatrix(A,1.3,2,2);
 rank(m2)
 mred2, li2 = leftmostIndependentColumns(m2,100)
+
 save("data/renumFCC_k2_mwide.jld2","m",m2)
-save("data/renumFCC_k2_reducedm.jld2","mred",mred2)
+save("data/renumFCC_k2_reducedm.jld2","mred",mred2,"li",li2)
 npzwrite("data/renumFCC_k2_reducedm_python.npz",mred2)
 npzwrite("data/renumFCC_k2_mwide_python.npz",m2)
+m2 = load("data/renumFCC_k2_mwide.jld2","m")
 
 cond(m2)
+q,r,p = qr(m2,ColumnNorm())
+m2qr = m2[:,p[1:size(m2,1)]]
+cond(m2qr)
+rank(m2qr)
+
 col2 = fill(:blue,size(m2,2))
 col2[li2] .= :red
 scatter(diam2,msw=0,color=col2,ms=2,legend=:none,
@@ -246,6 +253,7 @@ pgs = [length(pointGroup(BravaisLatticeList[i][1])[1]) for i ∈ keys(BravaisLat
 
 [(i,minkReduce(BravaisLatticeList[i][1])) for i ∈ keys(BravaisLatticeList)]
 # Plot all 16 series of radii (distances)
+
 
 lattice_names = collect(keys(BravaisLatticeList))
 p = plot(xlabel="HNF Index", ylabel="Radius (Distance)", title="Radius vs Index for All 16 Lattice Types (up to size 20)", legend=:bottomright, size=(1000, 600),msw=0,ms=2,yscale=:log10)
