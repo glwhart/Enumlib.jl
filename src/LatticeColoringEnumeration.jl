@@ -65,8 +65,8 @@ end
 
 """ Generate all integer triplets a*b*c = n """
 function tripletList(n)
-# Even for cases n ≈ 100, this takes only a couple of μs. No need for anything fancier.
-triples = Vector{Vector{Int64}}()
+    # Even for cases n ≈ 100, this takes only a couple of μs. No need for anything fancier.
+    triples = Vector{Vector{Int64}}()
     # Loop over all triplets that a*b*c = n
     for i ∈ 1:n
         for j ∈ 1:n
@@ -104,12 +104,12 @@ function basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Float64}})
 end
 
 """ 
-    basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Int64}})
+    basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
 
 Check if two bases are equivalent under the action a group 
 
     Two equivalent superlattices are related by a unimodular transformation. 
-    This function checks, for every allowed g ∈ G, if two bases are 
+    This function checks, for every allowed g ∈ LG, if two bases are 
     equivalent by checking if the transformation matrix is unimodular. 
 """
 function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
@@ -124,6 +124,7 @@ function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
     end  
     return false
 end
+
 
 """ Get symmetry-inequivalent HNFs under the parent lattice group 
 
@@ -147,12 +148,12 @@ end
 
 """ Get symmetry-inequivalent HNFs under the parent lattice group 
 
-getSymInequivHNFs(n,pLat,G) returns the symmetry-inequivalent HNFs, of size n, under the action of the group G, the symmetries of the parent lattice.
+getSymInequivHNFs(n,LG) returns the symmetry-inequivalent HNFs, of size n, under the action of the group LG, the symmetries of the parent lattice in lattice coordinates.
 """
-function getSymInequivHNFs(d,LG::Vector{Matrix{Int64}})
-HNFList = getAllHNFs(d)
-n = length(HNFList)
-mask = trues(n)
+function getSymInequivHNFs(d,LG::Vector{Matrix{Int}})
+    HNFList = getAllHNFs(d)
+    n = length(HNFList)
+    mask = trues(n)
     for i ∈ 1:n-1
         for j ∈ i+1:n
             if !mask[j] continue end
@@ -200,15 +201,15 @@ end
     makeTransGroup(z): Given the diagonal entries of the SNF (integer vector, z), compute the automorphisms of the lattice sites that represent the translation group of the superlattice.
 """
 function getTransGroup(z)
-# Define "gspace" points, 3D points that represent the lattice sites in the group notation
-GspcSites = [[i,j,k] for i ∈ 0:z[1]-1 for j ∈ 0:z[2]-1 for k ∈ 0:z[3]-1]
-# Compute the automorphism group of the lattice by adding each group element to the entire group (and then modding components by the SNF entries)
-GspcG = [[mod.(j.+i,z) for i ∈ GspcSites] for j ∈ GspcSites] 
-# Convert translations expressed as gspace point orbits to permutation group elements. The 3d gspace points are three digits, mixed-radix numbers. "Hash" them to base 10.
-placeVals = [z[2]*z[3],z[3],1] # Place values for each digit of the mixed-radix number representing group elements
-tGrp =[[sum(i.*placeVals)+1 for i in j] for j in GspcG] # Convert to base-10
-sort!(tGrp) # Put identity first  
-return tGrp
+    # Define "gspace" points, 3D points that represent the lattice sites in the group notation
+    GspcSites = [[i,j,k] for i ∈ 0:z[1]-1 for j ∈ 0:z[2]-1 for k ∈ 0:z[3]-1]
+    # Compute the automorphism group of the lattice by adding each group element to the entire group (and then modding components by the SNF entries)
+    GspcG = [[mod.(j.+i,z) for i ∈ GspcSites] for j ∈ GspcSites] 
+    # Convert translations expressed as gspace point orbits to permutation group elements. The 3d gspace points are three digits, mixed-radix numbers. "Hash" them to base 10.
+    placeVals = [z[2]*z[3],z[3],1] # Place values for each digit of the mixed-radix number representing group elements
+    tGrp =[[sum(i.*placeVals)+1 for i in j] for j in GspcG] # Convert to base-10
+    sort!(tGrp) # Put identity first  
+    return tGrp
 end
 
 """ Convert a list of points in g-space coordinates to ordinal indices in the supercell 
@@ -270,7 +271,6 @@ function checkCartesianPt(A,c)
         return false
     end 
 end
-
 """ get_nonzero_index(m,reps=1e-13) """
 function get_nonzero_index(m; reps=1e-13)
     mask = findall(abs.(diag(m)).>reps)
