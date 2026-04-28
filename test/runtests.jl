@@ -1,10 +1,7 @@
-# Tests for the enumeration half of the package: HNF enumeration, colorings,
-# symmetry reduction, structure I/O. Pre-split this file is included from
-# runtests.jl. After the split into Enumlib.jl, this file is renamed to
-# runtests.jl in the new repo.
+# Tests for Enumlib: HNF enumeration, colorings, symmetry reduction.
 
 using Test
-using clusterExpansion  # becomes `using Enumlib` post-split
+using Enumlib
 using Combinatorics
 using LinearAlgebra
 using Spacey
