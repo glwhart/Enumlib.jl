@@ -58,7 +58,7 @@ That all sounds great.
 | 1.5 | Pre-flight setup | done | PDFs migrated, all five papers in `papers/`, Seko verified, glossary stub created. |
 | 2 | Fortran enumlib codebase digest | done | Architecture + per-file digest + data types + two-algorithm toggle + inactive-sites overhaul + cross-cutting concerns + I/O formats. See Phase 2 section below. |
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | done | Capability inventory + gap analysis. See Phase 3 section below. |
-| 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | in progress | 2008, 2009, 2012, 2017 done. |
+| 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | done | All five papers digested. |
 | 5 | Algorithmic dispatch strategy | not started | How the public API decides which algorithm to invoke. |
 | 6 | Data-structure design proposals | not started | Replacing `enumStr`; staging structs across the workflow. |
 | 7 | Misuse / scale-safety mechanisms | not started | Pre-flight estimators, `BigInt`, bit-hash dedup, soft caps. |
@@ -961,8 +961,126 @@ After 2008+2009+2012+2017, the dispatch landscape is:
 
 Phase 5 dispatch needs to choose between these based on inputs. Phase 7 misuse mitigation gets pure counting as a free pre-flight estimator. Phase 6 needs the data types to support the union: the location-vector hash and the stabilizer subgroup are both reusable across modes.
 
-<!-- ============= END CLAUDE-ADD: Phase 4 — paper digests (in progress) ============= -->
+---
+
+### 4.5 Shinohara, Seko, Horiyama, Ishihata, Honda & Tanaka 2020 — *Enumeration of nonequivalent substitutional structures using advanced data structure of binary decision diagram*
+
+**Citation.** Kohei Shinohara, Atsuto Seko, Takashi Horiyama, Masakazu Ishihata, Junya Honda, Isao Tanaka, *J. Chem. Phys.* **153**, 104109 (2020). DOI: 10.1063/5.0021663. PDF: `papers/ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf` (15 pages including references).
+
+**Note on attribution:** The paper user described as "the Seko paper" has Shinohara as first author and Seko as second. Both are at Kyoto University; Seko is the corresponding senior author, but Shinohara did the work.
+
+#### Problem
+
+After 2008+2009+2012+2017, the bottleneck for enumeration of large systems is **memory**, not time. Even Morgan-Hart-Forcade 2017 — the streaming tree algorithm — needs $O(\text{tree size})$ memory which grows with the number of unique structures. For
+- FCC binary at index 29: enumlib peak memory ~3.0 GB
+- FCC ternary at index 19: same order
+- HCP at any non-trivial index (because $|D|=2$ doubles the index effectively)
+
+…the workstation's RAM becomes the limit, not patience.
+
+The 2020 paper proposes representing the *set* of nonequivalent labelings as a **Zero-Suppressed Binary Decision Diagram (ZDD)** — a compact graph-based data structure. The result: ~120× less memory at the same scale, pushing accessible cell sizes from index 29 → 48 (binary fcc), 19 → 31 (ternary fcc), 15 → 26 (quaternary fcc).
+
+#### What a ZDD is
+
+A **Binary Decision Diagram (BDD)** is a rooted directed acyclic graph representing a Boolean function. Each non-terminal node corresponds to a variable; each node has a 1-edge and a 0-edge to its children; paths from the root to the 1-terminal correspond to satisfying assignments. Originally introduced by Bryant (1986, 1992) for circuit verification.
+
+A **Zero-Suppressed Binary Decision Diagram (ZDD)** (Minato 1993) is a variant designed for *sparse* set families — situations where most variables in any given member are 0. The reduction rules differ slightly from regular BDDs:
+
+1. **Node elimination:** any node whose 1-edge points directly to the 0-terminal is eliminated (the variable is forced to 0 in any satisfying solution including this node).
+2. **Node sharing:** any two nodes with the same variable, the same 0-child, and the same 1-child are merged.
+
+Result: a ZDD canonically represents a family of subsets, and is exponentially more compact than the explicit list when the family has structure.
+
+#### How they apply ZDD to derivative-structure enumeration (Section IV)
+
+**Binary case (Sec. IV.C.1):**
+
+Given a sublattice $L_M$ with permutation group $\Sigma_M$, the set of nonequivalent labelings $\mathcal{C}_{M,2}$ is defined as the lex-maximum labeling in each orbit (Eq. 9). For each $\sigma \in \Sigma_M$, build a ZDD $\tilde{\mathcal{C}}_{M,2}^{(\sigma)}$ representing labelings $c$ with $c \ge \sigma(c)$ in lex order (Eq. 15). Then intersect across all $\sigma \in \Sigma_M$ (Eq. 16):
+$$\mathcal{C}_{M,2} = \bigcap_{\sigma \in \Sigma_M} \tilde{\mathcal{C}}_{M,2}^{(\sigma)}$$
+Each path from root to 1-terminal in the resulting **isomorphism-eliminated ZDD** corresponds to one unique labeling.
+
+**Multicomponent case (Sec. IV.C.2):**
+
+For $k \ge 3$, encode the labeling $\mathbf{c} \in \{0, \ldots, k-1\}^{|D_M|}$ as a **one-hot binary encoding** $\tilde{\mathbf{c}} \in \{0, 1\}^{k \cdot |D_M|}$ where $\tilde{c}_{i,p} = 1$ iff $c_i = p$ (Eq. 17–18). Add the constraint that exactly one species per site is hot:
+$$\sum_{p=0}^{k-1} \tilde{c}_{i,p} = 1 \quad \forall i$$
+Build a ZDD enforcing the one-of-$k$ constraint (call it $\tilde{\mathcal{C}}_{\text{one-of-}k}$) and intersect with the isomorphism-eliminated ZDDs:
+$$\tilde{\mathcal{C}}_{M,k} = \tilde{\mathcal{C}}_{\text{one-of-}k} \cap \Bigl(\bigcap_{\sigma \in \Sigma_M} \tilde{\mathcal{C}}_{M,k}^{(\sigma)}\Bigr)$$
+
+**Construction technique (Appendix B):** the **frontier-based method** (Iwashita-Nakazawa-Kawahara-Uno-Minato 2013, ref 23). It's a dynamic-programming construction that tracks only the "frontier" — the set of variables already decided that need to be remembered for future merges. Without frontier-based construction, building the binary decision tree first and reducing it to a ZDD loses ZDD's main advantage. The paper used the open-source library **TdZdd** (https://github.com/kunisura/TdZdd) for the actual ZDD operations.
+
+**Optional constraints (Section VI):** ZDDs for *eliminating superperiodic structures* (Eq. 33), *eliminating incomplete labelings* (Eq. 34), and *fixing composition* (Eq. 36) are constructed similarly and intersected. So all of the constraints from the 2008/2012 papers compose cleanly in the ZDD formalism — they're just additional intersection terms.
+
+#### Empirical scaling vs enumlib (Section V, Figs. 8–10, 13)
+
+| System | enumlib max index reachable | ZDD max index reachable | Enumeration count gain |
+|---|---|---|---|
+| FCC, $k=2$ | 29 | 48 | $10^{15}$ (cumulative) vs $10^9$ |
+| FCC, $k=3$ | 19 | 31 | comparable factor |
+| FCC, $k=4$ | 15 | 26 | comparable factor |
+| HCP, $k=2$ | not reported | 50 sites (= index 25) | — |
+| HCP, $k=3$ | not reported | 30 sites (= index 15) | — |
+
+- **Memory at fcc binary index 29:** enumlib peak ~3.0 GB; ZDD peak ~25 MB. **~120× less.**
+- **Compression:** ZDD nodes are ~$10^4$× fewer than the labelings they represent (at the upper end). E.g., $10^{12}$ nonequivalent labelings stored in $10^8$ non-terminal nodes.
+- **Time:** ZDD is *not* uniformly faster than enumlib at all indices. Fig. 10 shows that for binary and small indices, enumlib can be similar or faster; ZDD pulls ahead at larger indices because enumlib hits the memory wall first. The ZDD wins are primarily memory-driven, secondarily time.
+
+The number of nonequivalent labelings derived from the ZDD matches Pólya counting exactly — confirms correctness via independent route.
+
+#### Implementation reality check
+
+The Fortran enumlib + Morgan tree are good algorithms; ZDD is a *different* representation. For a Julia rewrite, what does this paper actually say to do?
+
+1. **Don't replace enum4 with a ZDD implementation as the default.** The 2017 tree streams structures one at a time, which is what users typically want — they need to write each structure to disk (POSCAR), feed it into a DFT code, etc. ZDD stores the *set* compactly but you still have to traverse paths to get individual structures, and the paper doesn't claim ZDD streaming is faster than the 2017 tree.
+2. **Do consider ZDD as an *optional* representation for very large enumerations.** The user-facing case is: "I have an enumeration with $10^{14}$ candidates, I just want to know how many there are or to enumerate a particular subset matching a constraint." For that workload, ZDD lets you compute the count and enumerate filtered subsets without ever materializing the whole set.
+3. **The Julia ecosystem has no mature ZDD library.** TdZdd is C++. Implementing a ZDD library in Julia (especially with frontier-based construction) is a substantial undertaking — probably 1-2 person-months of careful work. This is a "v0.3 optimization" candidate, not a v0.1 must-have.
+4. **The non-isomorphism elimination idea (Eq. 9 / ref 25)** is what's load-bearing in the paper, and it's *independent* of ZDD: defining the unique representative of an orbit as the lex-maximum labeling. The 2008-2017 algorithms use the equivalent but slightly different "first reached in tree traversal" convention. Worth a Phase 6 design check: is lex-maximum a cleaner canonical representative than depth-first-first?
+
+#### Reference harvest (per user request)
+
+Phase 8 follow-up candidates surfaced by this paper's bibliography:
+
+| Ref | Citation | Why interesting |
+|---|---|---|
+| 16 | Mustapha, D'Arco, De La Pierre, Noël, Ferrabone, Dovesi, *J. Phys.: Condens. Matter* **25**, 105401 (2013) | A non-enumlib enumeration approach (CRYSTAL code group at Torino). Worth comparing — a third school of derivative-structure enumeration. |
+| 23 | Iwashita, Nakazawa, Kawahara, Uno, Minato, Tech. Rep. TCS-TR-A-10-64 (2013) | Frontier-based method for ZDDs. Foundation of the present paper's algorithm. |
+| 25 | Horiyama, Miyasaka, Sasaki, *Proc. Canad. Conf. Comput. Geom.* (2018) | Non-isomorphism elimination via lex-maximum representative — the heart of this paper, and possibly relevant to Phase 6's canonical-representative choice. |
+| 35 | Bryant, *IEEE Trans. Comput.* **C-35** (1986) | Original BDD paper. Foundation. |
+| 36 | Bryant, *ACM Comput. Surv.* **24** (1992) | BDD survey paper. |
+| 39 | Togo, Tanaka, "Spglib," arXiv:1808.01590 | Symmetry-finding library. Already a known dep candidate (could replace Spacey for some cases or complement it). |
+| 7 | Predith, Ceder, Wolverton, Persson, Mueller, *Phys. Rev. B* **77**, 144104 (2008) | Symmetry-adapted configurational ensemble approach to site-disordered solids. Possibly relevant for Phase 9 (pymatgen — Ceder, Persson are pymatgen contributors). |
+| 2 | Huang, Kitchaev, Dacek, Rong, Urban, Cao, Luo, Ceder, *Phys. Rev. B* **94**, 134424 (2016) | Configurational disorder in alloys. Same group; pymatgen-adjacent. |
+
+These are the "big ask" Phase 8 candidates. Recommendation: in Phase 8, hunt down refs 25 and 16 first (algorithmic), then 7 and 2 for pymatgen context, then the BDD foundations 35/36 for completeness. Each is one PDF and a paragraph in research.md.
+
+#### Terminology added to the glossary
+
+| Term | Meaning |
+|---|---|
+| Binary Decision Diagram (BDD) | Rooted DAG representing a Boolean function. Internal nodes = variables; 1-edge/0-edge children; paths to 1-terminal = satisfying assignments. Bryant 1986. |
+| Zero-Suppressed BDD (ZDD) | Variant of BDD optimized for sparse subset families. Reduction rule: nodes whose 1-edge points to 0-terminal are eliminated. Minato 1993. |
+| Frontier-based method | DP-style ZDD construction algorithm tracking only the "frontier" of decided variables relevant to future merges. Avoids materializing the full binary decision tree. Iwashita et al. 2013. |
+| Isomorphism-eliminated ZDD | A ZDD whose 1-paths correspond exactly to one representative per symmetry orbit (lex-maximum). The intersection of pairwise-comparison ZDDs $\tilde{\mathcal{C}}^{(\sigma)}$ over all $\sigma$ in the symmetry group. |
+| Non-isomorphic permutation group | The set of distinct permutation groups arising from non-equivalent sublattices for a given index. Different from the count of HNFs because two HNFs can give the same permutation group. |
+| One-hot encoding | Encoding $k$-ary labels as $k$-bit binary vectors with exactly one bit set per site. Used in the 2020 paper to extend the ZDD method from binary to multicomponent. |
+| Lex-maximum representative | Convention for choosing one representative per symmetry orbit: the maximum labeling in lexicographic order. Used by Shinohara et al. 2020; alternative to the depth-first canonical representative used in Hart-Forcade 2008. |
+
+#### What carries into the rewrite (synthesis update through 2020)
+
+After all five papers, here's the cumulative algorithmic landscape:
+
+| Mode | Algorithm | Memory | Best for | Status for Julia rewrite |
+|---|---|---|---|---|
+| Pure counting | Pólya / Burnside | $O(|H|)$ | Pre-flight, scale safety | **v0.1 priority** (Phase 7 deliverable) |
+| All concentrations, small $n$, $k \le 3$ | 2008 base-$k$ hash + crossing-out | $O(k^n)$ | Small cases | v0.2 — implementing full crossing-out is medium effort |
+| Fixed concentration, no site restrictions | 2012 multinomial hash + crossing-out | $O(C)$ | Narrow concentration | v0.2 |
+| Fixed concentration + site restrictions | 2012 backtracking tree | varies | Narrow $C$ + restrictions | v0.2 |
+| High configurational freedom | 2017 recursive-stabilizer tree | $O(\text{tree size})$ | Large $n$, $k \ge 3$, big enumerations | **v0.2 priority** — the modern default |
+| Memory-bound very large enumerations | 2020 ZDD | $O(\text{ZDD nodes})$ — much smaller | Very large $n$, count + filter | v0.3 optimization (substantial implementation cost) |
+
+For the immediate rewrite (v0.1 → v0.2), focus on Pólya counting + the 2008/2012/2017 algorithms with clean dispatch. ZDD is a v0.3+ optimization for users who hit the memory wall the 2017 tree creates. It also raises an open question for Phase 6: should the canonical representative of an orbit be lex-maximum (2020 convention) or depth-first-first (older convention)? Lex-maximum is cleaner mathematically and composes with the ZDD formalism, but the 2017 tree algorithm uses location-vector ordering which is its own thing. Worth a deliberate decision rather than inheriting one by accident.
+
+<!-- ============= END CLAUDE-ADD: Phase 4 — paper digests (complete) ============= -->
 
 ---
 
-*(Phase 4 continues with 2020 (Shinohara et al.). Sections for Phases 5–12 will be appended below as they're produced.)*
+*(Sections for Phases 5–12 will be appended below as they're produced.)*
