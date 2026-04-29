@@ -58,7 +58,7 @@ That all sounds great.
 | 1.5 | Pre-flight setup | done | PDFs migrated, all five papers in `papers/`, Seko verified, glossary stub created. |
 | 2 | Fortran enumlib codebase digest | done | Architecture + per-file digest + data types + two-algorithm toggle + inactive-sites overhaul + cross-cutting concerns + I/O formats. See Phase 2 section below. |
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | done | Capability inventory + gap analysis. See Phase 3 section below. |
-| 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | in progress | 2008 done. 2009 done. |
+| 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | in progress | 2008 done. 2009 done. 2012 done. |
 | 5 | Algorithmic dispatch strategy | not started | How the public API decides which algorithm to invoke. |
 | 6 | Data-structure design proposals | not started | Replacing `enumStr`; staging structs across the workflow. |
 | 7 | Misuse / scale-safety mechanisms | not started | Pre-flight estimators, `BigInt`, bit-hash dedup, soft caps. |
@@ -730,8 +730,126 @@ After both papers, the algorithm is:
 
 Step 4 is where the 2009 paper's contribution lives. Steps 5–7 reuse the 2008 framework on the larger index set.
 
+---
+
+### 4.3 Hart, Nelson & Forcade 2012 — *Generating derivative structures at a fixed concentration*
+
+**Citation.** Gus L. W. Hart, Lance J. Nelson, Rodney W. Forcade, *Comp. Mat. Sci.* **59**, 101–107 (2012). DOI: 10.1016/j.commatsci.2012.02.015. PDF: `papers/HartNelsonForcade_2012_DerivativeStructuresAtFixedConcentration.pdf` (7 pages).
+
+#### Problem
+
+The 2008/2009 algorithm enumerates *all* configurations regardless of concentration. The labeling space has $k^n$ elements, which becomes a memory wall for moderate cell sizes:
+
+- Binary, $n=50$: $2^{50} \approx 10^{15}$ candidates → ~1 PB hash.
+- Ternary, $n=16$: roughly the practical ceiling.
+
+But many real applications fix the concentration:
+- Charge-neutrality constraints (ZrO$_2$ doped with Y$^{3+}$ creates O-vacancies at fixed stoichiometry).
+- Surface adsorbate problems (binary alloy + adsorbate species → effectively quaternary, but coverages are small).
+- Targeted phase searches (e.g., Ag–Pt at 15:17 stoichiometry, 32-atom cell).
+
+For the Ag–Pt case the full enumeration would need $2^{32} \approx 10^{10}$ entries; the fixed-concentration enumeration needs $\binom{32}{17} \approx 5 \times 10^8$ — **20× less memory**. For the binary $n=50$ at 20:80, $\binom{50}{10} \approx 10^{10}$ — **10 GB instead of 1 PB**, or ~$10^5$× less.
+
+The 2012 paper's contribution is a **new perfect hash function** that maps *permutations of a multiset* (instead of all $k^n$ labelings) to consecutive integers. This unlocks fixed-concentration enumeration for cell sizes that were intractable in the 2008 algorithm.
+
+#### The multinomial mixed-radix hash (Sec. 3.1)
+
+For colors $c_1, \ldots, c_k$ with multiplicities $a_1, \ldots, a_k$ (so $n = \sum a_i$), the number of distinct configurations is the multinomial:
+$$C = \binom{n}{a_1, \ldots, a_k} = \prod_{i=1}^k C_i, \qquad C_i = \binom{n - a_1 - \cdots - a_{i-1}}{a_i}$$
+
+Hash a configuration by enumerating the placements of each color in turn:
+1. **For each color $i$** (in order), look at where color $i$ sits among the still-unfilled slots. This is a binary string of length $n - a_1 - \cdots - a_{i-1}$ with $a_i$ ones. Compute its rank $x_i \in [0, C_i - 1]$.
+2. **The rank computation** for a single-color binary string: for each `0` with $p$ ones to its right out of $q$ total ones, add $\binom{p}{q-1}$. Sum to get $x_i$. (Sec. 3.1.)
+3. **Combine into a global index** via mixed-radix:
+   $$y = f(x_1, \ldots, x_k) = x_1 + C_1 \bigl(x_2 + C_2 (x_3 + \cdots + C_{k-2} x_{k-1}) \bigr)$$
+   (Eq. 3 in the paper.)
+
+The result $y \in [0, C-1]$ — a perfect hash, no gaps, no duplicates. The configuration → integer map is bijective on the set of multiset permutations at the target concentration. This makes the duplicate-elimination passes from 2008 (translation, label-exchange-of-equal-multiplicities, super-periodic, label-rotation) work *unchanged*, just over a much smaller table.
+
+#### The inverse map (Sec. 3.2)
+
+From an integer $y \in [0, C-1]$, recover the configuration:
+1. Per-color ranks: $x_i = y \mod C_i$, then $y \leftarrow y / C_i$. Repeat for each color.
+2. Per-color binary string: greedy reconstruction — for each position, compare $\binom{\ell-1}{t-1}$ to the remaining rank to decide whether the position is `1` or `0`, then update the rank. Algorithm in Sec. 3.2 (also visualized in Fig. 5).
+
+This is the workhorse of the crossing-out enumeration: iterate $y = 0, 1, \ldots, C-1$, materialize the configuration, check duplicate-flags, advance.
+
+#### Site restrictions: the backtracking tree (Appendix A.1)
+
+When some sites are restricted (e.g., "site 4 cannot be red"), the multinomial hash becomes non-perfect — the table covers all multiplicities $\{a_i\}$, but some entries violate restrictions and must be skipped. Naïvely indexing then post-filtering wastes memory.
+
+The fix: switch from indexing to a **backtracking tree search**. Each tree level fixes the color at one site; branches that violate a site restriction OR exceed a per-color count are pruned. Surviving leaves are the legal colorings. Fig. 7 shows the tree for 4 sites, 3 colors, with combined site + concentration restrictions: 9 of 81 colorings survive.
+
+The Fortran code merges this with the multinomial hash via the bitstring markers (`lab`, `lm`) flagged in Phase 2 as "opaque." The 2012 paper is the documentation of what they're doing — they're encoding the concentration-restricted multiset hash + the site-restriction tree pruning into a compact representation. Knowing this, the bitstring logic becomes legible.
+
+#### Pure counting at fixed concentration (Appendix A.2)
+
+For *just counting* the number of inequivalent configurations at fixed concentration — without generating them — use a Pólya-style extension. For a permutation $\rho$ with cycle lengths $c_1 < c_2 < \cdots < c_t$ (with multiplicities $m_1, \ldots, m_t$, so $\sum m_i c_i = n$), the count of colorings fixed by $\rho$ with target multiplicities $a_1, \ldots, a_k$ is:
+$$\sum_{M \in \omega(\rho)} \prod_{i=1}^t \binom{c_i}{M_{i,1}, \ldots, M_{i,k}}$$
+where $M$ is a $t \times k$ matrix of non-negative integers satisfying:
+$$\sum_{j=1}^k M_{i,j} = m_i \quad \forall i, \qquad \sum_{i=1}^t c_i M_{i,j} = a_j \quad \forall j$$
+
+Average over the symmetry group (Burnside-style) to get the inequivalent count. The paper validated against Maple for an $n=48$ fcc case (a 19-digit decimal answer in 5 minutes; enumeration would be infeasible).
+
+This is the calculation behind the Fortran `polya=.true.` short-circuit. It's a different counting formula from the simple Pólya-cycle-index that would give the all-concentrations count — that one's in `count_full_colorings` in `labeling_related.f90`.
+
+#### Application: Ag–Pt at 15:17 in a 32-atom supercell (Sec. 4)
+
+A 1996 Durussel-Feschotte paper claimed an ordered phase in Ag-Pt at ~53 at% Pt, stoichiometry 15:17, in a $2 \times 2 \times 2$ multiple of conventional fcc (32 atoms). The lattice parameter was about twice the fcc value.
+
+Workflow:
+1. Enumerate all 15:17 configurations in the 32-cell: $\binom{32}{17} \approx 5 \times 10^8$.
+2. Symmetry reduction: 1536 = 48 (point group) × 32 (translations) → ~400,000 distinct.
+3. Cluster expansion (50 first-principles calculations) → energy estimate per configuration.
+4. Find the lowest-energy configuration. Result (Fig. 6): a structure resembling L1$_1$ with Pt substitutional defects.
+5. Phonon-DOS check: L1$_1$ is vibrationally stable; the 15:17 candidate is not.
+
+Conclusion: the 1996 claim is wrong. **L1$_1$ is the actual ground state, not 15:17.** Demonstrates the practical use of the algorithm: it can refute a published phase-diagram claim.
+
+#### Mapping to Fortran code
+
+| Concept | Fortran |
+|---|---|
+| Multinomial hash + inverse | `generate_permutation_labelings` (`labeling_related.f90:310-512`); inner loops compute the $x_i$ ranks and the global index |
+| Backtracking tree with site restrictions | Same routine; `site_res` array drives the pruning |
+| Concentration range partitioning | `get_concentration_list` (`derivative_structure_generator.f90:82-160`), `get_list_at_this_size` |
+| Concentration range adjustment for inactive sites | `adjust_crange_for_inactive_sites` (`enumeration_routines.f90:19-75`) |
+| Pólya counting at fixed concentration | `polya=.true.` flag → short-circuit in `gen_multilattice_derivatives`; the cycle-counting formula |
+| Bitstring markers `lab`, `lm` | The crossing-out flags on the hash table; Phase 2 noted these as opaque, but they're just "this slot has been visited / assigned to an orbit" markers |
+
+#### Mapping to Julia (current state and what's needed)
+
+**None of this is implemented in Enumlib.jl currently.** Phase 6 will need to design:
+1. A `Concentration` type carrying multiplicities $\{a_i\}$ and (optionally) a `ConcentrationRange` carrying min/max/denom triples.
+2. The mixed-radix hash + inverse — a `MultisetHash` struct or set of free functions. This is a clean, well-bounded chunk to implement and test (Eq. 3 + Sec. 3.2 algorithm). High-confidence Julia rewrite target.
+3. Site restrictions as either a per-site `Vector{Set{Int}}` of allowed colors, or a `BitMatrix(n_sites, k_colors)` mask. The latter is what the Fortran "masking matrices" effectively are (Fig. 7).
+4. The backtracking tree search — straightforward recursive enumeration in Julia.
+5. The Pólya counting routine — a standalone `count_inequivalent(parent, n, k; concentration=nothing, site_restrictions=nothing)` API. Single-purpose, highly testable.
+
+Order of build: counting first (low-risk, gives the pre-flight estimator from Phase 7), then the hash + inverse, then the backtracking, then concentration-range partitioning, then full integration into the dispatch.
+
+#### Terminology added to the glossary
+
+| Term | Meaning |
+|---|---|
+| Concentration / multiplicity vector | $(a_1, \ldots, a_k)$ with $\sum a_i = n$, specifying how many sites of each species. |
+| Concentration range | Per-species `[min_num, max_num, denom]` triple specifying allowed fractions. |
+| Multinomial coefficient $C$ | $\binom{n}{a_1, \ldots, a_k} = n! / \prod a_i!$. Number of multiset permutations. |
+| Multiset / mixed-radix hash | The 2012 paper's perfect hash from configurations to $[0, C-1]$ via Eq. 3. |
+| Site restriction | A per-site constraint excluding certain species. Combined with concentration constraints in the backtracking tree. |
+| Pólya counting at fixed concentration | The Burnside-averaged count of inequivalent configurations at given multiplicities, using the cycle-decomposition formula in Appendix A.2. |
+| Lattice decoration problem | Synonym for the derivative-structure-enumeration problem. (Used in the 2012 introduction.) |
+
+#### What carries into the rewrite (synthesis with 2008+2009 so far)
+
+The cumulative algorithm after 2008+2009+2012 is the same six steps as before plus a new dispatch on the labeling step:
+
+> **Step 4 (revised).** If concentration is unrestricted, use the $k^n$ base-$k$ hash from 2008. If concentration is fixed (or in a small range), use the multinomial mixed-radix hash from 2012. If site restrictions are present, switch from indexed enumeration to backtracking tree search. If pure counting is requested, use the Pólya extension and short-circuit.
+
+Phase 5 (algorithm dispatch) needs to capture this decision tree explicitly. Phase 6 needs to design the data types so the three modes (unrestricted / fixed-conc / fixed-conc + site-restricted) share infrastructure cleanly. Phase 7 (misuse mitigation) gets the Pólya counting as its first deliverable.
+
 <!-- ============= END CLAUDE-ADD: Phase 4 — paper digests (in progress) ============= -->
 
 ---
 
-*(Phase 4 continues with 2012, 2017, 2020. Sections for Phases 5–12 will be appended below as they're produced.)*
+*(Phase 4 continues with 2017 and 2020. Sections for Phases 5–12 will be appended below as they're produced.)*

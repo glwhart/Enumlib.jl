@@ -157,18 +157,107 @@ enumeration in fixed-concentration cases.
 \section{Concentration / site restriction}
 
 \begin{description}[leftmargin=2em, style=nextline]
-\item[Concentration-restricted enumeration] \emph{(stub)}
-\item[Site restriction] \emph{(stub)}
-\item[Inactive / spectator site] \emph{(stub --- Fortran enumlib v2.0.0 overhaul.)}
-\item[Equivalent sites] \emph{(stub --- Tobias's earlier modification.)}
-\item[Concentration range adjustment] \emph{(stub --- see notes\_cRangeAdjustment.pdf.)}
+\item[Concentration / multiplicity vector $(a_1, \ldots, a_k)$]
+The number of sites of each species, $\sum_i a_i = n$. Specifies a single
+target stoichiometry.
+
+\item[Concentration range]
+Per-species triple $[\text{min\_num}, \text{max\_num}, \text{denom}]$
+specifying allowed fractions $[\text{min}/\text{denom}, \text{max}/\text{denom}]$.
+A single range expands into a list of integer multiplicity vectors at
+each cell volume.
+
+\item[Multinomial coefficient $C$]
+$C = \binom{n}{a_1, a_2, \ldots, a_k} = n! / \prod_i a_i!$. The number
+of distinct permutations of a multiset with multiplicities $(a_1, \ldots, a_k)$.
+For binary at the median concentration, $C \sim 2^n / \sqrt{n}$.
+
+\item[Multiset / mixed-radix hash]
+Hart-Nelson-Forcade 2012 perfect hash from a fixed-concentration
+configuration to a consecutive integer in $[0, C-1]$. Per-color rank
+$x_i$ + mixed-radix combine: $y = x_1 + C_1 (x_2 + C_2 (\ldots))$.
+Crucial enabling step for fixed-concentration enumeration at large $n$.
+
+\item[Concentration-restricted enumeration]
+Enumerating only the configurations whose multiplicities fall in a
+specified concentration range. Avoids the $k^n$ memory wall when
+concentrations are narrow.
+
+\item[Site restriction]
+A per-site constraint excluding certain species (e.g., site 4 cannot
+be red). Combined with concentration restrictions, switches the
+algorithm from indexed hash enumeration to backtracking tree search
+with branch pruning. Encoded as a mask matrix.
+
+\item[Backtracking tree search]
+The site-restricted-plus-concentration-restricted enumeration
+strategy. Each tree level fixes the color at one site; branches
+violating site or concentration constraints are pruned, skipping
+entire sub-branches.
+
+\item[Inactive / spectator site]
+A site with only one allowed species --- no configurational freedom.
+Stripped from the enumeration on entry, re-inserted before output.
+Introduced in Fortran enumlib v2.0.0. Conceptually a degenerate
+limit of site restriction (only one species allowed).
+
+\item[Equivalent site]
+A site declared identical to a canonical site (e.g., images on the
+two sides of a slab). Implemented in the \texttt{equivalencies} array
+where \texttt{equivalencies(i)} points to the canonical index. Tobias's
+earlier modification to enumlib.
+
+\item[Concentration range adjustment]
+The bookkeeping that adjusts a user-supplied concentration range to
+account for atoms locked into inactive sites. If a species appears
+\emph{only} on inactive sites, its range is zeroed out; otherwise the
+range is re-scaled.
+(See \texttt{notes\_cRangeAdjustment.pdf}.)
 \end{description}
 
 \section{Misuse / scaling}
 
 \begin{description}[leftmargin=2em, style=nextline]
-\item[Pre-flight count] \emph{(stub --- see Pólya driver.)}
-\item[Crossing-out vs.\ tree-based algorithms] \emph{(stub --- two algorithms toggled by \texttt{origCrossOutAlgorithm}.)}
+\item[Pre-flight count]
+Computing the number of inequivalent configurations \emph{without}
+generating them, so a user can decide whether to run a full
+enumeration. The Pólya enumeration theorem provides closed-form
+counts via cycle indices and Burnside averaging.
+
+\item[Pólya counting (full / unrestricted)]
+Counts inequivalent colorings of $G$ over all concentrations.
+Cycle-index formula: $\frac{1}{|H|} \sum_{\rho \in H}
+k^{c(\rho)}$ where $c(\rho)$ is the number of cycles. Implemented as
+the \texttt{polya=true} short-circuit in Fortran's
+\texttt{gen\_multilattice\_derivatives}.
+
+\item[Pólya counting at fixed concentration]
+Counts inequivalent colorings with target multiplicities. Formula
+(Hart-Nelson-Forcade 2012, Appendix A.2):
+\[
+\frac{1}{|H|} \sum_{\rho \in H} \sum_{M \in \omega(\rho)}
+\prod_{i=1}^t \binom{c_i}{M_{i,1}, \ldots, M_{i,k}}
+\]
+where the cycle structure of $\rho$ is $(c_1, m_1), (c_2, m_2), \ldots$
+and $M$ ranges over the matrices of color-multiplicities-per-cycle that
+satisfy the constraints.
+
+\item[Crossing-out algorithm (enum3)]
+The 2008 + 2012 algorithm: enumerate the labeling space via a perfect
+hash, mark duplicates by orbits under the symmetry group's action,
+keep one representative per orbit. Memory-bound: needs $O(k^n)$ or
+$O(C)$ flags. Best for site-restricted enumerations and small
+multinomials.
+
+\item[Recursive-stabilizer / tree-based algorithm (enum4)]
+Morgan-Hart-Forcade 2017 algorithm. Builds an enumeration tree;
+prunes via the stabilizer subgroup at each layer. Avoids the
+$O(k^n)$ memory by streaming. Best for very large multinomials.
+
+\item[\texttt{origCrossOutAlgorithm} flag]
+Runtime toggle in the Fortran driver between enum3 and enum4. The
+Julia rewrite should make this an explicit algorithm choice, not a
+hidden boolean.
 \end{description}
 
 \end{document}
