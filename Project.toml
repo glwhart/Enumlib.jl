@@ -15,7 +15,7 @@ Spacey = "6fa23216-6d9f-473e-ad34-00be7be2628b"
 CodecZlib = "0.7"
 Combinatorics = "1"
 NormalForms = "0.1"
-Spacey = "0.7"
+Spacey = "0.8"
 julia = "1.9"
 
 [extras]

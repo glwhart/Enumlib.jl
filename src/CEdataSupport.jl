@@ -38,7 +38,8 @@ println("Reading in: ",filename)
 A = stack([[parse(Float64,i) for i ∈ split(j)[1:3]] for j ∈ lines[3:5]],dims=2)
 k = parse(Int,lines[8][1:2]) # Get number of species in this file
 # Get pointgroup operations in lattice coordinates and Cartesian
-LG,G = pointGroup(A)
+LG = pointGroup(A)
+G = toCartesian(LG, A)
 # Parse structure information and store in a vector of enumStr types
 str = Vector{enumStr}();
 for (i,iline) ∈ enumerate(lines[16:end])

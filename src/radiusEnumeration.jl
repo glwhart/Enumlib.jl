@@ -16,7 +16,7 @@ radius. Returns `(hnfs, radii, volumes)` indexed in the same order; the HNFs
 are integer matrices in the lattice coordinates of `A`.
 """
 function radiusEnumHNFs(A; maxVol=15)
-    LG, _ = pointGroup(A)
+    LG = pointGroup(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:maxVol
         append!(hnfs, getSymInequivHNFs(i, LG))
@@ -84,7 +84,7 @@ symmetry-inequivalent cell within the radius bound.
 """
 function getSymInequivHNFsByCellRadius(A, x; maxVol=20)
     rCell = cellRadius(A)
-    LG, _ = pointGroup(A)
+    LG = pointGroup(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:maxVol
         append!(hnfs, getAllHNFs(i))

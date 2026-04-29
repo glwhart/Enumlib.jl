@@ -27,7 +27,8 @@ using Spacey
 
     # Symmetry-inequivalent colorings via HNF + permutation group, 4-site fcc
     pLat = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]
-    _, G = pointGroup(pLat)
+    LG = pointGroup(pLat)
+    G = toCartesian(LG, pLat)
     hnf = getSymInequivHNFs(4, pLat, G)
     fixingOps = [getFixingOps(hnf[i], pLat, G) for i in axes(hnf,1)]
     @test map(1:7) do i

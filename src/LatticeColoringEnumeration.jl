@@ -36,7 +36,7 @@ struct ParentLattice
 
     function ParentLattice(A)
         Ainv = inv(A)
-        G = pointGroup(A)[1]
+        G = pointGroup(A)
         new(A,Ainv,G)
     end
 end

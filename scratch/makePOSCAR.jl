@@ -57,7 +57,8 @@ end
 
 A = [0.5 0.0 0.5; 0.5 0.5 0.0; 0.0 0.5 0.5] # FCC lattice
 # A = [.5 -.5 .5; .5 .5 -.5; -.5 .5 .5] # BCC lattice
-LG,G=pointGroup(A)
+LG = pointGroup(A)
+G = toCartesian(LG, A)
 
 n = 20
 @time rhnfs = vcat([getSymInequivHNFs(i,A,G) for i ∈ 1:n]...)
