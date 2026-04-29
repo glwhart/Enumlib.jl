@@ -34,13 +34,64 @@ the term originates and is used.
 \section{Core combinatorial concepts}
 
 \begin{description}[leftmargin=2em, style=nextline]
-\item[Derivative structure] \emph{(stub)}
-\item[Superstructure / supercell] \emph{(stub)}
-\item[HNF (Hermite Normal Form)] \emph{(stub)}
-\item[SNF (Smith Normal Form)] \emph{(stub)}
-\item[Labeling / coloring] \emph{(stub)}
-\item[Multilattice] \emph{(stub)}
-\item[dset (d-vector set)] \emph{(stub)}
+\item[Derivative structure / derivative superstructure]
+A supercell of a parent (Bravais) lattice together with a periodic
+decoration of its atomic sites. ``Derivative'' because the supercell
+basis vectors are integer linear combinations of the parent's basis
+vectors. (Hart \& Forcade 2008, Sec.~I.)
+
+\item[Parent lattice $L$]
+The reference Bravais lattice, treated as an infinite group under
+addition. Sites in the parent are points of $L$ (plus, for multilattices,
+displacements by basis vectors --- see ``dset'' below).
+
+\item[Superlattice / supercell $S$]
+A sublattice of $L$ of finite \emph{index} $n$ --- i.e., $L/S$ has $n$
+cosets. Geometrically: a supercell containing $n$ parent cells.
+
+\item[Index $n$]
+$|L/S|$. Equals $\det(H)$ for the supercell HNF $H$, which equals the
+volume ratio of supercell to parent cell.
+
+\item[HNF (Hermite Normal Form)]
+The lower-triangular integer-matrix representative of a superlattice's
+basis-change matrix. In 3D:
+\[
+H = \begin{pmatrix} a & 0 & 0 \\ b & c & 0 \\ d & e & f \end{pmatrix},
+\quad 0 \le b < c, \quad 0 \le d, e < f.
+\]
+$\det H = acf = n$. Each superlattice (as a set) has a unique HNF.
+
+\item[SNF (Smith Normal Form)]
+The diagonal integer-matrix decomposition $S = LHR$ with $L, R$
+unimodular and $S = \mathrm{diag}(s_1, s_2, s_3)$ with $s_1 \mid s_2 \mid s_3$.
+Provides the quotient group $L/S$ as a direct sum
+$\mathbb{Z}_{s_1} \oplus \mathbb{Z}_{s_2} \oplus \mathbb{Z}_{s_3}$.
+\textbf{Caution:} SNF is unique but the transformation matrices $L, R$
+are not. This non-uniqueness drove the
+\texttt{compare\_two\_enum\_files} machinery in Fortran enumlib v2.0.3.
+
+\item[Quotient group $G = L/S$]
+Finite group of order $n$ formed by the cosets of $S$ in $L$. The set on
+which labelings live; all duplicate-elimination in Hart-Forcade 2008
+happens inside $G$.
+
+\item[Labeling / coloring]
+A function $\sigma : G \to \{0, 1, \ldots, k-1\}$. Equivalently, an
+$n$-digit base-$k$ integer when $G$'s elements are linearly indexed.
+``Coloring'' tends to be used in the Julia code; ``labeling'' in the
+Fortran code; same concept.
+
+\item[Multilattice]
+A parent unit cell with more than one basis atom (e.g., HCP has 2,
+perovskite has 5). The site count per supercell is $n \cdot n_D$ where
+$n_D$ is the number of basis atoms.
+(See Hart \& Forcade 2009 for the multilattice treatment.)
+
+\item[dset (d-vector set)]
+The set $\{d_1, \ldots, d_{n_D}\}$ of basis-atom displacements within a
+parent cell. Symmetry operations of the parent lattice act on the dset
+as permutations. (See \texttt{multilattice\_dset\_mapping\_writeup.pdf}.)
 \end{description}
 
 \section{Group-theoretic concepts}
@@ -58,10 +109,49 @@ the term originates and is used.
 \section{Equivalence and reduction}
 
 \begin{description}[leftmargin=2em, style=nextline]
-\item[Symmetry-inequivalent / -equivalent] \emph{(stub)}
-\item[Super-periodic labeling] \emph{(stub)}
-\item[Complementary labeling] \emph{(stub)}
-\item[Multipermutation] \emph{(stub --- Forcade's combinatorial trick.)}
+\item[Symmetry-equivalent / inequivalent]
+Two derivative structures are equivalent if they're related by a
+combination of (a) a parent-lattice rotation, (b) a translation, (c) a
+relabeling (e.g., $a \leftrightarrow b$). Enumerating ``unique''
+derivative structures means listing one representative per equivalence
+class.
+
+\item[Translation duplicate]
+Two labelings that differ only by adding some $t \in G$ to every site.
+The $n$ translations partition the $k^n$ labelings into orbits of size $n$
+generically. Eliminated in step 5b of Hart-Forcade 2008.
+
+\item[Label-exchange duplicate]
+Two labelings related by a relabeling permutation on $\{0, \ldots, k-1\}$
+(e.g., swapping $a \leftrightarrow b$). For binary, halves the labeling
+count. Step 5c.
+
+\item[Super-periodic labeling]
+A labeling fixed by some non-identity translation in $G$ --- equivalently,
+its actual period is shorter than the supercell. Such a structure is
+already enumerated as a smaller-index derivative; eliminate. Step 5d.
+
+\item[Label-rotation duplicate]
+Two labelings of the \emph{same} HNF related by a parent-lattice rotation
+$R$ that fixes the superlattice. Eq.~3 of Hart-Forcade 2008 expresses the
+induced permutation on $G$:
+\[
+G' = L A^{-1} R (L A^{-1})^{-1} G
+\]
+entirely inside the quotient group, no geometric reference needed.
+Step 6.
+
+\item[Complementary labeling]
+A labeling and its label-flipped counterpart (e.g., $aabb \leftrightarrow
+bbaa$). Special case of label-exchange. Relevant in
+\texttt{compare\_two\_enum\_files} when comparing different-revision
+outputs.
+
+\item[Multipermutation]
+Forcade's combinatorial trick for enumerating distinct ordered
+arrangements of multisets in $O(N)$ time. Underlies the labeling
+enumeration in fixed-concentration cases.
+(See \texttt{multiperms.pdf}; original work in Forcade 2010 notes.)
 \end{description}
 
 \section{Concentration / site restriction}
