@@ -97,13 +97,65 @@ as permutations. (See \texttt{multilattice\_dset\_mapping\_writeup.pdf}.)
 \section{Group-theoretic concepts}
 
 \begin{description}[leftmargin=2em, style=nextline]
-\item[Stabilizer subgroup] \emph{(stub)}
-\item[Recursive stabilizer] \emph{(stub --- Morgan 2017 algorithm.)}
-\item[Permutation group of a supercell] \emph{(stub)}
-\item[Translation group] \emph{(stub)}
-\item[Point group / lattice point group] \emph{(stub)}
-\item[g-space / group-space coordinates] \emph{(stub)}
-\item[Pólya enumeration] \emph{(stub)}
+\item[Point group / lattice point group]
+The set of orthogonal transformations (rotations + reflections) that
+map the lattice to itself. For fcc/bcc/sc: 48 elements. For hex: 24.
+For tetragonal: 16. Lower symmetry $\Rightarrow$ more inequivalent
+HNFs at a given index.
+
+\item[Permutation group of a supercell $H$]
+The set of permutations of supercell sites induced by symmetry
+operations of the parent lattice that fix $H$. Built from the
+\texttt{RotPermList.perm} array in Fortran, computed by
+\texttt{getPermG} in Julia. The action on labelings is what drives
+duplicate elimination.
+
+\item[Translation group]
+The cyclic subgroup of the supercell's permutation group corresponding
+to translations (vs.\ rotations). One element per coset of $L'$ in $L$,
+so $|T| = n$. Always a subgroup of the full permutation group; in the
+Fortran code, sorted to come first via \texttt{getTransGroup}.
+
+\item[Stabilizer subgroup of a coloring (or partial coloring)]
+The subgroup of the symmetry group that leaves a (possibly partial)
+coloring invariant. Used to test uniqueness: a coloring is symmetry-
+equivalent to one already visited iff some stabilizer element maps
+its location vector to a smaller one (lex order). Shrinks
+monotonically with tree depth in the Morgan-Hart-Forcade 2017
+algorithm, which is what gives that algorithm its speed.
+
+\item[Partial coloring]
+An intermediate node in the enumeration tree (Morgan-Hart-Forcade
+2017) where only the first $\ell$ of $k$ colors have been placed.
+All full colorings beneath a partial coloring share the
+already-placed colors, so a single equivalence check on the partial
+coloring eliminates an entire subtree.
+
+\item[Recursive stabilizer (algorithm)]
+The Morgan-Hart-Forcade 2017 enumeration approach: traverse a tree
+of partial colorings, prune at each node by checking the location
+vector under the parent's stabilizer subgroup, recompute the
+stabilizer for each new unique partial coloring, recurse. Sub-linear
+in the number of full configurations; the alternative to crossing-out.
+
+\item[g-space / group-space coordinates]
+Coordinates of a supercell site as an element of the quotient group
+$G = L/L'$. Computed via the homomorphism $h(x) = [U A^{-1} x]_S$
+from the SNF, with $S$-modular reduction. The unifying coordinate
+system on which all the duplicate-elimination machinery operates.
+
+\item[Pólya enumeration (Pólya--Redfield theorem)]
+A counting principle: for a finite group $H$ acting on a set $X$, the
+number of inequivalent $k$-colorings is $\frac{1}{|H|} \sum_{\rho \in H}
+k^{c(\rho)}$ where $c(\rho)$ is the cycle count of $\rho$ on $X$. The
+fixed-concentration extension is in Hart-Nelson-Forcade 2012,
+Appendix A.2.
+
+\item[Burnside averaging]
+The $\frac{1}{|H|}\sum_{\rho \in H}$ part of the Pólya formula --- counting
+fixed colorings per group element and averaging. Sometimes used
+interchangeably with ``Pólya enumeration'' even though they differ in
+how they count fixed configurations.
 \end{description}
 
 \section{Equivalence and reduction}

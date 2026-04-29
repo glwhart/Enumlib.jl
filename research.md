@@ -58,7 +58,7 @@ That all sounds great.
 | 1.5 | Pre-flight setup | done | PDFs migrated, all five papers in `papers/`, Seko verified, glossary stub created. |
 | 2 | Fortran enumlib codebase digest | done | Architecture + per-file digest + data types + two-algorithm toggle + inactive-sites overhaul + cross-cutting concerns + I/O formats. See Phase 2 section below. |
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | done | Capability inventory + gap analysis. See Phase 3 section below. |
-| 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | in progress | 2008 done. 2009 done. 2012 done. |
+| 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | in progress | 2008, 2009, 2012, 2017 done. |
 | 5 | Algorithmic dispatch strategy | not started | How the public API decides which algorithm to invoke. |
 | 6 | Data-structure design proposals | not started | Replacing `enumStr`; staging structs across the workflow. |
 | 7 | Misuse / scale-safety mechanisms | not started | Pre-flight estimators, `BigInt`, bit-hash dedup, soft caps. |
@@ -848,8 +848,121 @@ The cumulative algorithm after 2008+2009+2012 is the same six steps as before pl
 
 Phase 5 (algorithm dispatch) needs to capture this decision tree explicitly. Phase 6 needs to design the data types so the three modes (unrestricted / fixed-conc / fixed-conc + site-restricted) share infrastructure cleanly. Phase 7 (misuse mitigation) gets the Pólya counting as its first deliverable.
 
+---
+
+### 4.4 Morgan, Hart & Forcade 2017 — *Generating derivative superstructures for systems with high configurational freedom*
+
+**Citation.** Wiley S. Morgan, Gus L. W. Hart, Rodney W. Forcade, *Comp. Mat. Sci.* **136**, 144–149 (2017). DOI: 10.1016/j.commatsci.2017.04.015. PDF: `papers/MorganHartForcade2017_recStabEnumeration.pdf` (6 pages).
+
+#### Problem
+
+The 2008 (full-space crossing-out) and 2012 (fixed-concentration crossing-out) algorithms generate the *whole* labeling table and prune duplicates pass-by-pass. The memory and time scale with the table size — i.e., with $k^n$ or $C(n; a_1, \ldots, a_k)$ — even when the final count of unique structures is small. The 2017 paper observes that for high configurational freedom (large $n$, $k \ge 3$, displacement degrees of freedom), the table grows much faster than the unique-structure count, and the wasted work dominates.
+
+The contribution: **a tree-search algorithm with partial colorings and stabilizer subgroups** that prunes entire subtrees of equivalents in one comparison, instead of generating-then-pruning leaf-by-leaf. Empirically two orders of magnitude faster than 2012 for ternary fcc cells around $n = 20$, and unlocks cell sizes that were previously inaccessible.
+
+This is the "enum4" / `recursively_stabilized_enum` algorithm in the Fortran code, with the supporting `tree_class.f90` machinery.
+
+#### The two key ideas
+
+**(1) Partial colorings.** An intermediate node in the tree where only the first few colors have been placed (e.g., the reds, but not yet the yellows or the purples). All children of that node share the partial placement. If a partial coloring at depth $\ell$ is symmetry-equivalent to one already visited, *every* full coloring beneath it is also a duplicate of one already enumerated → skip the whole subtree.
+
+The example in Fig. 1: 9-atom 2D cell with 2 reds, 3 yellows, 4 purples. After placing only the reds (the first level of the tree), 36 distinct red placements exist. Many are equivalent under symmetry; the equivalent ones (e.g., the rightmost (35, •, •) is equivalent to (0, •, •)) get pruned, taking their entire subtrees with them.
+
+**(2) Stabilizer subgroups.** At each tree node, the *stabilizer* of the partial coloring is the subgroup of the parent's symmetry group that leaves the placed colors invariant. The stabilizer shrinks monotonically with depth — by the time you've placed two colors, the symmetries that fix both are a subgroup of those that fix just one. When checking whether a child node is a duplicate, you only need to apply the parent's stabilizer (not the full point group), because non-stabilizer symmetries have already eliminated equivalents at higher levels.
+
+This shrinking-stabilizer property is what gives the algorithm its asymptotic edge: comparison cost decreases with depth even as the total number of partial colorings grows.
+
+#### The algorithm (Section 3)
+
+For a fixed cell size $n$ and concentration $(a_1, \ldots, a_k)$:
+
+1. **Sort colors by concentration**, smallest first. This minimizes branching at the top of the tree.
+2. **Build the tree level by level**, color by color:
+   - At depth $\ell$, the node has placed colors $1, \ldots, \ell$. The state is a *location vector* $(x_1, \ldots, x_\ell)$ where each $x_i$ is the per-color rank from the 2012 multinomial hash (which counts placements among the still-empty sites at that level).
+   - The number of children of a depth-$\ell$ node is $C_{\ell+1} = \binom{n - a_1 - \cdots - a_\ell}{a_{\ell+1}}$.
+3. **For each new partial coloring**, compute its location vector and apply the parent's stabilizer subgroup. If any group element maps the location vector to a *smaller* location vector (lexicographically), this configuration is a duplicate of one already found in the parent's subtree — prune.
+4. **Otherwise** the partial coloring is a new representative. Compute its stabilizer (a subgroup of the parent's stabilizer) for use in the next level. Save and descend.
+5. **At depth $k$** (all colors placed), record the full coloring.
+6. **Backtrack** to the next unexplored sibling.
+
+Concrete example (Section 3, the 9-atom case): brute-force 1260 distinct configurations, Pólya counts 24 unique. The tree search explores only **106 of 1296 candidate nodes** (vs comparing all 1260 pairwise). Confirms the 24 unique configs.
+
+The location-vector mechanism is exactly the 2012 multinomial mixed-radix hash, applied per-level. So the 2017 algorithm is built *on top of* the 2012 hash, not as a replacement.
+
+#### Why the tree wins (memory and time)
+
+- **Memory**: only the path from root to current node + the unique partial colorings already saved at each level. No global table of $C$ entries.
+- **Time**: comparisons at depth $\ell$ are against the (much smaller) set of already-saved partial colorings at that level, using the (shrinking) stabilizer subgroup. The expensive comparisons higher up the tree are amortized across many descendants.
+
+Fig. 5 shows the empirical scaling: for fcc ternary at equal concentration, the 2017 algorithm catches up with the 2012 algorithm around $n = 5$ and then pulls ahead, reaching 100× faster at $n = 20$. For quaternary, the gap is similar.
+
+#### Extension to displacement degrees of freedom (Section 3.3)
+
+Each atomic site can also have a displacement direction (e.g., one of 6 cardinal directions in 3D). The trick:
+1. Treat displaced atoms as a *different species* — so a binary alloy with displacement becomes effectively quaternary (each original species times two: undisplaced + displaced).
+2. Run the color enumeration. After a full configuration is found, restore the arrows (displacement directions) and use the *full configuration's* stabilizer subgroup to check arrow-arrangement uniqueness.
+3. Arrow-vector hash (Eq. 3): $x = \sum_{i=0}^k a_i d^i$ — mixed-radix in base $d$.
+
+Adding 2 arrows to the 9-atom example: configurations grow $1260 \to 45360$, but unique structures only $24 \to 663$. The arrow extension is roughly an outer loop on top of the color tree.
+
+**Per user's instruction, we are not porting arrow enumeration to Julia.** The arrow extension is documented here for completeness; the underlying tree algorithm without arrows is what we want.
+
+#### Implementation map (Fortran)
+
+| Concept | Fortran |
+|---|---|
+| The `tree` OO type | `tree_class.f90` (864 LOC). Methods `init`, `coloring`, `depth`, `increment_location`, `check`, `get_loc`, `add_arrows`. |
+| Driver routine | `recursively_stabilized_enum` (`labeling_related.f90:58-270`). |
+| Location vector | `tree.loc(:)` field. |
+| Branching factor per level | `tree.branches(:)` field. |
+| Stabilizer subgroups per layer | `tree.G(:)` (a `GroupList` with one `permList` per layer). |
+| Arrow group | `tree.A(:)` — same shape as `G`. **Not bringing this forward.** |
+| Per-layer base case (memoization) | `tree.base(:)`. |
+| Color count and coloring map | `tree.color_map(:,:)`. |
+
+The Fortran implementation is the cleanest file in the codebase per Phase 2's classification — the OO design carries over to Julia naturally. The arrow code is bolted on and interleaves through; stripping it cleans up substantial complexity.
+
+#### Implementation map (Julia)
+
+Not implemented. Phase 6 design notes:
+
+- **A `Tree` struct** mirroring the Fortran one but without arrow fields. Concrete fields: `colors::Vector{Int}` (the multiplicities $a_1, \ldots, a_k$), `n::Int`, `loc::Vector{Int}` (location vector), `branches::Vector{Int}` (branching factor per level), `stabilizers::Vector{PermutationGroup}` (one per layer), `unique::Vector{Vector{Int}}` (saved unique partial colorings per layer).
+- **The methods** are obvious one-to-one translations: `next!`, `check`, `coloring`, etc.
+- **Critical reuse**: the location-vector hash is the same machinery as the 2012 multinomial hash. Implement that once in a `MultisetHash` module and use it from both the 2012 crossing-out path and the 2017 tree path.
+- **The stabilizer-subgroup computation** needs efficient group operations on permutation lists. Spacey.jl provides point-group operations; the per-layer stabilizer is a filter on a parent group.
+
+#### Open questions raised by this paper
+
+1. **The Pólya pre-flight reference.** Section 3.1 says "a recently developed numerical algorithm for the Pólya enumeration theorem" (refs 16-18) — that's *Pólya, Read 2012*; *Pólya 1937*; **and Rosenbrock, Morgan, Hart, Curtarolo, Forcade *J. Exp. Algorithmics* 21, 1 (2016)**. This last reference is potentially in scope for Phase 8 — it's the numerical Pólya algorithm that powers the pre-flight estimator. Worth grabbing.
+2. **The "smallest first" sort order**. Section 3 notes that placing colors smallest-first minimizes top-level branching. This is a heuristic, not proved optimal. Worth checking whether the Julia implementation should preserve this default and whether other orderings ever win.
+3. **Arrows vs. our scope**. The arrow material is non-trivially intertwined with the coloring tree in Fortran; the Julia rewrite should design the `Tree` API so that an arrow extension *could* slot in cleanly later without forcing the rest of the code to anticipate it. Phase 6 design responsibility.
+
+#### Terminology added to the glossary
+
+| Term | Meaning |
+|---|---|
+| Partial coloring | A node in the enumeration tree where only the first $\ell$ colors of $k$ have been placed. All descendants share the placement. |
+| Enumeration tree (recursive-stabilizer) | The tree structure built by Morgan-Hart-Forcade 2017. Root = empty lattice; depth $\ell$ = $\ell$ colors placed. |
+| Location vector | The per-level rank tuple $(x_1, \ldots, x_\ell)$ identifying a tree node, with each $x_i$ the 2012-style multinomial-hash rank of color $i$'s placement. |
+| Stabilizer subgroup of a partial coloring | The subgroup of the (parent) symmetry group that leaves the partial coloring invariant. Shrinks monotonically with tree depth. |
+| Pruning a subtree | Skipping all descendants of a node by virtue of the node itself being symmetry-equivalent to one already visited. The single-comparison saving per pruned subtree is the source of the algorithmic speedup. |
+
+#### What carries into the rewrite (synthesis update through 2017)
+
+After 2008+2009+2012+2017, the dispatch landscape is:
+
+| Mode | Path | Memory | Time | When to use |
+|---|---|---|---|---|
+| Pure counting | Pólya cycle-index | $O(|H|)$ | fast (closed-form) | Pre-flight, scale safety |
+| All concentrations | 2008 base-$k$ hash + crossing-out | $O(k^n)$ | $O(k^n)$ | Small $n$, $k=2$ or 3 |
+| Fixed concentration, no site restrictions | 2012 multinomial hash + crossing-out | $O(C)$ | $O(C)$ | Narrow $C$ |
+| Fixed concentration + site restrictions | 2012 backtracking tree | varies | varies | Narrow $C$ + restrictions |
+| High configurational freedom | 2017 recursive-stabilizer tree | $O(\text{tree size})$ | sub-linear in $C$ | Large $n$, $k \ge 3$, big enumerations |
+
+Phase 5 dispatch needs to choose between these based on inputs. Phase 7 misuse mitigation gets pure counting as a free pre-flight estimator. Phase 6 needs the data types to support the union: the location-vector hash and the stabilizer subgroup are both reusable across modes.
+
 <!-- ============= END CLAUDE-ADD: Phase 4 — paper digests (in progress) ============= -->
 
 ---
 
-*(Phase 4 continues with 2017 and 2020. Sections for Phases 5–12 will be appended below as they're produced.)*
+*(Phase 4 continues with 2020 (Shinohara et al.). Sections for Phases 5–12 will be appended below as they're produced.)*
