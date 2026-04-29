@@ -55,7 +55,7 @@ That all sounds great.
 | # | Phase | Status | Notes |
 |---|---|---|---|
 | 1 | Inventory + plan (this section) | done | Plan section committed. |
-| 1.5 | Pre-flight setup | done (mod. Morgan 2017 blocker) | PDFs migrated, Seko verified, glossary stub created. Morgan 2017 URL is 404; user to drop the PDF into `papers/`. |
+| 1.5 | Pre-flight setup | done | PDFs migrated, all five papers in `papers/`, Seko verified, glossary stub created. |
 | 2 | Fortran enumlib codebase digest | not started | Use Explore subagent for breadth; I synthesize. Will flag load-bearing divisions vs incidental ones (per Design Principle 1). |
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | not started | Mostly a writeup of what we already have. |
 | 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017) | not started | One paper per pass. Read PDFs locally; fetch 2017 from URL. |
@@ -195,7 +195,7 @@ Mechanical work that should be done before Phase 2 deep-reading begins, so we ha
 | Task | Status | Notes |
 |---|---|---|
 | Migrate algorithm PDFs from `~/Drive/Work/codes/enumlib/support/` → `docs/notes/` | done | 5 files copied: interior_points, interior_points_reciprocal_space, multiperms, multilattice_dset_mapping_writeup, notes_cRangeAdjustment. |
-| Fetch Morgan, Hart & Forcade 2017 (recStabEnumeration) → `papers/` | **blocked** | Every URL variant on `msg.byu.edu/docs/papers/recStabEnumeration.pdf` (and a few alternatives) returns 404. Web search did not surface an open-access copy. ScienceDirect (the journal home) requires institutional auth. Asked user to drop the PDF into `papers/` directly. |
+| Fetch Morgan, Hart & Forcade 2017 (recStabEnumeration) → `papers/` | done | Was blocked by stale URL — `msg.byu.edu` is the old domain; `bsg.byu.edu` is the current one. Fetched from `https://bsg.byu.edu/docs/papers/recStabEnumeration.pdf`. PDF v1.7, 11 pages. |
 | Confirm Seko 2020 PDF readable | done | `papers/SekoPaperJCP2020.pdf`, valid PDF v1.4, 10 pages, 2.84 MB. |
 | Quick scan of `papers/` for anything else relevant | done | Only Seko 2020 there at the moment. Empty otherwise. |
 | Stub `docs/notes/glossary.tex` | done | Skeleton with stub entries grouped by topic. Populated during Phase 4. |
