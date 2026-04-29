@@ -26,6 +26,7 @@ The practical consequence: the data-structure design (Phase 6) and the public AP
 > - **LaTeX-ification** (rolling, alongside Phase 2 reading): for each PDF, transcribe to LaTeX with the figures extracted as separate files. I'll annotate as I go — typically each note is dense and worth expanding inline (worked examples, references to specific Fortran subroutines or Julia functions, edge-case discussion). Build to PDF via `latexmk`. This becomes the living algorithmic documentation.
 > - **Format choice:** LaTeX over markdown because these are math-heavy with cross-references, theorems, multi-line equations. Pandoc markdown's math is good enough for short notes but breaks down for the multipermutations material in particular.
 > - **Rough budget:** the five PDFs are 5–15 pages each, mostly equations with prose. Transcribing each is half a day's work; I'd do them lazily as I encounter the underlying algorithms in Phase 2 rather than as a batch.
+That all sounds great.
 
 - Julia `Enumlib.jl` at `~/Drive/Work/codes/Enumlib.jl/` — post-split, contains the enumeration half of the former JuCE.jl plus the migrated group/coloring utilities.
 
@@ -54,7 +55,7 @@ The practical consequence: the data-structure design (Phase 6) and the public AP
 | # | Phase | Status | Notes |
 |---|---|---|---|
 | 1 | Inventory + plan (this section) | done | Plan section committed. |
-| 1.5 | Pre-flight setup | not started | Migrate `support/*.pdf` into `docs/notes/`; fetch Morgan 2017; verify Seko 2020 readable; quick scan of `papers/` for anything else useful. |
+| 1.5 | Pre-flight setup | done (mod. Morgan 2017 blocker) | PDFs migrated, Seko verified, glossary stub created. Morgan 2017 URL is 404; user to drop the PDF into `papers/`. |
 | 2 | Fortran enumlib codebase digest | not started | Use Explore subagent for breadth; I synthesize. Will flag load-bearing divisions vs incidental ones (per Design Principle 1). |
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | not started | Mostly a writeup of what we already have. |
 | 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017) | not started | One paper per pass. Read PDFs locally; fetch 2017 from URL. |
@@ -193,13 +194,13 @@ Mechanical work that should be done before Phase 2 deep-reading begins, so we ha
 
 | Task | Status | Notes |
 |---|---|---|
-| Migrate algorithm PDFs from `~/Drive/Work/codes/enumlib/support/` → `docs/notes/` | not started | 5 files. Plain `cp` + `git add`. |
-| Fetch Morgan, Hart & Forcade 2017 (recStabEnumeration) → `papers/` | not started | WebFetch from msg.byu.edu URL. |
-| Confirm Seko 2020 PDF readable | not started | At `papers/SekoPaperJCP2020.pdf`. Read once to verify format. |
-| Quick scan of `papers/` for anything else relevant | not started | Maybe Gus has stashed other refs there. |
-| Stub `docs/notes/glossary.tex` | not started | Empty for now, populated during Phase 4 paper-reading. |
+| Migrate algorithm PDFs from `~/Drive/Work/codes/enumlib/support/` → `docs/notes/` | done | 5 files copied: interior_points, interior_points_reciprocal_space, multiperms, multilattice_dset_mapping_writeup, notes_cRangeAdjustment. |
+| Fetch Morgan, Hart & Forcade 2017 (recStabEnumeration) → `papers/` | **blocked** | Every URL variant on `msg.byu.edu/docs/papers/recStabEnumeration.pdf` (and a few alternatives) returns 404. Web search did not surface an open-access copy. ScienceDirect (the journal home) requires institutional auth. Asked user to drop the PDF into `papers/` directly. |
+| Confirm Seko 2020 PDF readable | done | `papers/SekoPaperJCP2020.pdf`, valid PDF v1.4, 10 pages, 2.84 MB. |
+| Quick scan of `papers/` for anything else relevant | done | Only Seko 2020 there at the moment. Empty otherwise. |
+| Stub `docs/notes/glossary.tex` | done | Skeleton with stub entries grouped by topic. Populated during Phase 4. |
 
-I'll commit these as one Phase-1.5 batch and then begin Phase 2.
+Phase 1.5 is done modulo the Morgan 2017 blocker, which is on the user's plate.
 
 ---
 

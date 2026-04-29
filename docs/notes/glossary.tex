@@ -1,0 +1,84 @@
+\documentclass[11pt]{article}
+
+% Glossary of formal terminology used across the Hart-Forcade,
+% Hart-Nelson-Forcade, Morgan-Hart-Forcade, and Seko papers, and the
+% Fortran enumlib codebase. Populated during Phase 4 paper-reading; this
+% file currently contains the structure and a few seed entries to be
+% expanded.
+
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\title{Enumlib.jl --- Terminology Glossary}
+\author{Built from Hart, Forcade, Nelson, Morgan, and Seko papers}
+\date{(Living document. Phase 4 of the pre-refactor research.)}
+
+\begin{document}
+\maketitle
+
+\section*{Purpose}
+
+Terms used across the enumeration literature have specific meanings that
+are worth pinning down precisely before any refactor is designed. This
+glossary is the single source of truth for that vocabulary in the
+Enumlib.jl repo --- when a design doc or a function name uses one of
+these terms, it means \emph{this} thing.
+
+Entries below are stubs to be filled in during Phase 4 (paper digests).
+Each entry should cite the paper(s) and Fortran/Julia routine(s) where
+the term originates and is used.
+
+\section{Core combinatorial concepts}
+
+\begin{description}[leftmargin=2em, style=nextline]
+\item[Derivative structure] \emph{(stub)}
+\item[Superstructure / supercell] \emph{(stub)}
+\item[HNF (Hermite Normal Form)] \emph{(stub)}
+\item[SNF (Smith Normal Form)] \emph{(stub)}
+\item[Labeling / coloring] \emph{(stub)}
+\item[Multilattice] \emph{(stub)}
+\item[dset (d-vector set)] \emph{(stub)}
+\end{description}
+
+\section{Group-theoretic concepts}
+
+\begin{description}[leftmargin=2em, style=nextline]
+\item[Stabilizer subgroup] \emph{(stub)}
+\item[Recursive stabilizer] \emph{(stub --- Morgan 2017 algorithm.)}
+\item[Permutation group of a supercell] \emph{(stub)}
+\item[Translation group] \emph{(stub)}
+\item[Point group / lattice point group] \emph{(stub)}
+\item[g-space / group-space coordinates] \emph{(stub)}
+\item[Pólya enumeration] \emph{(stub)}
+\end{description}
+
+\section{Equivalence and reduction}
+
+\begin{description}[leftmargin=2em, style=nextline]
+\item[Symmetry-inequivalent / -equivalent] \emph{(stub)}
+\item[Super-periodic labeling] \emph{(stub)}
+\item[Complementary labeling] \emph{(stub)}
+\item[Multipermutation] \emph{(stub --- Forcade's combinatorial trick.)}
+\end{description}
+
+\section{Concentration / site restriction}
+
+\begin{description}[leftmargin=2em, style=nextline]
+\item[Concentration-restricted enumeration] \emph{(stub)}
+\item[Site restriction] \emph{(stub)}
+\item[Inactive / spectator site] \emph{(stub --- Fortran enumlib v2.0.0 overhaul.)}
+\item[Equivalent sites] \emph{(stub --- Tobias's earlier modification.)}
+\item[Concentration range adjustment] \emph{(stub --- see notes\_cRangeAdjustment.pdf.)}
+\end{description}
+
+\section{Misuse / scaling}
+
+\begin{description}[leftmargin=2em, style=nextline]
+\item[Pre-flight count] \emph{(stub --- see Pólya driver.)}
+\item[Crossing-out vs.\ tree-based algorithms] \emph{(stub --- two algorithms toggled by \texttt{origCrossOutAlgorithm}.)}
+\end{description}
+
+\end{document}
