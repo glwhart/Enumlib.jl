@@ -395,7 +395,7 @@ We could rethink this format. Is it closely aligned to the real data structure o
 > 3. **Constraints**: a `Constraints` struct with `concentration_range`, `fixed_cells`, etc. — optional.
 > 4. **Enumeration parameters**: `volume_range`, `algorithm`, etc. — kwargs on the entry function.
 >
-> The Julia call site becomes `enumerate(parent, sites, constraints; volume_range=2:10)` rather than reading a magic file. For pymatgen compat or batch jobs, we provide a `read_struct_enum_in(path) :: (parent, sites, constraints, params)` reader that decodes the legacy format into these structs.
+> The Julia call site becomes `enumerate(parent, sites, constraints; volume_range=2:10)` rather than reading a magic file. *Per the no-Fortran-compat directive in §2.10 #5:* a one-way `Enumlib.LegacyImport.read_struct_enum_in(path)` reader exists in a separate submodule for migrating existing Fortran setups, but it's not the primary API and not load-bearing.
 >
 > Phase 6 (data structures) and Phase 9 (pymatgen) jointly own this decision.
 <!-- END CLAUDE-RESPONSE -->
@@ -445,9 +445,36 @@ Would it be better to store these "rows" in some sort of struct? There is lots o
 > end
 > ```
 >
-> Memory drops by the per-supercell-multiplicity factor. Indexing a structure becomes `enum.structures[i]` and accessing its HNF is `enum.supercells[enum.structures[i].supercell_id].hnf`. For serialization we keep this normalized form (HDF5 / JLD2). For pymatgen compat we re-flatten on output.
+> Memory drops by the per-supercell-multiplicity factor. Indexing a structure becomes `enum.structures[i]` and accessing its HNF is `enum.supercells[enum.structures[i].supercell_id].hnf`. Serialization uses the normalized form directly via JLD2 (or optionally HDF5) — no flattening, no custom format. *Per the no-Fortran-compat directive in §2.10 #5: pymatgen integration is via PythonCall, not a re-flattened legacy format.*
 >
 > This connects to your "iterator vs writer" point in §3.2.4 below — once the in-memory form is normalized, lazy generation becomes the natural API.
+<!-- END CLAUDE-RESPONSE -->
+I like all of this. One thought to flag and reconsider later: the labeling element in EnumeratedStructure could be replaced a single Int (Big Int?) that could be regenerated into the labeling. Not sure that is efficient, but might save space. Let's flag it and rethink later.
+
+<!-- BEGIN CLAUDE-RESPONSE: labeling-as-integer -->
+> **Claude:** Good instinct — and it's actually exactly the perfect-hash idea (§4.1) applied to storage. Quick sketch of the trade-offs to flag for Phase 6:
+>
+> **What "labeling-as-Int" looks like.** A length-$n$ labeling with $k$ colors is a number in $[0, k^n - 1]$ via the base-$k$ digit hash. For fixed-concentration cases the better hash is the 2012 multinomial hash giving $[0, C-1]$ where $C = \binom{n}{a_1, \ldots, a_k}$ — much smaller. So `EnumeratedStructure.labeling` becomes a single `Int64` (or `BigInt` if it overflows) and the explicit `Vector{Int8}` is regenerated on demand.
+>
+> **Storage savings.** For a typical fcc binary $n=20$ structure: `Vector{Int8}` = 20 bytes per structure; one `Int64` = 8 bytes. ~2.5× reduction. For larger $n$ the gap grows: at $n=50$ binary it's 50 bytes vs 8 = 6×. For ternary the comparison is similar; the labeling is `Vector{Int8}` of length $n$ so 1 byte per site, vs an `Int64`.
+>
+> **When `Int64` isn't enough.** $k^n$ overflows `Int64` (which holds up to $2^{63} - 1 \approx 9.2 \times 10^{18}$) at:
+> - Binary ($k=2$): $n = 63$.
+> - Ternary ($k=3$): $n = 39$.
+> - Quaternary ($k=4$): $n = 31$.
+> - Quinary ($k=5$): $n = 27$.
+>
+> Past those, we need `Int128`, `BigInt`, or a packed-bits representation. For the *fixed-concentration* multinomial hash $C$, the limits are roughly 2× higher per $k$ (since $C \ll k^n$). So Int64 works for *most* practical cases; BigInt fallback for the very-large enumerations the 2020 Shinohara paper unlocks.
+>
+> **Cost of regenerating the labeling on demand.** Decoding an integer to a `Vector{Int8}` is $O(n)$ — fast (~50 ns for $n=20$). For most workloads (write to POSCAR, compute correlation, ...) the user will materialize the vector once anyway, so storage-as-Int + decode-on-access doesn't add real overhead.
+>
+> **Where it bites.** If a downstream caller iterates the same labeling many times (e.g., looping over symmetry images of the same structure), repeated decode is wasteful. Easy fix: a `materialize(s::EnumeratedStructure)` accessor that caches into a `Vector{Int8}` if needed.
+>
+> **Phase 6 design hooks** to keep this option open:
+> - Define `Labeling = Union{Int64, BigInt}` or a small wrapper struct so we can swap representations without changing call sites.
+> - Or define `EnumeratedStructure` parameterized: `EnumeratedStructure{L}` where `L` is `Vector{Int8}`, `Int64`, or `BigInt`. The dispatch at construction picks based on size.
+>
+> Logged as a Phase 6 design point. The current `Vector{Int8}` proposal in my normalized-output sketch above is the *conservative* default; the integer representation is a memory optimization we can opt into when the enumeration is large enough to make it worth the dispatch.
 <!-- END CLAUDE-RESPONSE -->
 
 ### 2.9 Tests
@@ -498,6 +525,8 @@ Tell me more what you mean by this.
 >
 > Three lines once the hash + inverse are in hand. The "risk surface" I flagged is gone now that the 2012 paper has demystified the markers — it's just a vanilla orbit-marking pass.
 <!-- END CLAUDE-RESPONSE -->
+Good catch. We'll make sure that the same opaqueness doesn't happen in the julia code. It will be well documented and commented in the code.
+
 
 4. **SNF non-uniqueness** — left transform is not uniquely determined; `compare_two_enum_files` handles the resulting automorphisms. Julia rewrite needs to either nail down a canonical SNF (NormalForms.jl?) or replicate the automorphism handling. 
 SNF is canonical by definition. It's the left transform that isn't unique. Not sure what effort would be necessary to enforce that. Probably easier not to rely on it and compute equivalencies. In any case, we need to think about this more.
@@ -509,6 +538,7 @@ SNF is canonical by definition. It's the left transform that isn't unique. Not s
 >
 > Your second point — "probably easier not to rely on it and compute equivalencies" — is the right framing. Rather than fight to canonicalize $L$, we accept that two correct enumerations may disagree on row content and rely on `compare_two_enum_files`-style equivalence checking. That's what the Fortran code already does post-2.0.3. Phase 6 should make this an explicit design decision: **don't expose $L$ in the public output API; keep it internal to the (HNF, labeling) → real-space mapping**, and provide a structure-equivalence comparator for users who need to compare enumerations across versions.
 <!-- END CLAUDE-RESPONSE -->
+Yes
 
 5. **Equivalencies transitivity is unchecked** — if the user passes a non-transitive `equivalencies` array, the code silently produces wrong answers.
 We need to make the new code bullet proof to that failure mode
@@ -521,6 +551,33 @@ We need to make the new code bullet proof to that failure mode
 >
 > Lean: option (1). Equivalences are conceptually a partition; using a partition data structure expresses that intent and prevents the failure mode at the type level. Phase 6 design point.
 <!-- END CLAUDE-RESPONSE -->
+I don't anticipate that we'll even want "compat with the Fortran format". Design right, go forward with confidence. Learn from the past, keep the good. Redesign the rest.
+
+<!-- BEGIN CLAUDE-RESPONSE: no Fortran-format compat — strategic note -->
+> **Claude:** This is load-bearing strategic guidance. Lifting it to a top-level **Design Principle 3** in a follow-up cleanup commit, alongside Principles 1 (Fortran file divisions are advisory) and 2 (current Julia layout isn't a baseline). Cascading consequences I want to make explicit so they don't quietly resurface later in the doc:
+>
+> **(a) Equivalencies (the comment you replied to).** Drop option (2) "validate at construction" — that was framed as "if we keep the array form for compat with the Fortran format." We're not. Use Union-Find natively. The user-facing API takes pairs `(i, j)` and adds them to a partition; there's no array format anywhere.
+>
+> **(b) The struct_enum.in / struct_enum.out file formats.** No more "compat shim" framing. The Fortran formats are reference for *understanding what existed*, not constraints on what we ship. Specifically:
+> - **Reading legacy files:** a one-way migration utility. "Import a Fortran setup into Julia" is a use case for someone who has existing struct_enum.in files; it's not a long-term API. Lives in a separate submodule like `Enumlib.LegacyImport` or `Enumlib.Fortran`.
+> - **Writing legacy files:** mostly not needed. Possibly useful for *generating* test cases against Fortran enumlib for the regression-comparison tooling, but that's an internal-test-only use, not a user-facing feature.
+> - **The "primary" Julia format** (for serialization / persistence) is whatever's natural for our types — JLD2 by default, optional HDF5 export.
+>
+> **(c) Pymatgen integration.** Phase 9 simplifies. Today pymatgen's `enumlib_caller` shells out to the Fortran CLI and parses `struct_enum.out`. To *replace* that path with our Julia code, the cleanest route is:
+> - Provide a Python-callable Julia API via PythonCall.jl / JuliaCall (whichever pymatgen prefers).
+> - Pymatgen calls `Enumlib.enumerate(...)` directly, gets a stream of structures or an `Enumeration` object, converts to its `Structure` type.
+> - No `struct_enum.out` file involved.
+> - For backward-compat with users still on the file workflow, the `LegacyImport` migration utility can also generate `struct_enum.out` from our internal types — but that's a one-day tactical adapter, not a design constraint.
+>
+> **(d) The compare-enumerations regression utility.** Still important per your earlier note (the Fortran is "extremely strong, heavily battle tested"), but reframed: it compares our *Julia* enumeration against a Fortran-generated reference *internally* during testing. It doesn't need to be exposed to end users; it's a CI tool. Reads our internal types on one side and the Fortran `struct_enum.out` (via `LegacyImport`) on the other.
+>
+> **(e) Priority order from §3.4.** Updating: drop "(8) struct_enum.out writer + pymatgen-compatibility shim" — replaced by "(8) `Enumlib.LegacyImport` reader for Fortran files (one-way migration + test-corpus loader)". The struct_enum.out *writer* is downgraded to optional and only built if someone asks.
+>
+> Net effect: the rewrite is meaningfully simpler. We don't have to worry about preserving every quirk of the legacy formats; we design what's right and provide migration paths.
+>
+> Will retro-edit the affected earlier responses (the iterator-first response in §3.2 and the priority list in §3.4) to remove their "compat shim" framing in a follow-up pass before we strip markers.
+<!-- END CLAUDE-RESPONSE -->
+
 
 6. **Concentration partition enumeration uses GCDs** (`enumeration_routines.f90:70`) — for large k, performance unclear.
 We can brainstorm how big k might be, insert some failsafe triggers, or rethink this completely. I don't remember why the GCD was convenient.
@@ -532,6 +589,7 @@ We can brainstorm how big k might be, insert some failsafe triggers, or rethink 
 >
 > Concrete plan: implement the partition-enumeration with GCD-based pruning per Fortran, but *also* expose a `partition_count(n, k, ranges)` pre-flight that warns if the number of partitions × estimated configurations-per-partition exceeds a threshold. That way users with weird high-$k$ requests get a clear "this will produce $10^{15}$ structures, abort?" prompt rather than silent thrashing. Phase 7 (misuse mitigation) home.
 <!-- END CLAUDE-RESPONSE -->
+That sounds like a good plan
 
 7. **Direct-write to unit 14 inside the enumeration loop** — incomplete output if interrupted.
 8. **`derivCryst` and `cryst` types are dead** — leftover from an unfinished earlier refactor.
@@ -589,7 +647,7 @@ The package is 1361 LOC across 6 files in `src/`:
 >
 > The `SuperTile` references in `test/runtests2D.jl` are to a *different* `SuperTile` defined in `LatticeEnumeration2D` — that one has its own type, used only inside the 2D submodule.
 >
-> So three exported-but-dead types in the 3D Enumlib API. Strongest possible signal that Phase 6 should design data structures from first principles. The fact that exporting these types didn't break anything is itself evidence that the right shape for `Site` / `Supercell` / `Enumeration` hasn't been settled.
+> So three exported-but-dead types in the 3D Enumlib API. Strongest possible signal that Phase 6 should design data structures from first principles. Yes! The fact that exporting these types didn't break anything is itself evidence that the right shape for `Site` / `Supercell` / `Enumeration` hasn't been settled.
 >
 > **Action item I'll take during Phase 6:** delete these three dead structs from the export list and from `LatticeColoringEnumeration.jl`, replace with the new design.
 <!-- END CLAUDE-RESPONSE -->
@@ -677,11 +735,11 @@ Other than pymatgen, do we really need a writer? Couldn't we make a iterable tha
 > n_structures = count_inequivalent(parent, sites; ...)
 > ```
 >
-> This is far better than the Fortran "enumerate to disk, then have downstream tools read the file" workflow. The user doesn't need to manage an intermediate file; the structures stream directly into whatever pipeline they want. Disk persistence becomes a separate utility (`write_struct_enum_out(path, enum)`) used only when needed for compat or persistence.
+> This is far better than the Fortran "enumerate to disk, then have downstream tools read the file" workflow. The user doesn't need to manage an intermediate file; the structures stream directly into whatever pipeline they want. Disk persistence is just `JLD2.save("enum.jld2", enum)` — Julia-native, no custom format needed.
 >
-> So: **default API is lazy iteration**. The `struct_enum.out` writer is a compat-shim utility, not the core path. The 2017 recursive-stabilizer tree is naturally streaming-friendly; the 2008/2012 crossing-out can also be made to yield as it goes (or, if we want, materialize the visited bitmap eagerly and yield the unique ones).
+> So: **default API is lazy iteration**. The 2017 recursive-stabilizer tree is naturally streaming-friendly; the 2008/2012 crossing-out can also be made to yield as it goes (or, if we want, materialize the visited bitmap eagerly and yield the unique ones — we can decide which when we get there).
 >
-> Updating the Phase 9 implication accordingly: pymatgen-compat means writing a `write_struct_enum_out` shim, *not* designing the core API around the file format.
+> *Earlier this response framed the `struct_enum.out` writer as a "compat-shim utility." That framing is now retired per your no-Fortran-compat directive in §2.10 #5. We don't ship a struct_enum.out writer at all in the user-facing API; if it's needed for cross-validation against Fortran enumlib output, it lives in an internal-test-only `LegacyExport` module.*
 <!-- END CLAUDE-RESPONSE -->
 
 - **No POSCAR pipeline.** `scratch/{read,make}POSCAR.jl` need cleanup before they can be loaded as module code, and `genPOSCARs` even has a captured-global-`A` bug.
@@ -693,10 +751,13 @@ We really need this. The Fortran is extremely strong, heavily battle tested.
 > 1. Without it we have no objective measure that any new feature is correct against the Fortran reference.
 > 2. It's the *gating* tool for porting concentration restrictions, multilattices, and inactive sites — for each, we run Fortran enumlib on a representative case, run the new Julia code on the same case, compare, iterate.
 >
-> Revised priority order: (1) `map_to_real_space` + POSCAR writer (already partial), (2) **compare-enumerations regression utility** (was 7), (3) Pólya pre-flight count, (4) concentration restrictions, (5) inactive sites + equivalencies, (6) multilattice support, (7) recursive-stabilizer algorithm, (8) struct_enum.out writer + pymatgen shim.
+> Revised priority order: (1) `map_to_real_space` + POSCAR writer (already partial), (2) **compare-enumerations regression utility** (was 7), (3) Pólya pre-flight count, (4) concentration restrictions, (5) inactive sites + equivalencies, (6) multilattice support, (7) recursive-stabilizer algorithm, (8) `Enumlib.LegacyImport` — read-only Fortran-format reader for migration + test-corpus loading.
+>
+> *Earlier draft of (8) read "struct_enum.out writer + pymatgen-compatibility shim." Updated per your no-Fortran-compat directive in §2.10 #5: we don't preserve the file format as a long-term API. Pymatgen integration becomes a Python-callable Julia API via PythonCall (Phase 9), not a file-format shim.*
 >
 > Phase 12 will lock this in; flagging now while the reasoning is fresh.
 <!-- END CLAUDE-RESPONSE -->
+Great
 
 - **Limited test coverage.** 9 tests (all passing). Fortran has tens of thousands of test directories. We don't need to match that volume, but coverage of concentration/site-restriction edge cases will need to grow with the features.
 - **Some carryover scaffolding** from JuCE — `clusterequvi.jl` is small and arguably belongs in Enumlib, but the function names (`shiftToOrigin`, `isEquivClusters`) are CE-flavored. Phase 6 should reconsider where these belong.
@@ -720,7 +781,7 @@ Yes.
 - **Phase 6 priority list** for data structures: (a) replace `enumStr`; (b) design a `Site` abstraction unifying `dFull/d`, `labelFull/label`, `equivalencies`, `inactives`; (c) design `Configuration` (the labeling state) so concentration/site restrictions can hook in cleanly; (d) decide on canonical SNF or carry automorphisms.
 - **Phase 5 dispatch** should expose `enumerate(parent, …)` with kwargs for concentration_range, site_restrictions, fixed_cells, algorithm=:auto. The :auto path uses Pólya counting + multinomial size to choose enum3 vs enum4.
 This sounds good.
-- **Order of feature delivery (rough guess; Phase 12 will refine):** (1) `map_enumStr_to_real_space` + POSCAR writer (unblocks DFT users on what we already have), (2) Pólya pre-flight count, (3) concentration restrictions, (4) inactive sites + equivalencies, (5) full multilattice support, (6) recursive-stabilizer algorithm, (7) compare-two-enums regression tool, (8) struct_enum.out writer + pymatgen-compatibility shim.
+- **Order of feature delivery (rough guess; Phase 12 will refine; revised inline in the response above and again in §2.10 #5):** (1) `map_enumStr_to_real_space` + POSCAR writer, (2) compare-enumerations regression utility (Fortran reference vs Julia), (3) Pólya pre-flight count, (4) concentration restrictions, (5) inactive sites + equivalencies, (6) full multilattice support, (7) recursive-stabilizer algorithm, (8) `Enumlib.LegacyImport` (read-only Fortran-format reader for migration + test-corpus loading).
 
 ### 3.5 The 2D submodule
 
@@ -865,6 +926,7 @@ I like this idea a lot. Can you explain it a bit more verbosely.
 >
 > Once this representation is made explicit, the 2012 paper's multinomial hash and the 2017 paper's location vectors slot in as natural specializations: same dedup loop, different (more compact) hash + inverse.
 <!-- END CLAUDE-RESPONSE -->
+Good
 
 - **Incompleteness of FWZ-style correlation deduplication** is the historical reason the geometry-free approach was developed. The Julia rewrite must not regress on this — any future "fast deduplication" optimization (Phase 8 / Shinohara 2020) needs to be checked for completeness in the same way.
 
