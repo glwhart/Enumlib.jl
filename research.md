@@ -1398,7 +1398,7 @@ A small surface — three functions plus the kwargs.
 # (1) Enumerate. Returns a lazy iterator.
 function enumerate(parent::ParentLattice,
                    sites::Vector{Site};
-                   volume_range::AbstractRange{Int} = 1:10,
+                   volume_range::AbstractRange{Int},     # required (no default — see §5.11 Q1)
                    concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
                    fixed_cells::Union{Nothing, Vector{HNF}} = nothing,
                    algorithm::Symbol = :auto,
@@ -1431,6 +1431,47 @@ Three other things the API doesn't do:
 - **No mutable state.** No `setupChebyTable(k)`-style side effects. Caches that are needed are computed once per call and live inside the iterator's state.
 - **No global config.** `memory_budget` and `on_overflow` are kwargs, not module-level settings.
 
+<!-- BEGIN CLAUDE-RESPONSE: Union{Nothing, T} explained -->
+> **Claude:** Quick Julia idiom primer since you flagged this for both `concentration` and `fixed_cells`:
+>
+> **`Union{Nothing, T}` is Julia's "optional" type.** It says "this kwarg accepts either a value of type `T` or the special value `nothing`". Roughly equivalent to `Optional<T>` in Java, `T?` in Kotlin/Swift, or `Maybe T` in Haskell. The Julia community pattern is to use `Union{Nothing, T}` for kwargs where "no value supplied" needs to be distinguishable from "some specific default value."
+>
+> **Why `nothing` and not just a default?** For `volume_range = 1:10`, the default *is* a value (the range 1:10). The user can override it. For `concentration`, there is no natural default value — "no concentration constraint at all" is conceptually different from "constrain to some specific concentration." `nothing` represents that absence cleanly.
+>
+> Concrete: a user calling
+>
+> ```julia
+> enumerate(fcc, sites; volume_range=1:8)
+> ```
+>
+> doesn't pass `concentration`, so it defaults to `nothing` → "no concentration constraint, enumerate everything." Internally the function checks `if concentration === nothing` and runs the unrestricted path.
+>
+> A user calling
+>
+> ```julia
+> enumerate(fcc, sites; volume_range=32:32, concentration=Concentration([15, 17]))
+> ```
+>
+> passes a `Concentration` value → constrained enumeration.
+>
+> The user almost never types `concentration=nothing` explicitly — it's the default. They just *omit* the kwarg when they want the unrestricted case.
+>
+> **Why this is preferable to alternatives:**
+> - **Sentinel default** like `concentration = AllConcentrations()`: more verbose, requires inventing a sentinel type, and the value `AllConcentrations()` carries no useful information beyond "no constraint." `nothing` is the standard Julia way to say that.
+> - **Separate functions** like `enumerate_unrestricted(...)` vs `enumerate_at_concentration(...)`: doubles the API surface and makes documentation harder.
+> - **Multiple dispatch** on a singleton type: works but typically used when the unrestricted and restricted paths have *very* different behavior; here they share most of the dispatch tree, so kwarg-based switching is cleaner.
+>
+> **Where this idiom appears in Base Julia:**
+> - `findfirst(f, A)` returns `Union{Nothing, Int}` — `nothing` if no match, `Int` if found.
+> - `tryparse(Int, str)` returns `Union{Nothing, Int}` — same pattern.
+> - `Iterators.peel(itr)` returns `Union{Nothing, Tuple}`.
+>
+> So `Union{Nothing, T}` is idiomatic, not exotic. Once you've internalized it, the pattern reads as "this is optional; the typical caller omits it."
+>
+> Same idiom for `fixed_cells = nothing`: omit it (default), and HNFs are enumerated freshly per the algorithm; pass `fixed_cells = my_hnf_list`, and only those HNFs are considered.
+<!-- END CLAUDE-RESPONSE -->
+
+
 ### 5.3 The algorithm modes
 
 Five live modes plus the future BDD slot:
@@ -1452,6 +1493,31 @@ Plus pure counting (no enumeration generated):
 | Fixed-concentration Pólya | HNF 2012 Appendix A.2 | Counts at a target multiplicity vector |
 
 The Rosenbrock 2016 paper (`papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`) provides the numerical algorithm that makes these counts cheap in practice — to be digested as §4.6 in a follow-up Phase 4 commit.
+
+Is this algorithm something others might use? Should we put it in a separate package and share it? Or is it too niche?
+
+<!-- BEGIN CLAUDE-RESPONSE: Polya as a separate package? -->
+> **Claude:** Plausible audience exists, but I'd lean against extracting on day one. Reasoning:
+>
+> **Who else might use it.** Pólya enumeration is a general counting principle for orbits of finite group actions on functions. Real users beyond derivative-structure enumeration:
+> - **Combinatorial chemistry / chemical graph theory.** Pólya himself was motivated by counting isomers; Read & Tarjan and others built on this. Anyone counting molecules-up-to-symmetry uses some form of Pólya.
+> - **Algebraic combinatorics.** Cycle index manipulation appears in many problems involving finite group actions on functions (necklace counting, partition problems, Latin squares).
+> - **Computer-aided enumeration in CS.** Enumerating equivalence classes of graphs, tilings, designs — Pólya gives a closed-form count when the group action is known.
+> - **Niche enough that a Julia-native polished implementation probably doesn't already exist.** `Combinatorics.jl` has `multinomial` and basic permutation utilities but not the Rosenbrock-style numerical Pólya. `Nemo.jl`/`Hecke.jl` are about commutative algebra, not Pólya enumeration. A targeted small package would have a real (if small) audience.
+>
+> **Why not extract on day one:**
+> - **Maintenance overhead.** Two repos, two registrations, two CI setups, separate version compatibility to manage. Worth it only if the audience materializes.
+> - **API risk.** While we're still designing how Enumlib uses it, the Pólya counter's API will shift. Extracting prematurely freezes a draft API. Extract once it's stable internally.
+> - **Discoverability cost.** A separate `Polya.jl` adds a search path; Enumlib's users find the function via Enumlib's docs without thinking about packaging.
+>
+> **Recommendation:**
+> 1. Implement the Rosenbrock numerical Pólya inside Enumlib as a submodule (e.g., `Enumlib.Polya` with `polya_count(group, k, n)` and friends).
+> 2. Keep the submodule's API clean and self-contained — no leakage of Enumlib types into it.
+> 3. Once Enumlib v0.2+ is stable, do a small extraction PR: move `Enumlib.Polya` → `Polya.jl`, add it as a dep of Enumlib. Low-friction at that point.
+> 4. Announce the extraction on Julia Discourse / chemistry channels to find the audience.
+>
+> This is the standard "extract when needed, not before" pattern. Phase 8 (literature survey) gets a small to-do: check if anyone in the Julia ecosystem has already published a Pólya counter we could use or contribute to instead of writing our own.
+<!-- END CLAUDE-RESPONSE -->
 
 ### 5.4 The auto-dispatch decision tree
 
@@ -1482,7 +1548,6 @@ A few notes:
 
 - **`:recursive_stabilizer` is the catch-all for "too big to materialize."** Per Morgan 2017 it streams without keeping a global bitmap, so it's robust to large enumerations.
 - **`:bdd` is not in `:auto` for v0.2.** When implemented, it slots in as a memory-pressure fallback below `:recursive_stabilizer`. Currently the user opts in explicitly.
-- **Concentration *range* (vs single concentration) decomposes** into a sequence of single-concentration enumerations at each step in the range. The dispatch above runs per concentration; if the chosen mode varies across the range, that's fine — the iterator yields from whichever sub-mode is active.
 - **`fixed_cells` (constraining HNFs to a user-supplied list) doesn't change the dispatch** — it just restricts the HNF set fed into whichever algorithm runs.
 
 ### 5.5 The pre-flight gate
@@ -1601,10 +1666,112 @@ The named-symbol algorithm choice + auto-dispatch + memory-budget kwarg replace 
 
 ### 5.11 Open questions for the user
 
-1. **Defaults.** I've defaulted `volume_range = 1:10`, `memory_budget = 8 GiB`, `on_overflow = :error`. Reasonable? The volume default in particular is a guess — it's small enough to be safe, but a user wanting a serious enumeration will always pass their own. Alternative: no default, force the user to specify.
-2. **`count_inequivalent`'s return.** I have it returning `BigInt`. Could also return a struct that breaks the count down by volume / concentration / supercell. Useful when the user wants to see "where are all my structures coming from." Worth it, or wait?
-3. **`estimate_cost` separate function.** I split it from `enumerate` — i.e., a user can call `estimate_cost(...)` to see the predicted memory before deciding to launch. Necessary, or just bake it into the pre-flight inside `enumerate`?
-4. **Future: streaming compute callbacks.** A common pattern would be `enumerate(...; on_each = s -> compute_energy(s))` so the user doesn't have to wire up an explicit `for` loop. Worth supporting from v0.2, or leave it to the user to compose `for` over the iterator?
+1. **Defaults.** I've defaulted `volume_range = 1:10`, `memory_budget = 8 GiB`, `on_overflow = :error`. Reasonable? The volume default in particular is a guess — it's small enough to be safe, but a user wanting a serious enumeration will always pass their own. Alternative: no default, force the user to specify. No default is my preference.
+
+<!-- BEGIN CLAUDE-RESPONSE: no default for volume_range -->
+> **Claude:** Updated the function signature in §5.2 to drop the default — `volume_range::AbstractRange{Int}` is now required. Calling `enumerate(parent, sites)` without it is a `MethodError`. Forces the user to think about the search space rather than silently accept whatever I picked.
+>
+> Keeping `memory_budget = 8 GiB` and `on_overflow = :error` defaults — those are *safe* defaults (they protect the user from accidentally launching a too-large run), and the user almost never wants to override them on the first call. If you'd prefer those required too, easy change.
+<!-- END CLAUDE-RESPONSE -->
+
+2. **`count_inequivalent`'s return.** I have it returning `BigInt`. Could also return a struct that breaks the count down by volume / concentration / supercell. Useful when the user wants to see "where are all my structures coming from." Worth it, or wait? Tell me more about the possibility of returning the struct with more info
+
+<!-- BEGIN CLAUDE-RESPONSE: count_inequivalent richer return -->
+> **Claude:** Sketch of what a richer return looks like. Two-tier API:
+>
+> ```julia
+> # Tier 1: just give me the number.
+> n = count_inequivalent(parent, sites; volume_range=1:20)   # → BigInt
+>
+> # Tier 2: give me the breakdown.
+> breakdown = count_inequivalent_breakdown(parent, sites; volume_range=1:20)
+> # → InequivalentCount, with fields:
+> #     total::BigInt
+> #     by_volume::Vector{Tuple{Int, BigInt}}
+> #     by_concentration::Vector{Tuple{Concentration, BigInt}}    # if concentration was a range
+> #     by_hnf_class::Dict{HNFClassId, BigInt}                    # per-symmetry-class HNF count
+> ```
+>
+> Or as a single function with a kwarg:
+>
+> ```julia
+> # Default returns BigInt.
+> n = count_inequivalent(parent, sites; volume_range=1:20)
+>
+> # Pass `breakdown=true` to get the full struct instead.
+> b = count_inequivalent(parent, sites; volume_range=1:20, breakdown=true)
+> b.total                    # BigInt
+> b.by_volume[5]             # (5, count_at_n_5)
+> ```
+>
+> **What the breakdown is good for.** Concrete cases I've seen this pattern matter:
+>
+> - **"Why is my enumeration so big?"** User asks for FCC ternary $n \in 1:20$ and gets $10^{12}$ structures. The breakdown shows $99.9\%$ of those are at $n=18, 19, 20$. They cap at $n \le 17$ and life is good.
+> - **"Which concentrations matter for my phase diagram?"** User scans a concentration range; the per-concentration count tells them which compositions are dense enough to be worth running DFT on, and which are sparse enough that random sampling would miss things.
+> - **"Is this HNF class doing something weird?"** Per-HNF-class counts surface degeneracy patterns. If one HNF class produces 100× more configs than its neighbors, that's diagnostic.
+>
+> **Cost of supporting it.** The Pólya algorithm computes per-volume / per-concentration counts as part of its work anyway — they're intermediate values inside the cycle-index sum. Returning them costs zero extra computation; just don't discard. The struct is ~10 lines of code; the kwarg adds ~3 lines of dispatch.
+>
+> **My recommendation:** ship Tier 1 (BigInt return) in v0.2, add Tier 2 in v0.2.x or v0.3 once we've seen what users actually want from the breakdown. Risk is low (purely additive) so deferring isn't dangerous. But if you'd like Tier 2 in v0.2 from the start, it's small.
+>
+> Tentative shape locked in for Phase 6: `InequivalentCount` struct exists in the type catalog regardless of whether it's the immediate return. Then we can wire either API on top.
+<!-- END CLAUDE-RESPONSE -->
+
+3. **`estimate_cost` separate function.** I split it from `enumerate` — i.e., a user can call `estimate_cost(...)` to see the predicted memory before deciding to launch. Necessary, or just bake it into the pre-flight inside `enumerate`? Like have a separate function too
+
+<!-- BEGIN CLAUDE-RESPONSE: separate estimate_cost confirmed -->
+> **Claude:** Confirmed. Both: `estimate_cost(...)` is a public function the user can call to get a `EnumerationCostEstimate` (peak memory, predicted wall time, predicted structure count, recommended algorithm choice). And `enumerate(...)` *also* internally calls `estimate_cost` as part of its pre-flight gate, so the user gets protection automatically without explicit estimation.
+>
+> Two separate APIs serving the same machinery: explicit when you want to plan, automatic when you don't.
+<!-- END CLAUDE-RESPONSE -->
+
+4. **Future: streaming compute callbacks.** A common pattern would be `enumerate(...; on_each = s -> compute_energy(s))` so the user doesn't have to wire up an explicit `for` loop. Worth supporting from v0.2, or leave it to the user to compose `for` over the iterator? Tell me more about what you are thinking here?
+
+<!-- BEGIN CLAUDE-RESPONSE: streaming callbacks elaborated -->
+> **Claude:** The idea is a convenience shorthand for the most common downstream workflow: "enumerate, compute something on each, save it." Today the user writes:
+>
+> ```julia
+> for s in enumerate(fcc, sites; volume_range=1:8)
+>     energy = compute_dft(s)
+>     save_to_database(s, energy)
+> end
+> ```
+>
+> That's already idiomatic Julia and works fine. The "callback" form would be:
+>
+> ```julia
+> enumerate(fcc, sites; volume_range=1:8,
+>           on_each = s -> begin
+>               energy = compute_dft(s)
+>               save_to_database(s, energy)
+>           end)
+> ```
+>
+> Or with a named function:
+>
+> ```julia
+> compute_and_save(s) = save_to_database(s, compute_dft(s))
+> enumerate(fcc, sites; volume_range=1:8, on_each = compute_and_save)
+> ```
+>
+> **Where it might pay off:**
+> - **Parallelism.** If we want to fan out the per-structure work across threads, a callback API can do that internally (`Threads.@threads` over the iterator), whereas the user-written for-loop is sequential by default. Could matter for DFT workflows where each structure takes minutes.
+> - **Progress reporting / batching.** With a callback, the iterator can report progress every N callbacks, batch I/O, etc. With a manual for-loop the user wires that up themselves.
+> - **Flow control.** A `return :stop` from the callback could let the user abort the enumeration mid-way (e.g., stop after finding the first low-energy structure). Less natural with a for-loop (`break` only works in the same scope).
+>
+> **Why I leaned "wait" originally:**
+> - Adds API surface; one more thing to document and test.
+> - The for-loop form is already short and idiomatic.
+> - If parallelism is the goal, `foreach(callback, enumerate(...))` + a parallel `foreach` from `Folds.jl` or `Transducers.jl` gets there without needing our API to know about it.
+>
+> **The case for v0.2.** If you anticipate users plugging Enumlib into DFT pipelines (as you said in the original prompt is the typical application), the callback form is the API they'd reach for. It's short, it documents intent ("for each enumerated structure, do X"), and it leaves room for parallelism / progress / abort later without breaking the user-facing signature.
+>
+> **My recommendation, revised:** include `on_each::Union{Nothing, Function} = nothing` in `enumerate(...)` from v0.2. Default behavior (no callback) returns the iterator; with callback, it consumes the iterator and applies the callback eagerly, returning `nothing`. Two return shapes for one function isn't ideal, so alternatively: a small wrapper `enumerate_each(callback, parent, sites; ...)` that's purely for the callback case and returns nothing.
+>
+> Open: which name pattern do you prefer? `enumerate(...; on_each=...)` (one function, two return shapes) or `enumerate_each(callback, ...)` (two functions, clean separation)?
+<!-- END CLAUDE-RESPONSE -->
+
+
 
 <!-- ============= END CLAUDE-ADD: Phase 5 section ============= -->
 
