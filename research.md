@@ -1857,7 +1857,7 @@ Tell me more about how we are planning to use `Site` and `Sites` types.
 >
 > **Construction flow.** The user typically starts with the dset of the parent lattice (say, 2 sites for HCP), creates one `Site` per dset element with whatever species each can host, and wraps them in `Sites`. Then optionally calls `equate!(sites, i, j)` to declare equivalencies. Be "equivalencies" we mean that the two sites are connected by a symmetry? Or that the same label *must* be present on both sites - no configurational degree of freedom? The latter were called inactive sites in the UNCLE code, iirc. I'm just trying to get the terminology correct...  
 
-<!-- BEGIN CLAUDE-RESPONSE: equivalencies vs inactive terminology -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: equivalencies vs inactive terminology -->
 > **Claude:** Important distinction — nailing it down so we use it consistently:
 >
 > | Concept | Definition | Behavior in enumeration |
@@ -1878,7 +1878,7 @@ Tell me more about how we are planning to use `Site` and `Sites` types.
 > - Equivalent sites *participate* in the enumeration but contribute one "effective site" per equivalence class. The dispatcher passes only the canonical representative to the algorithm; after enumeration, every member of the class gets the canonical's label copied in.
 >
 > Adding both definitions (and "equivalencies" as the partition relation) to `docs/notes/glossary.tex` in the finalization commit so the terminology is locked in for Phase 7+.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 >
 > **Algorithm consumption.** The dispatcher (`enumerate(...)`) reads `Sites` to know:
 > 1. The number of "effective sites" per parent cell = number of *active*, *canonical* sites = `length(active_canonical_sites(sites))`.
@@ -1944,7 +1944,7 @@ struct ParentLattice
 
 Well, calculating the "pointgroup" of a lattice with a dset is equivalent to calculating the "spacegroup" of a crystal where the dset is all atoms of the same type. Fractional translations must be included in the symmetries of a multilattice. Pointgroup only applies to simple lattices.
 
-<!-- BEGIN CLAUDE-RESPONSE: space group vs point group — correctness fix -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: space group vs point group — correctness fix -->
 > **Claude:** Correct, and this is a real correctness issue I missed. `pointGroup(A)` returns only the *Bravais lattice's* point-group symmetries (rotations/reflections that fix the lattice as a geometric object, no fractional translations). For a multilattice $M = L + D$, the relevant symmetry group is the *space group* of $M$ when the dset is treated as same-species atoms — and that includes screws and glides (rotations combined with fractional translations).
 >
 > The Fortran code handles this distinction: `LG` is the lattice point group, but `get_dvector_permutations` then computes how each lattice rotation $N$ acts on the dset, finding the necessary fractional translation $d_N \in D$ such that $f_N(x) = Nx + d_N$ is actually a symmetry of $M$ (Hart-Forcade 2009 §IV / Appendix). So Fortran *does* compute the space-group symmetries; it just stores the point-group rotations and the dset-translation pairs separately.
@@ -1974,7 +1974,7 @@ Well, calculating the "pointgroup" of a lattice with a dset is equivalent to cal
 > **Phase 8 to-do:** confirm Spacey's space-group API; if absent, decide between Spglib dependency vs. porting the Fortran logic.
 >
 > Applying the rename + struct addition in the finalization commit alongside SupercellSelection and parametric-D refactors.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
         Asm = SMatrix{3,3,Float64,9}(A)
         ds = [SVector{3,Float64}(d) for d in dset]
         pg = pointGroup(Asm)             # cache the point group at construction
@@ -2058,7 +2058,7 @@ end
 # Equivalence classes are *user-declared* (via `equate!`), not symmetry-computed -- see CLAUDE-RESPONSE above.
 We need to add that definition to the glossary, I think.
 
-<!-- BEGIN CLAUDE-RESPONSE: glossary entries confirmed -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: glossary entries confirmed -->
 > **Claude:** Confirmed. Adding three terms to `docs/notes/glossary.tex` in the finalization commit:
 >
 > 1. **Inactive site** — site with one allowed label.
@@ -2066,7 +2066,7 @@ We need to add that definition to the glossary, I think.
 > 3. **Equivalencies** — the user-declared partition relation across sites; the union of all `equate!` calls.
 >
 > All three placed in the existing "Equivalence and reduction" section of the glossary, between the existing entries.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 
 canonical(s::Sites, i::Integer) = find_root!(s.equiv, i)
 
@@ -2360,7 +2360,7 @@ In general, I don't think we want volume_range defaults. In fact, we don't alway
 
 Yes, refactor now.
 
-<!-- BEGIN CLAUDE-RESPONSE: SupercellSelection refactor confirmed -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: SupercellSelection refactor confirmed -->
 > **Claude:** Applying in the finalization commit. The pass updates:
 > - **§5.2 function signature:** `volume_range::AbstractRange{Int}` (required) → `supercells::SupercellSelection` (required); drop `fixed_cells` (now subsumed by `ExplicitHNFs`).
 > - **§5.4 decision tree:** insert "1. Generate HNF list from `supercells`" at the top; the rest of the tree is unchanged but now reads from a pre-computed HNF list rather than a volume range.
@@ -2373,7 +2373,7 @@ Yes, refactor now.
 > - **§6.10 worked example:** `supercells = VolumeRange(2:6)` etc.
 >
 > One commit, marked. The user-facing impact is one slightly more verbose call site per program.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 
 ```julia
 for s in enumerate(parent, sites; volume_range=2:10)
@@ -2451,9 +2451,9 @@ end
 <!-- END CLAUDE-RESPONSE -->
 That's a good distinction to keep straight. Remember this point when we are generating documentation and we are explaining the theory behind the algorithm.
 
-<!-- BEGIN CLAUDE-RESPONSE: documentation flag noted -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: documentation flag noted -->
 > **Claude:** Logged for the eventual user-doc / theory section: when explaining HNF symmetry classes, lead with the *defining* relation ("$H_2 \cong H_1$ iff there exists $R$ in the parent point group such that $H_1 R H_2^{-1}$ is unimodular"), and present the permutation-group isomorphism as a *consequence* — not the other way around. Same pattern for any other "symmetry equivalence" we explain.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 
 struct InequivalentCount
     total::BigInt
@@ -2496,7 +2496,7 @@ sites = Sites([Site(d, BitSet(0:2)) for d in hcp.dset])
 # equate!(sites, 1, 2)
 > this is kind of a silly example. If there are only two sites, and you declare each one the same, the enumeration is rather trivial, essentially equivalent to a 1-lattice. Doesn't really illustrate a real case. A more realistic case might be barium titenate (an example used in Spacey) where you could have configurational freedom on the A and B sites, but the oxigen sites are fixed. And maybe you can think of other cases where we'd want to enforce equivalency?
 
-<!-- BEGIN CLAUDE-RESPONSE: better example — perovskite + slab equivalencies -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: better example — perovskite + slab equivalencies -->
 > **Claude:** Agreed the 2-site HCP equivalencies example was contrived. Replacing with two patterns in the finalization commit:
 >
 > **Pattern A (inactive sites): Perovskite ABO₃, A and B substitutional, oxygens fixed.** A real materials use case (BaTiO₃, SrTiO₃-style). Five-site dset; A and B sites are active with substitutional freedom; three oxygen sites are *inactive* (single allowed label).
@@ -2537,7 +2537,7 @@ sites = Sites([Site(d, BitSet(0:2)) for d in hcp.dset])
 > ```
 >
 > Pattern A illustrates *inactive sites*; Pattern B illustrates *equivalencies* (in the sense clarified earlier in §6.2). Both are realistic; the original 2-site HCP example illustrated neither. Will replace §6.10 in the finalization commit.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 
 # 4. (Optional) constrain to a specific concentration.
 c = Concentration([1//3, 1//3, 1//3])    # equimolar ternary
@@ -2700,7 +2700,7 @@ Good
 <!-- END CLAUDE-RESPONSE -->
 <!-- I'm leaning towards something active, with a verb, or something that implies a conversion, something like hash2labeling or something. I want it to be really clear that we are converting from one representation to another. -->
 
-<!-- BEGIN CLAUDE-RESPONSE: Q6 brainstorm — verb-based names -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: Q6 brainstorm — verb-based names -->
 > **Claude:** Verb-based / conversion-implying brainstorm:
 >
 > 1. **`hash2labeling(s)`** — explicit conversion. Reads as "from hash to labeling form." Common Julia idiom (`base2int`, `string2int`, etc., though Julia stdlib prefers `parse`-style naming). Unambiguous about direction.
@@ -2715,11 +2715,14 @@ Good
 > If the priority is *consistency* across `L` (same name reads naturally regardless of which storage type the user has), **`to_labeling(s)`** wins — it's accurate as "convert to labeling form" for both the hash and the already-decoded cases.
 >
 > **My pick: `to_labeling(s)`.** Verb-implying via the Julia `to_X` convention; reads cleanly across all `L`; no false promises about hashes existing under the hood.
+This is my choice.
+
+
 >
 > **Backup pick: `hash2labeling(s)`** if you really want the explicitness about direction. The mild semantic mismatch with `Vector{Int8}` storage is a small cost given that nearly all users in practice will have hashes (the `Vector{Int8}` case is rare, just a small-enumeration default).
 >
 > Lock in either and we strip + finalize. Both are concrete improvements over `materialize`.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 7. **2D enumeration types.** `LatticeEnumeration2D` currently has its own (different) `SuperTile` etc. Should the 2D version reuse `ParentLattice` / `Sites` / `Supercell` (with 2×2 matrices instead of 3×3 via parametric dimension), or stay separate? Lean toward "reuse via dimension parameter" but it's invasive. This is tricky because I don't expect the 2D stuff to get used much (but surface scientist and layered materials people might really like it). I lean away from something invasive but we'll we regret it later if 2D applications go viral?
 
 <!-- BEGIN CLAUDE-RESPONSE: Q7 parametric dimension as cheap insurance -->
@@ -2756,9 +2759,9 @@ Good
 <!-- END CLAUDE-RESPONSE -->
 Let's do it now.
 
-<!-- BEGIN CLAUDE-RESPONSE: parametric D confirmed -->
+<!-- BEGIN CLAUDE-RESPONSE-NEW: parametric D confirmed -->
 > **Claude:** Applying in the finalization commit. Every type definition in §6 gets `{D}` parametrization (with constructors that infer `D` from the input matrix's first dimension). All current usage stays as `ParentLattice{3}` etc.; the 2D path stays in the standalone submodule for v0.2 but the type catalog is structurally ready to absorb 2D when needed.
-<!-- END CLAUDE-RESPONSE -->
+<!-- END CLAUDE-RESPONSE-NEW -->
 
 ### 6.14 What this enables for Phase 7+
 
