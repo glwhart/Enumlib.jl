@@ -59,7 +59,7 @@ That all sounds great.
 | 2 | Fortran enumlib codebase digest | done | Architecture + per-file digest + data types + two-algorithm toggle + inactive-sites overhaul + cross-cutting concerns + I/O formats. See Phase 2 section below. |
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | done | Capability inventory + gap analysis. See Phase 3 section below. |
 | 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | done | All five papers digested. |
-| 5 | Algorithmic dispatch strategy | not started | How the public API decides which algorithm to invoke. |
+| 5 | Algorithmic dispatch strategy | done | Public API surface + auto-dispatch decision tree + 5-mode algorithm catalogue + pre-flight gate + Fortran-comparison table. See Phase 5 section below. |
 | 6 | Data-structure design proposals | not started | Replacing `enumStr`; staging structs across the workflow. |
 | 7 | Misuse / scale-safety mechanisms | not started | Pre-flight estimators, `BigInt`, bit-hash dedup, soft caps. |
 | 8 | External literature survey | not started | The "big ask." Heuristic pass. Includes the Seko paper hunt. |
@@ -1376,4 +1376,238 @@ For the immediate rewrite (v0.1 → v0.2), focus on Pólya counting + the 2008/2
 
 ---
 
-*(Sections for Phases 5–12 will be appended below as they're produced.)*
+<!-- ============= BEGIN CLAUDE-ADD: Phase 5 section ============= -->
+
+## Phase 5 — Algorithmic dispatch strategy
+
+Phase 4 surfaced five algorithmic modes that the rewrite needs to support, plus pure counting. Phase 5 designs the *public-facing* API: one entry point, auto-dispatch with explicit override, separate top-level entry for counting, lazy iteration as default. Type names (`Site`, `Supercell`, `EnumeratedStructure`, etc.) are placeholders here — Phase 6 will lock them down.
+
+### 5.1 Goals
+
+- **One canonical user-facing function** for enumeration (`enumerate`), one for counting (`count_inequivalent`). No `polya=true` short-circuits hidden inside enumerate; counting is its own thing.
+- **Auto-dispatch by default**, explicit-override always available. Default behavior chooses the best-fit algorithm given inputs; users who know what they want pass `algorithm=:multinomial` or similar.
+- **Lazy iteration as default output** (per §3.2 review): `enumerate(...)` returns a `Channel`-like / `Iterator` that streams `EnumeratedStructure` values. `collect()` materializes when needed.
+- **BigInt-safe**: counts can be `BigInt`; labelings can be `BigInt` if the configuration space overflows `Int64` (binary $n>62$, ternary $n>39$, …).
+- **Pre-flight by default for scale safety**: when auto-dispatch detects an enumeration that would exceed a memory threshold, it raises a clear error suggesting either `algorithm=:recursive_stabilizer` (streams without the bitmap), `:bdd` (future), or `count_only=true`.
+
+### 5.2 The public API
+
+A small surface — three functions plus the kwargs.
+
+```julia
+# (1) Enumerate. Returns a lazy iterator.
+function enumerate(parent::ParentLattice,
+                   sites::Vector{Site};
+                   volume_range::AbstractRange{Int} = 1:10,
+                   concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
+                   fixed_cells::Union{Nothing, Vector{HNF}} = nothing,
+                   algorithm::Symbol = :auto,
+                   memory_budget::Int = 8 * 2^30,   # 8 GiB default
+                   on_overflow::Symbol = :error)    # :error, :warn, or :ignore
+    ...
+end
+
+# (2) Count without enumerating. Pólya / fixed-conc Pólya.
+function count_inequivalent(parent::ParentLattice,
+                            sites::Vector{Site};
+                            volume_range::AbstractRange{Int} = 1:10,
+                            concentration = nothing) :: BigInt
+    ...
+end
+
+# (3) Estimate memory + time for an upcoming enumeration. Wraps count_inequivalent
+#     and adds the per-mode bookkeeping cost. Returns a small struct so the user
+#     can decide whether to proceed.
+function estimate_cost(parent::ParentLattice,
+                       sites::Vector{Site};
+                       kwargs...) :: EnumerationCostEstimate
+    ...
+end
+```
+
+Three other things the API doesn't do:
+
+- **No file paths.** Reading `struct_enum.in` lives in `Enumlib.LegacyImport.read_struct_enum_in(path)` and returns the four arguments above. No magic-file loading from the main entry.
+- **No mutable state.** No `setupChebyTable(k)`-style side effects. Caches that are needed are computed once per call and live inside the iterator's state.
+- **No global config.** `memory_budget` and `on_overflow` are kwargs, not module-level settings.
+
+### 5.3 The algorithm modes
+
+Five live modes plus the future BDD slot:
+
+| `algorithm` value | Source paper | Memory | Best for | Status |
+|---|---|---|---|---|
+| `:exhaustive` | 2008 | $O(k^n)$ | Small $n$, no concentration restriction; reference correctness | v0.2 |
+| `:multinomial` | 2012, no site restrictions | $O(C)$ where $C = \binom{n}{a_1,\ldots,a_k}$ | Fixed concentration, no site restrictions | v0.2 |
+| `:multinomial_restricted` | 2012, backtracking tree | varies (typically $\ll C$) | Fixed concentration + site restrictions | v0.2 |
+| `:recursive_stabilizer` | Morgan 2017 | $O(\text{tree size})$, streaming | Large $n$, $k \ge 3$, no memory bound | **v0.2 priority** (default) |
+| `:bdd` | Shinohara 2020 | $O(\text{ZDD nodes})$ | Memory-bound very-large enumerations | v0.3 |
+| `:auto` | dispatch (this section) | — | default | v0.2 |
+
+Plus pure counting (no enumeration generated):
+
+| `count_inequivalent` mode | Source | Notes |
+|---|---|---|
+| Full Pólya | Pólya 1937 + Rosenbrock 2016 numerical implementation | Counts at all concentrations |
+| Fixed-concentration Pólya | HNF 2012 Appendix A.2 | Counts at a target multiplicity vector |
+
+The Rosenbrock 2016 paper (`papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`) provides the numerical algorithm that makes these counts cheap in practice — to be digested as §4.6 in a follow-up Phase 4 commit.
+
+### 5.4 The auto-dispatch decision tree
+
+`algorithm = :auto` walks a decision tree. The tree is short:
+
+```
+Inputs: parent, sites, volume_range, concentration, fixed_cells, memory_budget
+
+1. If `concentration == nothing` (no concentration restriction):
+   1a. Estimate `total = sum(k^(n*nD) for n in volume_range)` (or BigInt).
+   1b. If `total * sizeof(visited_bit) ≤ memory_budget`:
+       → :exhaustive  (2008 algorithm, full crossing-out)
+   1c. Else:
+       → :recursive_stabilizer  (2017 streaming tree)
+
+2. Else (concentration restriction is set):
+   2a. If `any(site.allowed_labels has < k labels for site in sites)` (site restrictions):
+       → :multinomial_restricted  (2012 backtracking)
+   2b. Else:
+       2b.i. Estimate `C = sum(multinomial(n*nD; concentration*n*nD) for n in volume_range)`.
+       2b.ii. If `C * sizeof(visited_bit) ≤ memory_budget`:
+              → :multinomial  (2012 crossing-out)
+       2b.iii. Else:
+              → :recursive_stabilizer  (2017, also handles fixed concentration)
+```
+
+A few notes:
+
+- **`:recursive_stabilizer` is the catch-all for "too big to materialize."** Per Morgan 2017 it streams without keeping a global bitmap, so it's robust to large enumerations.
+- **`:bdd` is not in `:auto` for v0.2.** When implemented, it slots in as a memory-pressure fallback below `:recursive_stabilizer`. Currently the user opts in explicitly.
+- **Concentration *range* (vs single concentration) decomposes** into a sequence of single-concentration enumerations at each step in the range. The dispatch above runs per concentration; if the chosen mode varies across the range, that's fine — the iterator yields from whichever sub-mode is active.
+- **`fixed_cells` (constraining HNFs to a user-supplied list) doesn't change the dispatch** — it just restricts the HNF set fed into whichever algorithm runs.
+
+### 5.5 The pre-flight gate
+
+Even with `:auto`, very large requests will overflow the chosen algorithm's resources (e.g., user asks for binary $n=70$ at all concentrations — the bitmap alone is $2^{70}$ bits = 128 EiB). The pre-flight check happens *before* the iterator starts emitting:
+
+```julia
+estimate = estimate_cost(parent, sites; kwargs...)
+if estimate.peak_memory > memory_budget
+    on_overflow == :error  && throw(EnumerationTooLargeError(estimate))
+    on_overflow == :warn   && @warn "Enumeration may exceed memory budget" estimate
+    on_overflow == :ignore && nothing
+end
+```
+
+`EnumerationTooLargeError` carries the estimate and a suggested mitigation (often "use `:recursive_stabilizer`" or "set `concentration=...` to narrow the search"). This is the user-protection feature §2.10 #1 (the hardwired `max_binomial`) deserved but never got.
+
+### 5.6 What `enumerate(...)` actually yields
+
+The iterator's element type is `EnumeratedStructure` (Phase 6 will lock this; provisional shape):
+
+```julia
+struct EnumeratedStructure
+    supercell_id::Int           # index into a separate Vector{Supercell}, shared across structures
+    labeling::LabelingRepresentation   # Vector{Int8} or Int (BigInt) — see §6 for choice
+    hnf_degeneracy::Int
+    labeling_degeneracy::Int
+    concentration::Vector{Int}   # multiplicities (a_1, ..., a_k)
+end
+```
+
+The iterator also makes the `Vector{Supercell}` reachable so the user can access HNF/SNF for each yielded structure without re-computation. Two convenience accessors close the loop:
+
+```julia
+hnf(s::EnumeratedStructure, enum::Enumeration)        :: SMatrix{3,3,Int}
+real_space_atoms(s, enum) :: Vector{SVector{3,Float64}}   # the (HNF, labeling) → atomic positions mapping
+```
+
+`real_space_atoms` is `map_enumStr_to_real_space` from the Fortran's `enumeration_utilities.f90`. It's the missing piece for DFT-output workflows (POSCAR writing etc.) per §3.4 priority (1).
+
+### 5.7 Multilattice and inactive-site handling — orthogonal to dispatch
+
+**Multilattice.** Multilattices ($n_D > 1$) don't affect dispatch at all. They affect the *sizes* the dispatch sees: a binary $n=10$ HCP enumeration has $n \cdot n_D = 20$ "effective sites" feeding into the labeling space. The decision tree applies to $n \cdot n_D$ uniformly.
+
+**Inactive sites and equivalencies.** Same story: they're normalized into the `Vector{Site}` at the API boundary (any site with a single allowed label is "inactive"; any pair of sites with `equivalent_to == j` collapses into a Union-Find class), and the algorithm sees only the *active*, *canonical* sites. The internal representation is unified — Phase 6 design point — and dispatch is concentration-and-site-restriction-aware via the kwargs above.
+
+This is the cleanup of the Fortran's parallel-array soup (`dFull/d`, `labelFull/label`, `equivalencies`, `inactives`) into a single `Vector{Site}`: dispatch reads what it needs from that vector, no special-casing.
+
+### 5.8 Worked examples
+
+```julia
+using Enumlib
+
+# FCC binary, all concentrations, up to 12 sites — exhaustive (2008) auto-picked.
+fcc = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+sites = [Site(zero_position, allowed=[0,1])]
+for s in enumerate(fcc, sites; volume_range=1:12)
+    write_poscar("POSCAR.$(s.supercell_id).$(s.labeling)", s, fcc, sites)
+end
+
+# Fixed-concentration Ag–Pt 15:17 in a 32-site cell — multinomial (2012) auto-picked.
+agpt_sites = [Site(zero_position, allowed=[0,1])]
+agpt = enumerate(fcc, agpt_sites;
+                 volume_range=32:32,
+                 concentration=Concentration([15, 17]))
+println(length(collect(agpt)), " distinct 15:17 structures")
+
+# HCP ternary, n up to 8 — recursive_stabilizer (2017) auto-picked because |D|=2
+# pushes the labeling-space size past the memory budget.
+hcp = ParentLattice(hcp_basis, dset=[zero, hcp_offset])
+hcp_sites = [Site(p, allowed=[0,1,2]) for p in hcp.dset]
+hcp_struct = enumerate(hcp, hcp_sites; volume_range=1:8)
+
+# Pre-flight: how many configurations would FCC quaternary n=20 produce?
+n_struct = count_inequivalent(fcc, [Site(zero, allowed=[0,1,2,3])];
+                              volume_range=20:20)
+@show n_struct       # BigInt; useful for sanity-checking before launching
+
+# Explicit override: force the recursive-stabilizer tree even when auto would pick exhaustive.
+for s in enumerate(fcc, sites;
+                   volume_range=1:6,
+                   algorithm=:recursive_stabilizer)
+    process(s)
+end
+```
+
+### 5.9 Decision points for Phase 6 (open)
+
+These are the threads Phase 6 needs to settle so Phase 5 can be implemented:
+
+1. **`Site` representation** — already discussed; Union-Find for equivalencies, `BitSet` for `allowed_labels`, etc.
+2. **`Concentration` vs `ConcentrationRange`** — single multiplicity vector vs. min/max/denom triples per species. Range decomposition into a list of single-concentration calls happens inside the dispatcher.
+3. **`LabelingRepresentation`** — `Vector{Int8}` (decoded) vs `Int64`/`BigInt` (hash). Phase 4-review §2.8 flagged this as a Phase 6 decision; my tentative is "Vector{Int8} for v0.1 default; integer-hash representation as an opt-in for memory-bound cases."
+4. **Iterator implementation choice** — `Channel{EnumeratedStructure}`, custom `iterate` method on a state struct, or `Base.AsyncCollections.@spawnall`-style. Each algorithm mode wants different things; the dispatcher hides this behind the common `Iterator{EnumeratedStructure}` interface.
+5. **`fixed_cells` shape** — `Vector{HNF}` of integer matrices, or a more structured `FixedCells` carrying user-supplied symmetry info if any. Phase 6 design point.
+6. **Where `:bdd` slots in** — in `:auto`'s decision tree once implemented (v0.3+); for now it's user-opt-in only.
+
+### 5.10 Comparison with the Fortran dispatch
+
+To be explicit about what's being replaced:
+
+| Fortran | Julia equivalent |
+|---|---|
+| `driver.f90 + driver_polya.f90` (CLI executables) | `enumerate(...)` and `count_inequivalent(...)` (functions) |
+| `polya=true/false` flag | Separate function `count_inequivalent` |
+| `origCrossOutAlgorithm=true/false` flag | `algorithm=:exhaustive`, `:multinomial`, `:multinomial_restricted`, `:recursive_stabilizer`, `:bdd` |
+| Hardwired `max_binomial = 1E10` threshold (`derivative_structure_generator.f90:1268`) | `memory_budget` kwarg with explicit error / warning |
+| `concCheck=true/false` + `cRange` | `concentration::Union{Nothing, Concentration, ConcentrationRange}` |
+| Site restriction inferred from `digit < k` | First-class via `Site.allowed_labels` |
+| Inactive sites detected via `digit == 1` | First-class via `Site` with single `allowed_labels` |
+| Implicit `inactives` table populated by `make_inactive_table` | Implicit in the `Vector{Site}` after construction; no separate table |
+| Equivalencies as a `nD`-element integer array | Union-Find inside `Vector{Site}` |
+| Direct write to unit 14 | Iterator yielding `EnumeratedStructure` values |
+
+The named-symbol algorithm choice + auto-dispatch + memory-budget kwarg replace three separate Fortran knobs (`origCrossOutAlgorithm`, `polya`, `max_binomial`) with a coherent API. The first-class `Site` type subsumes four parallel arrays. The iterator subsumes the file-output coupling.
+
+### 5.11 Open questions for the user
+
+1. **Defaults.** I've defaulted `volume_range = 1:10`, `memory_budget = 8 GiB`, `on_overflow = :error`. Reasonable? The volume default in particular is a guess — it's small enough to be safe, but a user wanting a serious enumeration will always pass their own. Alternative: no default, force the user to specify.
+2. **`count_inequivalent`'s return.** I have it returning `BigInt`. Could also return a struct that breaks the count down by volume / concentration / supercell. Useful when the user wants to see "where are all my structures coming from." Worth it, or wait?
+3. **`estimate_cost` separate function.** I split it from `enumerate` — i.e., a user can call `estimate_cost(...)` to see the predicted memory before deciding to launch. Necessary, or just bake it into the pre-flight inside `enumerate`?
+4. **Future: streaming compute callbacks.** A common pattern would be `enumerate(...; on_each = s -> compute_energy(s))` so the user doesn't have to wire up an explicit `for` loop. Worth supporting from v0.2, or leave it to the user to compose `for` over the iterator?
+
+<!-- ============= END CLAUDE-ADD: Phase 5 section ============= -->
+
+---
+
+*(Sections for Phases 6–12 will be appended below as they're produced.)*
