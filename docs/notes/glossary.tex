@@ -204,6 +204,37 @@ Forcade's combinatorial trick for enumerating distinct ordered
 arrangements of multisets in $O(N)$ time. Underlies the labeling
 enumeration in fixed-concentration cases.
 (See \texttt{multiperms.pdf}; original work in Forcade 2010 notes.)
+
+\item[Inactive site]
+A dset position whose set of allowed species has size 1 --- the species
+is locked, contributing no configurational freedom. Inactive sites are
+stripped from the labeling space before enumeration starts and re-inserted
+into the output afterward with their hardcoded species. Examples: the
+oxygen sites in a perovskite \mbox{ABO\textsubscript{3}} enumeration, where
+A and B sublattices are substitutional but the O sublattice is fixed.
+The convention originates with the UNCLE code; the same name is kept
+here.
+
+\item[Equivalent sites]
+Two distinct dset positions that the user declares must always carry the
+\emph{same} species label across configurations, even though both
+sites individually retain configurational freedom. Both sites
+participate in the enumeration but the dispatcher passes only one
+representative of each equivalence class to the algorithm; after
+enumeration, every member of the class receives the canonical's label.
+This is distinct from inactive sites: equivalent sites \emph{have} a
+choice (multiple allowed species), but they share whatever choice is
+made.
+
+\item[Equivalencies]
+The user-declared partition of dset positions into equivalence classes
+of equivalent sites; the union of all \texttt{equate!(sites, i, j)}
+calls (or, equivalently, the upfront \texttt{Sites(list, classes)}
+constructor argument). Equivalencies are \emph{not} derived from the
+parent space group --- they capture user-asserted constraints that the
+parent symmetry doesn't see, such as mirror-image layers in a slab
+geometry where the vacuum has broken 3D periodicity but the user knows
+the layers should share their composition.
 \end{description}
 
 \section{Concentration / site restriction}

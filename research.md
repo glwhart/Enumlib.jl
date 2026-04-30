@@ -1396,21 +1396,27 @@ A small surface — three functions plus the kwargs.
 ```julia
 # (1) Enumerate. Returns a lazy iterator.
 function enumerate(parent::ParentLattice,
-                   sites::Vector{Site};
-                   volume_range::AbstractRange{Int},     # required (no default — see §5.11 Q1)
+                   sites::Sites;
+                   supercells::SupercellSelection,                       # required (see §6.x)
                    concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
-                   fixed_cells::Union{Nothing, Vector{HNF}} = nothing,
                    algorithm::Symbol = :auto,
                    memory_budget::Int = 8 * 2^30,   # 8 GiB default
                    on_overflow::Symbol = :error)    # :error, :warn, or :ignore
     ...
 end
 
+# (1a) Same iteration but applied via callback (do-block friendly).
+function enumerate_each(callback, parent::ParentLattice, sites::Sites;
+                        supercells::SupercellSelection, kwargs...)
+    ...
+end
+
 # (2) Count without enumerating. Pólya / fixed-conc Pólya.
 function count_inequivalent(parent::ParentLattice,
-                            sites::Vector{Site};
-                            volume_range::AbstractRange{Int} = 1:10,
-                            concentration = nothing) :: BigInt
+                            sites::Sites;
+                            supercells::SupercellSelection,
+                            concentration = nothing,
+                            breakdown::Bool = false)   # → BigInt or InequivalentCount
     ...
 end
 
@@ -1418,7 +1424,8 @@ end
 #     and adds the per-mode bookkeeping cost. Returns a small struct so the user
 #     can decide whether to proceed.
 function estimate_cost(parent::ParentLattice,
-                       sites::Vector{Site};
+                       sites::Sites;
+                       supercells::SupercellSelection,
                        kwargs...) :: EnumerationCostEstimate
     ...
 end
@@ -1522,10 +1529,14 @@ I accept your recommendation
 `algorithm = :auto` walks a decision tree. The tree is short:
 
 ```
-Inputs: parent, sites, volume_range, concentration, fixed_cells, memory_budget
+Inputs: parent, sites, supercells, concentration, memory_budget
+
+0. Generate the HNF list from `supercells` (one of VolumeRange / RadiusBound / ExplicitHNFs).
+   The downstream tree is unchanged regardless of source — it just operates on the
+   resulting Vector{HNF}.
 
 1. If `concentration == nothing` (no concentration restriction):
-   1a. Estimate `total = sum(k^(n*nD) for n in volume_range)` (or BigInt).
+   1a. Estimate `total = sum(k^(n*nD) for hnf in hnfs)` where n = volume(hnf).
    1b. If `total * sizeof(visited_bit) ≤ memory_budget`:
        → :exhaustive  (2008 algorithm, full crossing-out)
    1c. Else:
@@ -1535,7 +1546,7 @@ Inputs: parent, sites, volume_range, concentration, fixed_cells, memory_budget
    2a. If `any(site.allowed_labels has < k labels for site in sites)` (site restrictions):
        → :multinomial_restricted  (2012 backtracking)
    2b. Else:
-       2b.i. Estimate `C = sum(multinomial(n*nD; concentration*n*nD) for n in volume_range)`.
+       2b.i. Estimate `C = sum(multinomial(n*nD; concentration*n*nD) for hnf in hnfs)`.
        2b.ii. If `C * sizeof(visited_bit) ≤ memory_budget`:
               → :multinomial  (2012 crossing-out)
        2b.iii. Else:
@@ -1546,7 +1557,7 @@ A few notes:
 
 - **`:recursive_stabilizer` is the catch-all for "too big to materialize."** Per Morgan 2017 it streams without keeping a global bitmap, so it's robust to large enumerations.
 - **`:bdd` is not in `:auto` for v0.2.** When implemented, it slots in as a memory-pressure fallback below `:recursive_stabilizer`. Currently the user opts in explicitly.
-- **`fixed_cells` (constraining HNFs to a user-supplied list) doesn't change the dispatch** — it just restricts the HNF set fed into whichever algorithm runs.
+- **The `supercells` selection (VolumeRange, RadiusBound, ExplicitHNFs) doesn't change the dispatch** — it just determines the HNF list fed into whichever algorithm runs.
 
 ### 5.5 The pre-flight gate
 
@@ -1601,33 +1612,45 @@ using Enumlib
 
 # FCC binary, all concentrations, up to 12 sites — exhaustive (2008) auto-picked.
 fcc = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
-sites = [Site(zero_position, allowed=[0,1])]
-for s in enumerate(fcc, sites; volume_range=1:12)
+sites = Sites([Site(zero_position, BitSet([0,1]))])
+for s in enumerate(fcc, sites; supercells = VolumeRange(1:12))
     write_poscar("POSCAR.$(s.supercell_id).$(s.labeling)", s, fcc, sites)
 end
 
 # Fixed-concentration Ag–Pt 15:17 in a 32-site cell — multinomial (2012) auto-picked.
-agpt_sites = [Site(zero_position, allowed=[0,1])]
+agpt_sites = Sites([Site(zero_position, BitSet([0,1]))])
 agpt = enumerate(fcc, agpt_sites;
-                 volume_range=32:32,
-                 concentration=Concentration([15, 17]))
+                 supercells = VolumeRange(32:32),
+                 concentration = Concentration_ratio([15, 17]))
 println(length(collect(agpt)), " distinct 15:17 structures")
 
 # HCP ternary, n up to 8 — recursive_stabilizer (2017) auto-picked because |D|=2
 # pushes the labeling-space size past the memory budget.
-hcp = ParentLattice(hcp_basis, dset=[zero, hcp_offset])
-hcp_sites = [Site(p, allowed=[0,1,2]) for p in hcp.dset]
-hcp_struct = enumerate(hcp, hcp_sites; volume_range=1:8)
+hcp = ParentLattice(hcp_basis, [zero, hcp_offset])
+hcp_sites = Sites([Site(p, BitSet([0,1,2])) for p in hcp.dset])
+hcp_struct = enumerate(hcp, hcp_sites; supercells = VolumeRange(1:8))
+
+# Radius-bounded enumeration (Minkowski-reduced cell radius ≤ 3 parent radii).
+for s in enumerate(fcc, sites; supercells = RadiusBound(max_radius = 3.0))
+    process(s)
+end
+
+# User-supplied HNF list (e.g., a curated set from a domain-specific filter).
+my_hnfs = filter(some_predicate, all_hnfs_in_volume_range)
+for s in enumerate(fcc, sites; supercells = ExplicitHNFs(my_hnfs))
+    process(s)
+end
 
 # Pre-flight: how many configurations would FCC quaternary n=20 produce?
-n_struct = count_inequivalent(fcc, [Site(zero, allowed=[0,1,2,3])];
-                              volume_range=20:20)
+n_struct = count_inequivalent(fcc, Sites([Site(zero, BitSet([0,1,2,3]))]);
+                              supercells = VolumeRange(20:20))
 @show n_struct       # BigInt; useful for sanity-checking before launching
 
-# Explicit override: force the recursive-stabilizer tree even when auto would pick exhaustive.
+# Explicit algorithm override: force the recursive-stabilizer tree even when auto
+# would pick exhaustive.
 for s in enumerate(fcc, sites;
-                   volume_range=1:6,
-                   algorithm=:recursive_stabilizer)
+                   supercells = VolumeRange(1:6),
+                   algorithm = :recursive_stabilizer)
     process(s)
 end
 ```
@@ -1654,21 +1677,18 @@ To be explicit about what's being replaced:
 | `origCrossOutAlgorithm=true/false` flag | `algorithm=:exhaustive`, `:multinomial`, `:multinomial_restricted`, `:recursive_stabilizer`, `:bdd` |
 | Hardwired `max_binomial = 1E10` threshold (`derivative_structure_generator.f90:1268`) | `memory_budget` kwarg with explicit error / warning |
 | `concCheck=true/false` + `cRange` | `concentration::Union{Nothing, Concentration, ConcentrationRange}` |
+| Implicit "loop over n in volume_range" | First-class via `supercells::SupercellSelection` (`VolumeRange`, `RadiusBound`, `ExplicitHNFs`) |
 | Site restriction inferred from `digit < k` | First-class via `Site.allowed_labels` |
 | Inactive sites detected via `digit == 1` | First-class via `Site` with single `allowed_labels` |
-| Implicit `inactives` table populated by `make_inactive_table` | Implicit in the `Vector{Site}` after construction; no separate table |
-| Equivalencies as a `nD`-element integer array | Union-Find inside `Vector{Site}` |
+| Implicit `inactives` table populated by `make_inactive_table` | Implicit in the `Sites` collection after construction; no separate table |
+| Equivalencies as a `nD`-element integer array | Union-Find inside `Sites` |
 | Direct write to unit 14 | Iterator yielding `EnumeratedStructure` values |
 
 The named-symbol algorithm choice + auto-dispatch + memory-budget kwarg replace three separate Fortran knobs (`origCrossOutAlgorithm`, `polya`, `max_binomial`) with a coherent API. The first-class `Site` type subsumes four parallel arrays. The iterator subsumes the file-output coupling.
 
 ### 5.11 Open questions for the user
 
-1. **Defaults.** I've defaulted `volume_range = 1:10`, `memory_budget = 8 GiB`, `on_overflow = :error`. Reasonable? The volume default in particular is a guess — it's small enough to be safe, but a user wanting a serious enumeration will always pass their own. Alternative: no default, force the user to specify. No default is my preference.
-
-> **Claude:** Updated the function signature in §5.2 to drop the default — `volume_range::AbstractRange{Int}` is now required. Calling `enumerate(parent, sites)` without it is a `MethodError`. Forces the user to think about the search space rather than silently accept whatever I picked.
->
-> Keeping `memory_budget = 8 GiB` and `on_overflow = :error` defaults — those are *safe* defaults (they protect the user from accidentally launching a too-large run), and the user almost never wants to override them on the first call. If you'd prefer those required too, easy change.
+1. **Defaults.** Resolved by the SupercellSelection refactor (Q7 below): `supercells::SupercellSelection` is required (no default), so the user always names their search space (`VolumeRange(1:10)`, `RadiusBound(...)`, or `ExplicitHNFs(...)`). `memory_budget = 8 GiB` and `on_overflow = :error` are kept as safe defaults — they protect the user from accidentally launching a too-large run; almost no one overrides them on the first call.
 
 2. **`count_inequivalent`'s return.** I have it returning `BigInt`. Could also return a struct that breaks the count down by volume / concentration / supercell. Useful when the user wants to see "where are all my structures coming from." Worth it, or wait? Tell me more about the possibility of returning the struct with more info
 
@@ -1823,7 +1843,6 @@ Go with two functions
 
 ---
 
-<!-- ============= BEGIN CLAUDE-ADD: Phase 6 section ============= -->
 
 ## Phase 6 — Data-structure design proposals
 
@@ -1849,7 +1868,6 @@ Five rules I'll apply consistently below:
 
 Tell me more about how we are planning to use `Site` and `Sites` types.
 
-<!-- BEGIN CLAUDE-RESPONSE: Site/Sites usage -->
 > **Claude:** Both types are about *describing the user's substitution problem* before any enumeration runs:
 >
 > - **`Site`** is one position in (or near) the parent cell where atomic substitution can happen. It carries (a) the position itself and (b) the set of allowed atomic species at that position. The set determines whether the site is "active" (>1 species allowed → free configurational variable) or "inactive" (1 species allowed → fixed, doesn't enumerate).
@@ -1857,7 +1875,6 @@ Tell me more about how we are planning to use `Site` and `Sites` types.
 >
 > **Construction flow.** The user typically starts with the dset of the parent lattice (say, 2 sites for HCP), creates one `Site` per dset element with whatever species each can host, and wraps them in `Sites`. Then optionally calls `equate!(sites, i, j)` to declare equivalencies. Be "equivalencies" we mean that the two sites are connected by a symmetry? Or that the same label *must* be present on both sites - no configurational degree of freedom? The latter were called inactive sites in the UNCLE code, iirc. I'm just trying to get the terminology correct...  
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: equivalencies vs inactive terminology -->
 > **Claude:** Important distinction — nailing it down so we use it consistently:
 >
 > | Concept | Definition | Behavior in enumeration |
@@ -1878,7 +1895,6 @@ Tell me more about how we are planning to use `Site` and `Sites` types.
 > - Equivalent sites *participate* in the enumeration but contribute one "effective site" per equivalence class. The dispatcher passes only the canonical representative to the algorithm; after enumeration, every member of the class gets the canonical's label copied in.
 >
 > Adding both definitions (and "equivalencies" as the partition relation) to `docs/notes/glossary.tex` in the finalization commit so the terminology is locked in for Phase 7+.
-<!-- END CLAUDE-RESPONSE-NEW -->
 >
 > **Algorithm consumption.** The dispatcher (`enumerate(...)`) reads `Sites` to know:
 > 1. The number of "effective sites" per parent cell = number of *active*, *canonical* sites = `length(active_canonical_sites(sites))`.
@@ -1886,28 +1902,32 @@ Tell me more about how we are planning to use `Site` and `Sites` types.
 > 3. The equivalence partition — collapses configurations differing only by relabelings of equivalent sites.
 >
 > **Why bundle them into `Sites` rather than passing a `Vector{Site}` and a separate equivalencies argument:** the equivalence relation is a property of the *set* of sites, not of any individual site. Bundling makes the invariant ("equivalencies index into this list") representable in the type. Two `Sites` with different equivalence partitions are different inputs even if their `list` matches.
-<!-- END CLAUDE-RESPONSE -->
+
+All type definitions below are parametric on dimension `D` (almost always 3); `D` is inferred from the input matrix's first dimension at construction. The `D` parameter is documented in each section but rarely written explicitly by users.
 
 | Type | Purpose | Mutability | Notes |
 |---|---|---|---|
-| `ParentLattice` | The crystal: basis vectors + dset (multilattice basis sites) + cached point group | immutable | Constructed once per study; reused across many `enumerate` calls |
-| `Site` | Per-dset-site description: position + allowed atomic species | immutable | One per element of the dset, then potentially expanded with site-restriction sites |
-| `Sites` | Collection of `Site` plus an `IntDisjointSets` for equivalencies | mutable* | *Only the disjoint-set is mutable, for `equate!` calls during construction |
+| `ParentLattice{D}` | The multilattice: basis vectors + dset + cached space group | immutable | Constructed once per study; reused across many `enumerate` calls |
+| `SymmetryOp{D}` | A space-group operation: rotation `R` (lattice coords) + fractional translation `t` | immutable | For a Bravais lattice, all `t == 0` |
+| `Site{D}` | Per-dset-site description: position + allowed atomic species | immutable | One per element of the dset, then potentially expanded with site-restriction sites |
+| `Sites{D}` | Collection of `Site{D}` plus an `IntDisjointSets` for equivalencies | mutable* | *Only the disjoint-set is mutable, for `equate!` calls during construction |
 | `Concentration` | A single concentration: `Vector{Rational{Int}}` summing to 1 | immutable | Used for fixed-concentration enumeration |
 | `ConcentrationRange` | Per-species (min, max) Rational bounds | immutable | Decomposes into a list of `Concentration`s at each cell volume |
-| `HNF` | Validated lower-triangular integer 3×3 matrix | immutable | Inner constructor enforces HNF bounds |
-| `Supercell` | An HNF + cached SNF diagonal + cached permutation group | immutable | One per symmetry-distinct HNF class; shared by many `EnumeratedStructure`s |
-| `Enumeration{L}` | Top-level result: parent + sites + supercells + structures, parametrized by labeling representation `L` | immutable | Iterable and indexable |
-| `EnumeratedStructure{L}` | A single enumerated structure: supercell ref + labeling + degeneracies + concentration | immutable | Yielded by iteration over `Enumeration{L}` |
+| `HNF{D}` | Validated lower-triangular integer D×D matrix | immutable | Inner constructor enforces HNF bounds |
+| `Supercell{D}` | An HNF + cached SNF diagonal + cached permutation group | immutable | One per symmetry-distinct HNF class; shared by many `EnumeratedStructure`s |
+| `SupercellSelection` | Abstract type — how to pick the HNF list to enumerate over | — | Concrete subtypes below |
+| `VolumeRange <: SupercellSelection` | Enumerate all HNFs with `det ∈ range` | immutable | Most common; replaces the old `volume_range` kwarg |
+| `RadiusBound <: SupercellSelection` | Enumerate HNFs with Minkowski-reduced radius ≤ threshold | immutable | Hooks into the existing radiusEnumeration logic |
+| `ExplicitHNFs{D} <: SupercellSelection` | User-supplied list of HNFs | immutable | Replaces the old `fixed_cells` kwarg |
+| `Enumeration{D,L}` | Top-level result: parent + sites + supercells + structures | immutable | Parametric on dimension `D` and labeling representation `L`; iterable and indexable |
+| `EnumeratedStructure{D,L}` | A single enumerated structure: supercell ref + labeling + degeneracies + concentration | immutable | Yielded by iteration over `Enumeration{D,L}` |
 | `InequivalentCount` | Pólya-derived count, total + breakdowns | immutable | Returned by `count_inequivalent(...; breakdown=true)` |
-| `EnumerationCostEstimate` | Pre-flight prediction: count + peak memory + walltime + chosen algorithm | immutable | Returned by `estimate_cost(...)` |
-| `HNFClass` | Symmetry-equivalence class of HNFs at a given volume | immutable | Used inside `InequivalentCount.by_hnf_class` |
+| `EnumerationCostEstimate` | Pre-flight prediction: count + peak memory + walltime + chosen algorithm + selection method | immutable | Returned by `estimate_cost(...)` |
+| `HNFClass{D}` | Symmetry-equivalence class of HNFs at a given volume | immutable | Used inside `InequivalentCount.by_hnf_class` |
 
 The full graph fits on one screen. No parallel arrays, no dead types, no Fortran-format encodings. What do you mean the "full graph fit on one screen"?
 
-<!-- BEGIN CLAUDE-RESPONSE: type-graph-fits-on-screen -->
 > **Claude:** Just meant the type-relationship diagram (which type holds which other type) is visually small — no chains of indirection, no 20-deep type hierarchies. The composition depth is roughly `ParentLattice → Sites → Supercell → EnumeratedStructure → Enumeration` and that's it. Removing the metaphor: the catalog is small enough to read top-to-bottom in one sitting and hold in your head.
-<!-- END CLAUDE-RESPONSE -->
 Got it. Thanks.
 
 ### 6.3 `ParentLattice`
@@ -1915,27 +1935,31 @@ Got it. Thanks.
 The geometric description of the parent multilattice: basis vectors + dset (no atomic species — those enter via `Sites`).
 Technicially I wouldn't call it a "parent crystal" It has a dset, but that just makes it a multilattice, not a crystal. A crystal defines atoms at each point
 
-<!-- BEGIN CLAUDE-RESPONSE: parent-lattice not parent-crystal -->
 > **Claude:** Fair point — corrected. A crystal includes both the lattice and the species at each site; `ParentLattice` only captures the *lattice* (basis + dset positions) without committing to species. The species enter via `Sites`, separately. The Fortran also called this a "parent lattice" (`parLV` / `pLat`), so the rename is just my drift.
-<!-- END CLAUDE-RESPONSE -->
 
 ```julia
 using StaticArrays
-using Spacey: pointGroup    # symmetry library; returns lattice-coord rotations
+using Spacey: Crystal, spacegroup    # symmetry library; spacegroup currently a stub upstream — see Phase 8 task
 
-struct ParentLattice
-    A::SMatrix{3,3,Float64,9}            # column j is the j-th basis vector (Cartesian)
-    dset::Vector{SVector{3,Float64}}     # basis sites in fractional coords (within [0,1)^3)
-    point_group::Vector{SMatrix{3,3,Int,9}}   # lattice point group in lattice coords (Spacey.jl's `pointGroup(A)` output) not fortran's terminology but in Spacey.jl's terminology
+# A space-group operation in lattice coordinates. For a single Bravais lattice
+# all `t` are zero; for a multilattice the dset induces fractional translations
+# (screws / glides) that must be tracked.
+struct SymmetryOp{D}
+    R::SMatrix{D,D,Int}              # lattice-coord rotation/reflection
+    t::SVector{D,Float64}            # fractional translation in [0,1)^D
+end
 
-    function ParentLattice(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector})
-        @assert size(A) == (3, 3) "Basis matrix must be 3×3"
+struct ParentLattice{D}
+    A::SMatrix{D,D,Float64}              # column j is the j-th basis vector (Cartesian)
+    dset::Vector{SVector{D,Float64}}     # basis sites in fractional coords (within [0,1)^D)
+    space_group::Vector{SymmetryOp{D}}   # multilattice space group: rotation + fractional translation
+
+    function ParentLattice{D}(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector}) where D
+        @assert size(A) == (D, D) "Basis matrix must be $D×$D"
         @assert det(A) > 0 "Basis matrix must have positive determinant (right-handed)"
         @assert all(0 .<= d .< 1 for d in dset) "All d-vectors must be in [0,1)"
-        # @assert any(iszero, dset) "dset must contain the origin (convention)"  -- removed per user feedback
         Have we insisted on this in the past? Not sure we want to. What about diamond? If we put the origin at the inversion site between the two atoms then the hamiltonian matrix becomes real, instead of complex in DFT calculations. This is just an example. What is the reason for insisting the dset contain the origin. I don't remember doing that in the past.
 
-<!-- BEGIN CLAUDE-RESPONSE: dset-origin assertion removed -->
 > **Claude:** You're right — the assertion was wrong, removing. The Fortran code doesn't enforce it (I checked), and your diamond/inversion-site example is a real case where the origin should be elsewhere. The convention I imported was just my error.
 >
 > The math doesn't require the origin in the dset: `getCartesianPts` and the interior-points loops iterate over `(HNF translations) × (dset positions)` regardless of where the dset is anchored. Updated the constructor to drop the assertion (commented out above; will be deleted on the cleanup pass).
@@ -1944,7 +1968,6 @@ struct ParentLattice
 
 Well, calculating the "pointgroup" of a lattice with a dset is equivalent to calculating the "spacegroup" of a crystal where the dset is all atoms of the same type. Fractional translations must be included in the symmetries of a multilattice. Pointgroup only applies to simple lattices.
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: space group vs point group — correctness fix -->
 > **Claude:** Correct, and this is a real correctness issue I missed. `pointGroup(A)` returns only the *Bravais lattice's* point-group symmetries (rotations/reflections that fix the lattice as a geometric object, no fractional translations). For a multilattice $M = L + D$, the relevant symmetry group is the *space group* of $M$ when the dset is treated as same-species atoms — and that includes screws and glides (rotations combined with fractional translations).
 >
 > The Fortran code handles this distinction: `LG` is the lattice point group, but `get_dvector_permutations` then computes how each lattice rotation $N$ acts on the dset, finding the necessary fractional translation $d_N \in D$ such that $f_N(x) = Nx + d_N$ is actually a symmetry of $M$ (Hart-Forcade 2009 §IV / Appendix). So Fortran *does* compute the space-group symmetries; it just stores the point-group rotations and the dset-translation pairs separately.
@@ -1978,7 +2001,6 @@ Well, calculating the "pointgroup" of a lattice with a dset is equivalent to cal
 
 Same question as above. I must be missing something.
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: Spacey spacegroup — actual state -->
 > **Claude:** You're right conceptually, and I was being unnecessarily vague. Let me give the precise picture after actually checking Spacey's source.
 >
 > Spacey **does** define the type and function we want:
@@ -2005,31 +2027,31 @@ Same question as above. I must be missing something.
 > **My recommendation:** option 1. Implement `spacegroup(c::Crystal)` in Spacey (probably ~50–150 lines based on the Fortran reference), submit upstream, and Enumlib calls it. If the upstream merge is slow, we vendor a temporary copy inside Enumlib (e.g., `Enumlib.Internal.spacegroup`) until the Spacey PR lands.
 >
 > So you weren't missing anything. My earlier response made it sound like Spacey's API was unclear or needed redesigning, which it doesn't — the function and type already exist with the right shape. The work needed is implementing a function that was previously stubbed out. Phase 8 to-do (revised): port the Fortran's space-group computation, propose it upstream to Spacey, vendor temporarily inside Enumlib if needed.
-<!-- END CLAUDE-RESPONSE-NEW -->
 
 >
-> Applying the rename + struct addition in the finalization commit alongside SupercellSelection and parametric-D refactors.
-<!-- END CLAUDE-RESPONSE-NEW -->
-        Asm = SMatrix{3,3,Float64,9}(A)
-        ds = [SVector{3,Float64}(d) for d in dset]
-        pg = pointGroup(Asm)             # cache the point group at construction
-        new(Asm, ds, pg)
+        Asm = SMatrix{D,D,Float64}(A)
+        ds = [SVector{D,Float64}(d) for d in dset]
+        # Build a Crystal with uniform "same-species" labels so spacegroup gives us
+        # the multilattice symmetries (rotation + fractional translation pairs).
+        crystal = Crystal(Asm[:,1], Asm[:,2], Asm[:,3], hcat(ds...), ones(Int, length(ds)))
+        sg = spacegroup(crystal)            # vector of SymmetryOp{D}; see Phase 8 task
+        new(Asm, ds, sg)
     end
 end
 
+# Outer constructor: infer D from the matrix's first dimension.
+ParentLattice(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector}) =
+    ParentLattice{size(A,1)}(A, dset)
+
 # Convenience: single-lattice (Bravais) constructor
-ParentLattice(A) = ParentLattice(A, [SVector{3,Float64}(0,0,0)])
+ParentLattice(A::AbstractMatrix) = ParentLattice(A, [SVector{size(A,1),Float64}(zeros(size(A,1)))])
 ```
 
 **Notes:**
-- `point_group` is computed once at construction and cached. (Fortran recomputes per call; minor inefficiency in practice since `gen_multilattice_derivatives` is typically called once or a handful of times — caching is a small ergonomic win, not a perf claim.)
-This is not such a big deal. In typical use cases `gen_multilattice_derivatives was called only once or a handful of times`
-
-<!-- BEGIN CLAUDE-RESPONSE: cache framing softened -->
-> **Claude:** Acknowledged — softened the wording above. The cache is for ergonomics ("call sites can read `parent.point_group` without invoking `pointGroup(A)` again"), not for measurable speedup in typical workflows. Withdrawing the "wasteful" framing.
-<!-- END CLAUDE-RESPONSE -->
-- We store the *integer* lattice-coord point group, not the Cartesian one. Conversions to Cartesian happen on demand inside the geometric routines (`map_to_real_space`, etc.).
-- `dset` does not have to contain the origin. Single Bravais lattices have one element; HCP has 2; perovskite has 5. (Per user feedback above, the assertion was a mistake on my part — the old Fortran code didn't enforce this either.)
+- `space_group` is computed once at construction and cached for ergonomics — call sites read `parent.space_group` without re-invoking `spacegroup(...)`. Not a perf claim; `gen_multilattice_derivatives`-style entry points are called once or a handful of times in typical workflows.
+- We store the *integer* lattice-coord rotations (in `SymmetryOp.R`), not the Cartesian ones. Conversions to Cartesian happen on demand inside the geometric routines (`map_to_real_space`, etc.).
+- `dset` does not have to contain the origin. Single Bravais lattices have one element; HCP has 2; perovskite has 5. The math doesn't require origin-in-dset; e.g., for diamond, anchoring the origin at the inversion center between the two atoms makes the DFT Hamiltonian real, which is the natural choice.
+- **Phase 8 dependency:** `Spacey.spacegroup(c::Crystal)` is currently a stub upstream (`Spacey/src/Spacey.jl:233` returns `true`). We need to port the Fortran's space-group / dset-translation logic and propose it upstream — vendoring a temporary copy inside `Enumlib.Internal.spacegroup` if the upstream PR is slow. See Phase 8 to-do.
 
 ### 6.4 `Site` and `Sites`
 
@@ -2038,27 +2060,28 @@ The unification of the Fortran's `dFull/d`, `labelFull/label`, `digitFull/digit`
 ```julia
 using DataStructures: IntDisjointSets, union!, find_root!
 
-struct Site
-    position::SVector{3,Float64}    # fractional coords (matches a dset element, or a user-added position) -- "sub-site" wording removed per user feedback
+struct Site{D}
+    position::SVector{D,Float64}    # fractional coords (matches a dset element, or a user-added position)
     allowed_labels::BitSet          # subset of {0, ..., k-1}
 end
 
+# Outer constructor infers D from the position vector's length.
+Site(p::AbstractVector, allowed::BitSet) = Site{length(p)}(SVector{length(p),Float64}(p), allowed)
+
 is_inactive(s::Site) = length(s.allowed_labels) == 1
+is_active(s::Site)   = !is_inactive(s)
 What is this function doing exactly? I think I understand. An inactive site can only have one type of label. This function counts the number of allowed labels. If it is 1 then this site is an inactive site; the function will return true
 
-<!-- BEGIN CLAUDE-RESPONSE: is_inactive confirmed -->
 > **Claude:** Exactly right. One-liner: returns `true` iff the site has only one allowed label, meaning it's locked to that label and contributes no configurational freedom. The dispatcher uses it to skip such sites entirely from the enumeration's labeling space.
 >
 > Also added an `is_active(s::Site) = !is_inactive(s)` companion for readability at call sites where the positive form reads more naturally.
-<!-- END CLAUDE-RESPONSE -->
 Good idea
 
-mutable struct Sites
-    list::Vector{Site}
-    equiv::IntDisjointSets         # disjoint-set over indices 1:length(list) So is this essentially keeping track of which sites may map to other sites under the symmetry operations? Or is it telling us which sites may have the same label?
+mutable struct Sites{D}
+    list::Vector{Site{D}}
+    equiv::IntDisjointSets         # disjoint-set over indices 1:length(list)
     Is it necessary, or good practice, to specify the type of the argument in this constructor function? It seems redundant; you could just say `Sites(list)` Help me understand
 
-<!-- BEGIN CLAUDE-RESPONSE: equivalencies semantics + Julia type-annotation explanation -->
 > **Claude (on equivalencies):** Neither symmetry-computed nor about labels per se — it's *user-declared* equivalence. The user says "for the purposes of this enumeration, treat sites $i$ and $j$ as identical." Two common cases:
 >
 > 1. **Slab geometry**: a site at $z=0$ and a site at $z=L$ should be treated as the same (translation symmetry across the slab). These sites are *not* related by any parent-lattice rotation; they're related by a translation that the user knows about because they set up the slab.
@@ -2077,11 +2100,34 @@ mutable struct Sites
 > Cost: zero at runtime. Julia compiles a specialized method per concrete type; annotations are documentation + dispatch infrastructure, not slowdown.
 >
 > So almost all Julia constructors and library functions in the wild have annotated arguments. The exception is genuinely-polymorphic functions whose body just calls protocol methods (e.g., `f(x) = abs(x) + 1` works for any number-like `x`). Constructors usually aren't that flexible — they're building specific types from specific input shapes.
-<!-- END CLAUDE-RESPONSE -->
-    function Sites(list::AbstractVector{Site})
+    # Variant 1: incremental (call equate! later)
+    function Sites{D}(list::AbstractVector{Site{D}}) where D
         new(collect(list), IntDisjointSets(length(list)))
     end
+
+    # Variant 2: upfront partition (validates, builds the same disjoint-set state)
+    function Sites{D}(list::AbstractVector{Site{D}},
+                      classes::AbstractVector{<:AbstractVector{<:Integer}}) where D
+        seen = falses(length(list))
+        for class in classes
+            @assert !isempty(class) "Equivalence classes cannot be empty"
+            for i in class
+                @assert 1 <= i <= length(list) "Class member $i out of range [1, $(length(list))]"
+                @assert !seen[i] "Site $i appears in multiple equivalence classes"
+                seen[i] = true
+            end
+        end
+        eq = IntDisjointSets(length(list))
+        for class in classes, i in class[2:end]
+            union!(eq, class[1], i)
+        end
+        new(collect(list), eq)
+    end
 end
+
+# Outer constructors: infer D from the site list.
+Sites(list::AbstractVector{Site{D}}) where D = Sites{D}(list)
+Sites(list::AbstractVector{Site{D}}, classes) where D = Sites{D}(list, classes)
 
 # Equate two sites (idempotent, transitive by construction)
 function equate!(s::Sites, i::Integer, j::Integer)
@@ -2093,7 +2139,6 @@ end
 # Equivalence classes are *user-declared* (via `equate!`), not symmetry-computed -- see CLAUDE-RESPONSE above.
 We need to add that definition to the glossary, I think.
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: glossary entries confirmed -->
 > **Claude:** Confirmed. Adding three terms to `docs/notes/glossary.tex` in the finalization commit:
 >
 > 1. **Inactive site** — site with one allowed label.
@@ -2101,7 +2146,6 @@ We need to add that definition to the glossary, I think.
 > 3. **Equivalencies** — the user-declared partition relation across sites; the union of all `equate!` calls.
 >
 > All three placed in the existing "Equivalence and reduction" section of the glossary, between the existing entries.
-<!-- END CLAUDE-RESPONSE-NEW -->
 
 canonical(s::Sites, i::Integer) = find_root!(s.equiv, i)
 
@@ -2174,7 +2218,6 @@ cr = ConcentrationRange([(2//5, 3//5), (2//5, 3//5)])    # binary, each species 
 When the user passes `ConcentrationRange`, the dispatcher walks each volume × each integer concentration in the range. The decision tree from §5.4 then runs per-concentration.
 Same comment could apply here, yes? 
 
-<!-- BEGIN CLAUDE-RESPONSE: empty enumeration → error -->
 > **Claude:** Agree — error rather than silent empty result. Updating the design: if no concentration in the volume range divides cleanly into the requested fractions, throw an `EmptyEnumerationError` with a message like:
 >
 > ```
@@ -2186,53 +2229,76 @@ Same comment could apply here, yes?
 > Same logic for `ConcentrationRange` — confirmed the same comment applies. Same `EmptyEnumerationError` type, slightly different message ("no concentration in the range × no volume in the range produces any valid multiplicity vector").
 >
 > Implementation: the dispatcher computes the resolved (volume, concentration) pairs upfront — it's a small Cartesian-product loop over `volume_range × range_partitions(concentration_range)`. If the result is empty, throw immediately. The user gets the error before any HNF generation or memory allocation.
-<!-- END CLAUDE-RESPONSE -->
 
 ### 6.6 `HNF` and `Supercell`
 
 ```julia
-struct HNF
-    matrix::SMatrix{3,3,Int,9}
-    function HNF(m::AbstractMatrix{<:Integer})
-        @assert size(m) == (3, 3) "HNF must be 3×3"
-        # Lower-triangular form check
-        @assert m[1,2] == 0 && m[1,3] == 0 && m[2,3] == 0 "HNF must be lower-triangular"
-        a, c, f = m[1,1], m[2,2], m[3,3]
-        @assert a > 0 && c > 0 && f > 0 "HNF diagonals must be positive"
-        @assert 0 <= m[2,1] < c "HNF[2,1] out of range [0, $(c-1)]"
-        @assert 0 <= m[3,1] < f "HNF[3,1] out of range [0, $(f-1)]"
-        @assert 0 <= m[3,2] < f "HNF[3,2] out of range [0, $(f-1)]"
-        new(SMatrix{3,3,Int,9}(m))
+struct HNF{D}
+    matrix::SMatrix{D,D,Int}
+    function HNF{D}(m::AbstractMatrix{<:Integer}) where D
+        size(m) == (D, D)              || throw(ArgumentError("HNF must be $D×$D, got $(size(m))"))
+        # Lower-triangular form check (any super-diagonal entry must be zero)
+        for i in 1:D, j in i+1:D
+            iszero(m[i,j]) || throw(ArgumentError("HNF must be lower-triangular; m[$i,$j] = $(m[i,j])"))
+        end
+        # Positive diagonals
+        for i in 1:D
+            m[i,i] > 0 || throw(ArgumentError("HNF diagonal m[$i,$i] = $(m[i,i]) must be positive"))
+        end
+        # Sub-diagonal range: 0 ≤ m[i,j] < m[i,i] for j < i
+        for i in 1:D, j in 1:i-1
+            d = m[i,i]
+            (0 <= m[i,j] < d) || throw(ArgumentError("HNF[$i,$j] = $(m[i,j]) out of range [0, $(d-1)]"))
+        end
+        new(SMatrix{D,D,Int}(m))
     end
 end
 
+# Outer constructor infers D from the matrix size.
+HNF(m::AbstractMatrix{<:Integer}) = HNF{size(m,1)}(m)
+
 # Convenience accessors
-volume(h::HNF) = h.matrix[1,1] * h.matrix[2,2] * h.matrix[3,3]   # det of lower triangular = diagonal product
+volume(h::HNF{D}) where D = prod(h.matrix[i,i] for i in 1:D)   # det of lower triangular = diagonal product
 Base.det(h::HNF) = volume(h) This is overloading det so that it returns an Int for HNFs, right?
 
-<!-- BEGIN CLAUDE-RESPONSE: Base.det overload -->
 > **Claude:** Yes — extending `Base.det` to dispatch on our `HNF` type. Same name, different argument type. When the user calls `det(some_hnf::HNF)`, our method runs (returns `Int` via the fast diagonal-product formula). When they call `det(some_matrix::Matrix{Float64})`, Julia's existing method runs.
 >
 > **Why bother:** `det` is the natural function name for "determinant of an HNF" (which equals the supercell volume / index $n$). If we named it `hnf_volume(h)` instead, users would have to remember our name; with the overload they reuse the standard Base function.
 >
 > The `Int` return is exact (no float rounding) since the diagonal product is the determinant for any lower-triangular integer matrix. Slightly faster than calling Base's general LU-based `det`, but the win is nominal — readability is the main reason.
-<!-- END CLAUDE-RESPONSE -->
 
-struct Supercell
-    # parent_id::Int                          # index into the Enumeration's parent — REMOVED per user feedback (YAGNI; see CLAUDE-RESPONSE below)
-    # CLAUDE-RESPONSE: agreed YAGNI, dropping. Justification was "what if a future
-    # Enumeration spans multiple parents?" but I can't construct a realistic case
-    # where that's useful (different parents have different symmetry groups,
-    # dsets, etc.; you'd want them in separate Enumerations). The Enumeration knows
-    # its single parent; the Supercell doesn't need a back-pointer.
-    hnf::HNF
-    snf::SVector{3,Int}                     # diagonal of SNF: (s_1, s_2, s_3) with s_1 | s_2 | s_3
-    point_group_order::Int                  # |stabilizer of this superlattice| from the parent point group
+struct Supercell{D}
+    hnf::HNF{D}
+    snf::SVector{D,Int}                     # diagonal of SNF: (s_1, ..., s_D) with s_1 | s_2 | ... | s_D
+    space_group_order::Int                  # |stabilizer of this superlattice| from the parent space group
     permutation_group::Vector{Vector{Int}}  # permutations of the n*nD supercell sites induced by stabilizer + translations
     # Note: SNF left transform L is intentionally NOT stored. Recomputed when needed
     # for (HNF, labeling) → real-space mapping. Per Phase 4 review §2.10 #4: L isn't unique.
 end
 ```
+
+**Concrete supercell-selection types** (per §6.2 catalog):
+
+```julia
+abstract type SupercellSelection end
+
+struct VolumeRange <: SupercellSelection
+    range::AbstractRange{Int}
+end
+
+struct RadiusBound <: SupercellSelection
+    max_radius::Float64                          # in units of parent cell radii (per radiusEnumeration.jl convention)
+    volume_cap::Int                              # safety: never enumerate beyond this volume
+end
+RadiusBound(; max_radius, volume_cap = typemax(Int)) = RadiusBound(max_radius, volume_cap)
+
+struct ExplicitHNFs{D} <: SupercellSelection
+    hnfs::Vector{HNF{D}}
+end
+ExplicitHNFs(hnfs::AbstractVector{HNF{D}}) where D = ExplicitHNFs{D}(collect(hnfs))
+```
+
+The dispatcher's first job is to convert any `SupercellSelection` into a concrete `Vector{HNF{D}}`; everything downstream is then independent of which selection type the user supplied.
 
 **Why no `L` field.** The SNF $S = L H R$ has unique $S$ but non-unique $L, R$. Storing $L$ on `Supercell` would (a) leak the non-uniqueness into the public API and (b) make two correct enumerations look "different" if their $L$'s happened to differ. Internal routines that need $L$ recompute it on demand from the HNF.
 
@@ -2279,7 +2345,6 @@ end
 # (skipped here for brevity; same encode/decode pattern, different radix scheme)
 ```
 
-<!-- BEGIN CLAUDE-RESPONSE: BigInt default is overkill -->
 > **Claude:** You're right — `encode_basek` returning `BigInt` always is overkill. Better:
 >
 > ```julia
@@ -2295,14 +2360,12 @@ end
 > ```
 >
 > The dispatcher knows whether overflow is possible at the per-`Enumeration` level (it checks `k^n` against `typemax(Int)` once during cost estimation) and picks the appropriate path. The user never sees this detail; it's invisible behind `Enumeration{L}`.
-<!-- END CLAUDE-RESPONSE -->
 
 **The per-`Enumeration` choice.** Each `Enumeration{L}` commits to one labeling representation across all its structures. The dispatcher picks based on the algorithm:
 
 - `:exhaustive` (full $k^n$ table): `L = Vector{Int8}` if total memory < threshold; else `L = Int64` if the index fits; else `L = BigInt`.
 Just to make sure I understand: L is a vector, the hash table? Since it only needs a handful of possible values at each element, Int8 saves memory.
 
-<!-- BEGIN CLAUDE-RESPONSE: L vs visited bitmap — two different things -->
 > **Claude:** Two different things conflated; let me untangle.
 >
 > 1. **`L` (the type parameter on `Enumeration{L}` and `EnumeratedStructure{L}`)** is the storage type for *one labeling* per `EnumeratedStructure`. Three concrete types are allowed:
@@ -2317,16 +2380,14 @@ Just to make sure I understand: L is a vector, the hash table? Since it only nee
 > So `Vector{Int8}` and `Int64` (and `BigInt`) are *output storage* per structure (one per `EnumeratedStructure`). The bitmap is *intermediate state* (one per enumeration run, lifetime = the dedup loop). Different scopes, different lifetimes.
 >
 > Your intuition about `Int8` saving memory is correct — but it's saving memory on the *output*, not on the visited bitmap. The bitmap is always 1 bit per possible labeling regardless of `L`.
-<!-- END CLAUDE-RESPONSE -->
 - `:multinomial`: same logic with $C$ instead of $k^n$.
 - `:recursive_stabilizer`: streams as `Vector{Int8}` typically (the tree's location vector is small).
 - `:bdd`: irrelevant — the BDD is the storage; `EnumeratedStructure` materializes from a path.
 
-**The user's view.** The user gets `Enumeration{L}` and iterates. Convenience accessors (`materialize(s)::Vector{Int8}`) hide the representation:
+**The user's view.** The user gets `Enumeration{D,L}` and iterates. The `to_labeling(s)::Vector{Int8}` accessor hides the representation, decoding hash-based `L`'s into a digit vector and returning `Vector{Int8}` directly when `L = Vector{Int8}`:
 
 In general, I don't think we want volume_range defaults. In fact, we don't always enumerate over volume ranges. Sometimes we want to enumerate over a list of HNFs, maybe of a common *radius* not necessarily a common volume. If this assumption is ubiquitous in the design we need to pause, rethink, and redesign. Maybe this is a big deal in the current design thinking?
 
-<!-- BEGIN CLAUDE-RESPONSE: SupercellSelection — volume_range generalization -->
 > **Claude:** Substantial concern — agreed, this is a structural issue worth addressing before Phase 7. The current API bakes "enumerate by volume range" into the entry point, which doesn't fit:
 >
 > 1. **Radius-bounded enumeration** (already implemented in `radiusEnumeration.jl`): user wants HNFs with Minkowski-reduced cell radius ≤ some threshold, regardless of volume.
@@ -2395,7 +2456,6 @@ In general, I don't think we want volume_range defaults. In fact, we don't alway
 
 Yes, refactor now.
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: SupercellSelection refactor confirmed -->
 > **Claude:** Applying in the finalization commit. The pass updates:
 > - **§5.2 function signature:** `volume_range::AbstractRange{Int}` (required) → `supercells::SupercellSelection` (required); drop `fixed_cells` (now subsumed by `ExplicitHNFs`).
 > - **§5.4 decision tree:** insert "1. Generate HNF list from `supercells`" at the top; the rest of the tree is unchanged but now reads from a pre-computed HNF list rather than a volume range.
@@ -2408,23 +2468,22 @@ Yes, refactor now.
 > - **§6.10 worked example:** `supercells = VolumeRange(2:6)` etc.
 >
 > One commit, marked. The user-facing impact is one slightly more verbose call site per program.
-<!-- END CLAUDE-RESPONSE-NEW -->
 
 ```julia
-for s in enumerate(parent, sites; volume_range=2:10)
-    digits = materialize(s)              # always returns Vector{Int8}, regardless of L
+for s in enumerate(parent, sites; supercells = VolumeRange(2:10))
+    digits = to_labeling(s)              # always returns Vector{Int8}, regardless of L
     # ...
 end
 ```
 
-So users don't need to think about `L` unless they're optimizing memory. Library authors writing extensions can dispatch on `EnumeratedStructure{L}` if they need the underlying representation.
+So users don't need to think about `L` unless they're optimizing memory. Library authors writing extensions can dispatch on `EnumeratedStructure{D,L}` if they need the underlying representation.
 
-### 6.8 `EnumeratedStructure{L}` and `Enumeration{L}`
+### 6.8 `EnumeratedStructure{D,L}` and `Enumeration{D,L}`
 
 The output types. Per §3.2 review: normalized representation, `Supercell` shared across many `EnumeratedStructure`s.
 
 ```julia
-struct EnumeratedStructure{L<:LabelingRepresentation}
+struct EnumeratedStructure{D,L<:LabelingRepresentation}
     supercell_id::Int                    # index into Enumeration.supercells
     labeling::L                          # representation chosen at the Enumeration level
     hnf_degeneracy::Int                  # number of HNFs in this supercell's symmetry class
@@ -2432,69 +2491,67 @@ struct EnumeratedStructure{L<:LabelingRepresentation}
     concentration::Concentration         # the realized concentration for this structure
 end
 
-struct Enumeration{L<:LabelingRepresentation}
-    parent::ParentLattice
-    sites::Sites
-    supercells::Vector{Supercell}        # ~hundreds; shared across structures
-    structures::Vector{EnumeratedStructure{L}}    # ~thousands to billions
+struct Enumeration{D,L<:LabelingRepresentation}
+    parent::ParentLattice{D}
+    sites::Sites{D}
+    supercells::Vector{Supercell{D}}                  # ~hundreds; shared across structures
+    structures::Vector{EnumeratedStructure{D,L}}      # ~thousands to billions
 end
 
-# Iteration: yields EnumeratedStructure{L} values
+# Iteration: yields EnumeratedStructure{D,L} values
 Base.length(e::Enumeration) = length(e.structures)
 Base.iterate(e::Enumeration, state=1) =
     state > length(e.structures) ? nothing : (e.structures[state], state + 1)
-Base.eltype(::Type{Enumeration{L}}) where L = EnumeratedStructure{L}
+Base.eltype(::Type{Enumeration{D,L}}) where {D,L} = EnumeratedStructure{D,L}
 Base.IteratorSize(::Type{<:Enumeration}) = Base.HasLength()
 ```
 
-**For lazy iteration** (the user-facing entry from `enumerate(...)`), we *don't* materialize `structures::Vector{...}` upfront. Instead, return a `LazyEnumeration{L}` that's a `Channel`-like or generator producing structures one at a time:
+**For lazy iteration** (the user-facing entry from `enumerate(...)`), we *don't* materialize `structures::Vector{...}` upfront. Instead, return a `LazyEnumeration{D,L}` that's a `Channel`-like or generator producing structures one at a time:
 
 ```julia
-struct LazyEnumeration{L}
-    parent::ParentLattice
-    sites::Sites
+struct LazyEnumeration{D,L}
+    parent::ParentLattice{D}
+    sites::Sites{D}
     state::EnumerationState              # algorithm-specific iteration state
 end
 
 # Same iterator interface, but produces structures on demand
 Base.IteratorSize(::Type{<:LazyEnumeration}) = Base.SizeUnknown()
-Base.iterate(e::LazyEnumeration{L}, state=...) where L = ...
+Base.iterate(e::LazyEnumeration{D,L}, state=...) where {D,L} = ...
 
 # Convert lazy → eager when the user wants the full materialized form
-Base.collect(e::LazyEnumeration{L}) where L = ... # walks the iterator, builds Enumeration{L}
+Base.collect(e::LazyEnumeration{D,L}) where {D,L} = ...   # walks the iterator, builds Enumeration{D,L}
 ```
 
-Both `Enumeration{L}` and `LazyEnumeration{L}` satisfy the iterator protocol. The user can treat them interchangeably for `for` loops and `foreach`; only `length()`, `getindex(i)`, and `collect()` differ.
+Both `Enumeration{D,L}` and `LazyEnumeration{D,L}` satisfy the iterator protocol. The user can treat them interchangeably for `for` loops and `foreach`; only `length()`, `getindex(i)`, and `collect()` differ.
 
 **Why the parametric `L` is cleaner than an abstract type.** Inside the iterator's hot loop, dispatching on a parametric type is statically resolved — no runtime overhead. Dispatching on an abstract supertype would require dynamic dispatch per yielded structure. For an enumeration yielding billions of structures, that's the difference between fast and slow.
+
+**Why also parametric on `D`.** Cheap insurance for future 2D/2D-surface use cases (per §6.13 Q7). Today every enumeration is `D=3`; the `D` parameter costs nothing at runtime (compiler specializes per concrete `D`) and keeps the API extensible without breaking 3D users. The 2D submodule (`LatticeEnumeration2D`) stays standalone for v0.2; v0.3+ can fold it in via `D=2` instances.
 
 ### 6.9 `InequivalentCount`, `EnumerationCostEstimate`, `HNFClass`
 
 Per Phase 5 review: Tier 2 in v0.2.
 
 ```julia
-struct HNFClass
+struct HNFClass{D}
     # A symmetry-equivalence class of HNFs at a given volume.
-    representative::HNF                  # one HNF in the class
-    class_size::Int                      # number of HNFs that are symmetry-equivalent to this one (related by parent point-group rotations) # That is, how many HNFs have the same permutation group, right?
+    representative::HNF{D}               # one HNF in the class
+    class_size::Int                      # number of HNFs that the symmetry reduction collapsed into this representative
 end
 
-<!-- BEGIN CLAUDE-RESPONSE: HNFClass class_size definition -->
 > **Claude:** Almost — one nuance. Two HNFs that are symmetry-equivalent under the parent lattice's point group will yield isomorphic permutation groups (so "same permutation group" is a *consequence* of being in the same class), but the *defining* relation is "related by a parent rotation": $H_2 \cong H_1$ iff there exists $R$ in the parent point group such that $H_1 R H_2^{-1}$ is a unimodular integer matrix.
 >
 > So `class_size` = "number of HNFs that the symmetry reduction in step 2 of the 2008 algorithm collapsed into one representative." Two HNFs in the same class give equivalent enumerations (same set of derivative structures up to a relabeling of supercell sites). The permutation-group isomorphism follows but isn't itself the defining test.
-<!-- END CLAUDE-RESPONSE -->
 That's a good distinction to keep straight. Remember this point when we are generating documentation and we are explaining the theory behind the algorithm.
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: documentation flag noted -->
 > **Claude:** Logged for the eventual user-doc / theory section: when explaining HNF symmetry classes, lead with the *defining* relation ("$H_2 \cong H_1$ iff there exists $R$ in the parent point group such that $H_1 R H_2^{-1}$ is unimodular"), and present the permutation-group isomorphism as a *consequence* — not the other way around. Same pattern for any other "symmetry equivalence" we explain.
-<!-- END CLAUDE-RESPONSE-NEW -->
 
-struct InequivalentCount
+struct InequivalentCount{D}
     total::BigInt
     by_volume::Vector{Tuple{Int, BigInt}}                         # (n, count_at_n)
     by_concentration::Vector{Tuple{Concentration, BigInt}}        # populated when concentration was a range
-    by_hnf_class::Dict{HNFClass, BigInt}                          # for diagnostic exploration
+    by_hnf_class::Dict{HNFClass{D}, BigInt}                       # for diagnostic exploration
 end
 
 struct EnumerationCostEstimate
@@ -2502,6 +2559,7 @@ struct EnumerationCostEstimate
     peak_memory_bytes::Int                   # worst-case peak across the chosen algorithm's lifetime
     estimated_walltime_seconds::Float64      # predicted; uses simple per-mode rules of thumb
     chosen_algorithm::Symbol                 # :exhaustive, :multinomial, :recursive_stabilizer, …
+    selection_kind::Symbol                   # :volume_range, :radius_bound, or :explicit_hnfs (so warnings can suggest "try a tighter radius" vs "smaller volume range")
     notes::Vector{String}                    # warnings, e.g., "Switched to :recursive_stabilizer because :exhaustive's bitmap would exceed memory_budget"
 end
 ```
@@ -2510,100 +2568,86 @@ end
 
 ### 6.10 Construction patterns
 
-A typical end-to-end flow:
+Two end-to-end flows that exercise the catalog. Pattern A illustrates *inactive sites* (single allowed label), Pattern B illustrates *equivalencies* (user-declared partition). Together they cover the two distinct mechanisms for collapsing configurational freedom in §6.2.
+
+#### Pattern A — Perovskite ABO₃ with inactive oxygens
+
+A real materials use case (BaTiO₃, SrTiO₃, …): two substitutional sublattices (A, B) and three oxygen sites that are inactive (single allowed species). No equivalencies needed; oxygens drop out of the labeling space automatically because their `allowed_labels` has size 1.
 
 ```julia
 using Enumlib
 using StaticArrays
 
-# 1. Define the parent lattice (HCP example: hexagonal Bravais + 2-element dset).
-A_hcp = SMatrix{3,3}(1.0, 0.0, 0.0,
-                     0.5, sqrt(3)/2, 0.0,
-                     0.0, 0.0, sqrt(8/3))
-dset_hcp = [SVector(0.0, 0.0, 0.0),
-            SVector(1/3, 1/3, 1/2)]
-hcp = ParentLattice(A_hcp, dset_hcp)
+A_perov = SMatrix{3,3}(1.0, 0.0, 0.0,
+                       0.0, 1.0, 0.0,
+                       0.0, 0.0, 1.0)
 
-# 2. Define the sites and allowed substitutions. Both d-sites can take any of 3 species.
-sites = Sites([Site(d, BitSet(0:2)) for d in hcp.dset])
+dset_perov = [SVector(0.0, 0.0, 0.0),       # A site (corner)
+              SVector(0.5, 0.5, 0.5),       # B site (body center)
+              SVector(0.5, 0.5, 0.0),       # O site
+              SVector(0.5, 0.0, 0.5),       # O site
+              SVector(0.0, 0.5, 0.5)]       # O site
 
-# 3. (Optional) declare equivalencies. Here, pretend sites 1 and 2 should be treated identically.
-# equate!(sites, 1, 2)
-> this is kind of a silly example. If there are only two sites, and you declare each one the same, the enumeration is rather trivial, essentially equivalent to a 1-lattice. Doesn't really illustrate a real case. A more realistic case might be barium titenate (an example used in Spacey) where you could have configurational freedom on the A and B sites, but the oxigen sites are fixed. And maybe you can think of other cases where we'd want to enforce equivalency?
+perov = ParentLattice(A_perov, dset_perov)
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: better example — perovskite + slab equivalencies -->
-> **Claude:** Agreed the 2-site HCP equivalencies example was contrived. Replacing with two patterns in the finalization commit:
->
-> **Pattern A (inactive sites): Perovskite ABO₃, A and B substitutional, oxygens fixed.** A real materials use case (BaTiO₃, SrTiO₃-style). Five-site dset; A and B sites are active with substitutional freedom; three oxygen sites are *inactive* (single allowed label).
->
-> ```julia
-> A_perov = SMatrix{3,3}(1.0, 0.0, 0.0,
->                        0.0, 1.0, 0.0,
->                        0.0, 0.0, 1.0)
->
-> dset_perov = [SVector(0.0, 0.0, 0.0),       # A site (corner)
->               SVector(0.5, 0.5, 0.5),       # B site (body center)
->               SVector(0.5, 0.5, 0.0),       # O site
->               SVector(0.5, 0.0, 0.5),       # O site
->               SVector(0.0, 0.5, 0.5)]       # O site
->
-> perov = ParentLattice(A_perov, dset_perov)
->
-> # Species 0 and 1 substitute on A and B; species 2 (O) is locked on all O sites.
-> sites = Sites([
->     Site(dset_perov[1], BitSet([0, 1])),   # A: substitutional
->     Site(dset_perov[2], BitSet([0, 1])),   # B: substitutional
->     Site(dset_perov[3], BitSet([2])),      # O: inactive
->     Site(dset_perov[4], BitSet([2])),      # O: inactive
->     Site(dset_perov[5], BitSet([2])),      # O: inactive
-> ])
-> # No equate! call: A and B are independent; oxygens are inactive (single label) so they
-> # automatically drop out of the labeling space without any equivalence declaration.
-> ```
->
-> **Pattern B (equivalencies — distinct from inactive): Slab geometry with mirror-image layers.** A user has a thin-film slab with $N$ layers, and the slab's mirror symmetry across the central plane forces layer $i$ and layer $N-i+1$ to share their composition. The *parent symmetry doesn't capture this* because the slab vacuum breaks 3D periodicity — it's a user-imposed constraint reflecting the physics of the slab geometry. So the user creates a `Site` per layer (each with full substitutional freedom) and calls `equate!(sites, i, N-i+1)` for each mirror pair.
->
-> ```julia
-> slab = ParentLattice(A_slab, layer_positions)        # one dset element per layer
-> sites = Sites([Site(p, BitSet([0, 1])) for p in layer_positions])
-> for i in 1:N÷2
->     equate!(sites, i, N - i + 1)                     # mirror-image equivalencies
-> end
-> ```
->
-> Pattern A illustrates *inactive sites*; Pattern B illustrates *equivalencies* (in the sense clarified earlier in §6.2). Both are realistic; the original 2-site HCP example illustrated neither. Will replace §6.10 in the finalization commit.
-<!-- END CLAUDE-RESPONSE-NEW -->
+# Species 0 and 1 substitute on A and B; species 2 (O) is locked on all O sites.
+sites = Sites([
+    Site(dset_perov[1], BitSet([0, 1])),    # A: substitutional
+    Site(dset_perov[2], BitSet([0, 1])),    # B: substitutional
+    Site(dset_perov[3], BitSet([2])),       # O: inactive
+    Site(dset_perov[4], BitSet([2])),       # O: inactive
+    Site(dset_perov[5], BitSet([2])),       # O: inactive
+])
 
-# 4. (Optional) constrain to a specific concentration.
-c = Concentration([1//3, 1//3, 1//3])    # equimolar ternary
-
-# 5. Enumerate.
-for s in enumerate(hcp, sites; volume_range=2:6, concentration=c)
+# Enumerate over volume range 2..6, no concentration restriction.
+for s in enumerate(perov, sites; supercells = VolumeRange(2:6))
     process(s)
 end
 
-# Or use the callback form (per §5.11 Q4):
-enumerate_each(hcp, sites; volume_range=2:6, concentration=c) do s
+# Same iteration via callback (do-block friendly).
+enumerate_each(perov, sites; supercells = VolumeRange(2:6)) do s
     process(s)
 end
 
-# Or count without enumerating.
-count = count_inequivalent(hcp, sites; volume_range=2:6, concentration=c; breakdown=true)
+# Count without enumerating; ask for the per-volume breakdown.
+count = count_inequivalent(perov, sites; supercells = VolumeRange(2:6), breakdown=true)
 @show count.total
 @show count.by_volume
+```
+
+#### Pattern B — Slab geometry with mirror-image equivalencies
+
+A thin-film slab with $N$ layers; the slab's mirror symmetry across the central plane forces layer $i$ and layer $N-i+1$ to share their composition. The parent symmetry doesn't capture this (the vacuum breaks 3D periodicity), so the user declares it explicitly via `equate!`. Every layer is *active* (full substitutional freedom on each); the equivalencies just constrain mirror pairs to share their label.
+
+```julia
+slab = ParentLattice(A_slab, layer_positions)              # one dset element per layer
+sites = Sites([Site(p, BitSet([0, 1])) for p in layer_positions])
+for i in 1:N÷2
+    equate!(sites, i, N - i + 1)                           # mirror-image equivalencies
+end
+
+# Equivalent: build the partition upfront via the second Sites constructor.
+# sites = Sites([Site(...) for p in layer_positions], [[i, N-i+1] for i in 1:N÷2])
+
+# Constrain to a specific concentration and enumerate by radius rather than volume.
+c = Concentration_ratio([1, 1])   # equimolar binary
+for s in enumerate(slab, sites; supercells = RadiusBound(max_radius = 4.0), concentration = c)
+    process(s)
+end
 ```
 
 ### 6.11 Comparison vs Fortran's types
 
 | Fortran | Julia |
 |---|---|
-| `parLV(3,3)`, `d(:,:)`, `nD`, `LG` (4 separate arrays) | `ParentLattice` (one struct, `point_group` cached) |
-| `dFull(:,:)`, `labelFull(:,:)`, `digitFull(:)`, `equivalencies(:)`, `inactives(:,:)` (5 parallel arrays) | `Sites` (one struct with `IntDisjointSets`) |
+| `parLV(3,3)`, `d(:,:)`, `nD`, `LG` (4 separate arrays) | `ParentLattice{D}` (one struct, `space_group::Vector{SymmetryOp{D}}` cached) |
+| `dFull(:,:)`, `labelFull(:,:)`, `digitFull(:)`, `equivalencies(:)`, `inactives(:,:)` (5 parallel arrays) | `Sites{D}` (one struct with `IntDisjointSets`) |
 | `cRange(k, 3)` (integer matrix [min_num, max_num, denom] per species) | `ConcentrationRange` (Rational bounds) |
-| HNF as `integer, dimension(3,3)` (no validation) | `HNF` struct with construction validation |
-| `RotPermList{perm, RotIndx, nL, v}` | `Supercell` (HNF + SNF + permutation_group cached) |
-| `derivStruct{diag, pLat, dVec, nD, HNF, L, n, labeling, conc}` (all fields denormalized per structure) | `EnumeratedStructure{L}` (5 fields, supercell_id refers to shared `Supercell`) |
-| Output as `struct_enum.out` flat rows | `Enumeration{L}` in-memory + JLD2 default serialization |
+| HNF as `integer, dimension(3,3)` (no validation) | `HNF{D}` struct with construction validation |
+| `RotPermList{perm, RotIndx, nL, v}` | `Supercell{D}` (HNF + SNF + permutation_group cached) |
+| Implicit "loop over n in volume_range" | First-class `SupercellSelection` (`VolumeRange`, `RadiusBound`, `ExplicitHNFs{D}`) |
+| `derivStruct{diag, pLat, dVec, nD, HNF, L, n, labeling, conc}` (all fields denormalized per structure) | `EnumeratedStructure{D,L}` (5 fields, `supercell_id` refers to shared `Supercell{D}`) |
+| Output as `struct_enum.out` flat rows | `Enumeration{D,L}` in-memory + JLD2 default serialization |
 | `derivCryst`, `cryst` (declared "Not used yet") | not in the catalog (dead types not carried forward) |
 
 The Julia catalog is 11 types vs Fortran's 8 active types + 5 parallel arrays + custom file format. The win isn't in count; it's in *coherence* — every relationship is a typed reference, not an array index that the user has to remember to keep in sync.
@@ -2625,7 +2669,6 @@ A short list of questions that affect the catalog and need your input before Pha
 
 1. **`Sites` — partition vs. validation.** I picked `IntDisjointSets` (Union-Find) for equivalencies, with `equate!(sites, i, j)` as the construction API. Alternative: take a `Vector{Vector{Int}}` of equivalence classes upfront and validate that it's a partition. The first is more flexible for incremental construction; the second matches users who already know the equivalence classes from the problem setup. Lean toward Union-Find? Is there a way to accomodate both kinds of users, but with one underlying struct? Should we think more about this?
 
-<!-- BEGIN CLAUDE-RESPONSE: Q1 both APIs with one struct -->
 > **Claude:** Yes — both constructors backed by the same internal state. The Union-Find lives inside; the user picks whichever construction style fits their workflow.
 >
 > ```julia
@@ -2674,12 +2717,10 @@ A short list of questions that affect the catalog and need your input before Pha
 > ```
 >
 > No deeper thought needed — this is a clean dual-constructor pattern.
-<!-- END CLAUDE-RESPONSE -->
 
 2. **`HNF` validation strictness.** I have inner-constructor `@assert`s validating the lower-triangular HNF bounds. In production these should probably be `throw(ArgumentError(...))` instead of `@assert` (which gets stripped at `--check-bounds=no`). Convert to throws? Yes convert to throws
 3. **`Supercell.permutation_group` storage size.** For a single enumeration, ~hundreds of `Supercell`s × ~tens to thousands of permutations × `n*nD` Ints each. Worst case maybe ~10 MB. Acceptable cache size, or worth lazy-computing? Acceptable cache size I think. More efficent too, right? How much so, do you estimate?
 
-<!-- BEGIN CLAUDE-RESPONSE: Q3 cache-savings estimate -->
 > **Claude:** Order-of-magnitude estimate:
 >
 > **Cost of computing `permutation_group` for one Supercell:** iterate over each rotation $R$ in the stabilizer subgroup (at most 48 for cubic, 24 for hexagonal, 16 for tetragonal, …) and compute the induced permutation on `n × n_D` supercell sites. Per-rotation work is $O(n \cdot n_D)$ multiplications + mod operations. So at typical sizes ($|G| \sim 48$, $n \cdot n_D \sim 32$): ~1500 basic ops per Supercell — microseconds.
@@ -2693,12 +2734,10 @@ A short list of questions that affect the catalog and need your input before Pha
 > So caching saves seconds-to-minutes-to-hours depending on enumeration size — not transformative (the labeling enumeration itself is the dominant cost), but real and free given the modest memory footprint. The 10 MB upper bound is when there are hundreds of distinct Supercell symmetry classes; most enumerations have far fewer.
 >
 > Conclusion: cache it. The memory cost is trivial; the time savings are nontrivial; the code is simpler than lazy-computing with thread-safe memoization.
-<!-- END CLAUDE-RESPONSE -->
 Good
 4. **`Enumeration{L}` vs `LazyEnumeration{L}` — same type or different?** I've drafted them as different types. Alternative: one type with a `materialized::Bool` flag. The two-types form is type-stable and ergonomic; flag form is one type to remember. Lean toward two types unless you prefer the flag. Me too. two types great.
 5. **`Concentration` constructor accepting integers.** `Concentration([15, 17])` reads as "15 of species 1, 17 of species 2." But this is ambiguous if the user intends "15:17 ratio" vs "exactly 15 of A and 17 of B in a 32-cell." I've defined the integer form to mean ratio (it normalizes by the sum). Worth a clearer constructor name like `Concentration_ratio([15, 17])` to disambiguate? Yes, maybe. It's verbose but it's only used at the beginning. Clarity better than brevity in this case. Do you agree?
 
-<!-- BEGIN CLAUDE-RESPONSE: Q5 confirm + lock the three constructors -->
 > **Claude:** Agreed. Locking in three named constructors, one per intent:
 >
 > ```julia
@@ -2710,10 +2749,8 @@ Good
 > Three unambiguous spellings, each says exactly what it means. The verbose names get typed once at the top of a script; the cost is trivial vs. the cost of writing the wrong one.
 >
 > `Concentration_count` validates that `sum(counts) == n_total`. If a user writes `Concentration_count([15, 17]; n_total=32)` and `n_total` doesn't match the cell sizes they end up enumerating over (`volume_range` × `n_D`), the dispatcher errors out with the `EmptyEnumerationError` from §6.5.
-<!-- END CLAUDE-RESPONSE -->
 6. **`materialize(s)` accessor.** Convenience function `materialize(s::EnumeratedStructure{L}) :: Vector{Int8}` decodes the labeling regardless of `L`. Naming alternatives: `decode`, `to_vector`, `digits_of`, `expand`. Pick one to lock in? Basically this is a list of vectors that represend the labeling of the sites in the cell, yes? If that is so, I'm inclined toward something with "label" in the name. I like the sense of the word materialize, because we are making the label concrete (from some sort of hash value).  We are also "expand"ing it into the full label string. (don't love string, though). Let's keep brainstorming before going on.
 
-<!-- BEGIN CLAUDE-RESPONSE: Q6 brainstorm with "label" -->
 > **Claude:** Brainstorming with "label" prominent. Ranked roughly by my preference:
 >
 > 1. **`label_vector(s)`** — concise, says exactly what it returns. Reads like a property accessor (which it functionally is). My top pick.
@@ -2732,10 +2769,8 @@ Good
 > Other words that came up but I'm not pushing: **`as_vector(s)`** (drops "label"; less informative), **`config(s)`** (says "configuration" without "label"; ambiguous), **`occupations(s)`** (chemistry-flavored — each entry says which species *occupies* that site; a real candidate if you want crystallography vocabulary).
 >
 > If "occupations" lands for you, I think that's the most natural domain word — chemists/materials scientists routinely talk about "site occupations" for exactly this concept. `occupations(s)` is short, domain-correct, and has zero collision risk in our type catalog. It might actually be better than `label_vector(s)` from the user's perspective even though it doesn't say "label."
-<!-- END CLAUDE-RESPONSE -->
 <!-- I'm leaning towards something active, with a verb, or something that implies a conversion, something like hash2labeling or something. I want it to be really clear that we are converting from one representation to another. -->
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: Q6 brainstorm — verb-based names -->
 > **Claude:** Verb-based / conversion-implying brainstorm:
 >
 > 1. **`hash2labeling(s)`** — explicit conversion. Reads as "from hash to labeling form." Common Julia idiom (`base2int`, `string2int`, etc., though Julia stdlib prefers `parse`-style naming). Unambiguous about direction.
@@ -2757,10 +2792,8 @@ This is my choice.
 > **Backup pick: `hash2labeling(s)`** if you really want the explicitness about direction. The mild semantic mismatch with `Vector{Int8}` storage is a small cost given that nearly all users in practice will have hashes (the `Vector{Int8}` case is rare, just a small-enumeration default).
 >
 > Lock in either and we strip + finalize. Both are concrete improvements over `materialize`.
-<!-- END CLAUDE-RESPONSE-NEW -->
 7. **2D enumeration types.** `LatticeEnumeration2D` currently has its own (different) `SuperTile` etc. Should the 2D version reuse `ParentLattice` / `Sites` / `Supercell` (with 2×2 matrices instead of 3×3 via parametric dimension), or stay separate? Lean toward "reuse via dimension parameter" but it's invasive. This is tricky because I don't expect the 2D stuff to get used much (but surface scientist and layered materials people might really like it). I lean away from something invasive but we'll we regret it later if 2D applications go viral?
 
-<!-- BEGIN CLAUDE-RESPONSE: Q7 parametric dimension as cheap insurance -->
 > **Claude:** Compromise approach: design 3D-only types now but parametrize on dimension so 2D extension is a non-breaking change later. Concretely:
 >
 > ```julia
@@ -2791,12 +2824,9 @@ This is my choice.
 > **What this rules out (for now):** wholesale unification of the 3D and 2D code paths in v0.2. The current standalone `LatticeEnumeration2D` stays as-is in v0.2; v0.3+ could fold it into the parametric scheme if 2D demand materializes.
 >
 > **Lean: do this.** The parametric annotations are cheap insurance against having to break the API later. If 2D never gets demand, we lose ~10 lines of `{D}` annotations and zero runtime cost. If 2D goes viral, we extend without breaking 3D users. Risk-reward is asymmetric in favor of doing it now.
-<!-- END CLAUDE-RESPONSE -->
 Let's do it now.
 
-<!-- BEGIN CLAUDE-RESPONSE-NEW: parametric D confirmed -->
 > **Claude:** Applying in the finalization commit. Every type definition in §6 gets `{D}` parametrization (with constructors that infer `D` from the input matrix's first dimension). All current usage stays as `ParentLattice{3}` etc.; the 2D path stays in the standalone submodule for v0.2 but the type catalog is structurally ready to absorb 2D when needed.
-<!-- END CLAUDE-RESPONSE-NEW -->
 
 ### 6.14 What this enables for Phase 7+
 
@@ -2804,8 +2834,11 @@ Phase 7 (misuse / scale safety) reads off this catalog directly:
 - Pre-flight estimator returns `EnumerationCostEstimate`.
 - `BigInt` representation handled via the parametric `L` type — no separate API path.
 - The `memory_budget` check happens against `EnumerationCostEstimate.peak_memory_bytes`.
+- The `SupercellSelection` abstraction lets cost-estimator messages suggest the right mitigation (tighter `RadiusBound`, smaller `VolumeRange`, or curated `ExplicitHNFs`).
 
-Phase 9 (pymatgen) reads off this catalog: `Enumeration{L}` is what the Python wrapper sees and adapts to pymatgen's `Structure` objects. Conversion is `EnumeratedStructure → real_space_atoms → pymatgen.Structure`.
+Phase 8 (literature survey) inherits one explicit task: implement `Spacey.spacegroup(c::Crystal)` (currently a stub upstream); this is the symmetry-computation dependency for `ParentLattice{D}.space_group::Vector{SymmetryOp{D}}`.
+
+Phase 9 (pymatgen) reads off this catalog: `Enumeration{D,L}` is what the Python wrapper sees and adapts to pymatgen's `Structure` objects. Conversion is `EnumeratedStructure → real_space_atoms → pymatgen.Structure`.
 
 Phase 10 (CI / regression) reads off this catalog: the regression-comparison utility takes two `Enumeration` values and compares them up to symmetry-equivalence. No file-format intermediation needed.
 
@@ -2813,7 +2846,6 @@ Phase 11 (DFT outputs) reads off this catalog: the POSCAR writer takes `Enumerat
 
 Phase 12 (synthesis) folds this into a final design document.
 
-<!-- ============= END CLAUDE-ADD: Phase 6 section ============= -->
 
 ---
 
