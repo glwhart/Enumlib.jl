@@ -2847,6 +2847,215 @@ Phase 11 (DFT outputs) reads off this catalog: the POSCAR writer takes `Enumerat
 Phase 12 (synthesis) folds this into a final design document.
 
 
+<!-- BEGIN CLAUDE-ADD-NEW -->
+## Phase 7 — Misuse / scale-safety mechanisms
+
+The original Fortran enumlib was widely misused — researchers from materials applications would request enumerations that produced lists in the billions or hit out-of-memory walls, with no guardrails between the request and the run. Phase 7 designs the user-protection layer for the Julia rewrite: a pre-flight cost estimator, a memory budget enforced by default, BigInt-safe counting and labeling, structured errors with actionable mitigations, and explicit handling of the edge cases (empty enumerations, partition explosions) that Fortran handled silently or not at all.
+
+The Phase 6 catalog already contains the load-bearing types: `EnumerationCostEstimate`, `EmptyEnumerationError`, the `memory_budget` and `on_overflow` kwargs on `enumerate(...)`, the parametric `L` for `BigInt`-sized labelings. Phase 7 binds them into a coherent user-protection story.
+
+### 7.1 Classes of misuse, by frequency
+
+Drawn from the original Fortran enumlib's known failure modes (Phase 2 §2.10) and from the firstprompt.md request:
+
+| Class | Failure mode | Fortran behavior | Julia mitigation |
+|---|---|---|---|
+| **Combinatorial blow-up** | User requests $k=2$, $n=70$, all concentrations: $2^{70}$ labelings. Bitmap alone is 128 EiB. | Hardwired `max_binomial = 1E10` threshold silently changes algorithm; otherwise crashes with OOM. | Pre-flight estimator + `memory_budget` + `on_overflow=:error` (default); structured `EnumerationTooLargeError` |
+| **Partition explosion (high $k$)** | User requests $k=10$, $n=20$, concentration range: number of integer partitions of multiplicity vectors is $\sim 10^7$, each with its own enumeration. | No protection. Runs until OOM or wall-clock kills it. | `partition_count` warning surfaced via `EnumerationCostEstimate.notes`; same `:error/:warn/:ignore` policy |
+| **Empty enumeration** | User requests `Concentration([1//3, 1//3, 1//3])` with `VolumeRange(2:8)` — no $n$ in 2..8 is divisible by 3, so nothing fits. | Silent: returns zero structures with no diagnostic. | `EmptyEnumerationError` thrown upfront with a suggested fix (e.g., "try VolumeRange(3:9:6)") |
+| **Integer overflow in count** | At $k=4$, $n=40$ the labeling space exceeds `typemax(Int64)`. | The Fortran's per-volume count fits in `integer*8`; the algorithm code path then silently misbehaves on indexing. | All counts are `BigInt`; `Enumeration{D,L}` picks `L = BigInt` automatically when needed (no user choice required) |
+| **Unrealistic radius bound** | User requests `RadiusBound(max_radius = 100.0)`: scans a billion HNFs to find Minkowski-reduced ones. | N/A — radius enumeration is a Julia addition, not in Fortran. | `volume_cap` field on `RadiusBound` (default `typemax(Int)`) is the safety stop; cost estimator factors it in |
+| **Disk-fill via streaming output** | User pipes 10⁹ structures to POSCARs in a single directory. | N/A — Fortran wrote one file (`struct_enum.out`); pymatgen wrappers later split. | Out of scope for the core library; users compose with their own I/O. The lazy iterator gives them control over when each structure becomes a file. |
+
+The first three (blow-up / partition explosion / empty) are the classes that genuinely caused user pain in Fortran. The last three are either solved-by-design in Julia (overflow → BigInt) or are the user's responsibility to compose (disk fill).
+
+### 7.2 The pre-flight cost estimator
+
+`estimate_cost(parent, sites; supercells, concentration, algorithm = :auto, ...)` is the user-protection workhorse. It runs before any HNF symmetry reduction, before any labeling enumeration, before any allocation of the visited bitmap. It returns a structured `EnumerationCostEstimate` (defined in §6.9):
+
+```julia
+struct EnumerationCostEstimate
+    total_count::BigInt                  # predicted #structures (Pólya / fixed-conc Pólya)
+    peak_memory_bytes::Int               # worst-case peak across the chosen algorithm's lifetime
+    estimated_walltime_seconds::Float64  # predicted; uses simple per-mode rules of thumb
+    chosen_algorithm::Symbol             # :exhaustive, :multinomial, :recursive_stabilizer, …
+    selection_kind::Symbol               # :volume_range, :radius_bound, :explicit_hnfs
+    notes::Vector{String}                # warnings, e.g., partition_count, algorithm fallback
+end
+```
+
+#### How each field is computed
+
+- **`total_count`** comes from the Rosenbrock 2016 numerical Pólya algorithm (`papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`), invoked per-supercell and summed over the HNF list. For the no-concentration case this is the cycle-index sum; for fixed-concentration it's the Pólya-with-multiplicity formula from HNF 2012 Appendix A.2. Cost: $O(\text{permutation group size} \cdot k)$ per supercell — milliseconds even for hundreds of supercells.
+- **`peak_memory_bytes`** is per-algorithm:
+  - `:exhaustive`: `bitmap = total_count / 8` + `output_buffer = sum(sizeof(L) for s in unique_structures)` + per-supercell stabilizer/permutation caches.
+  - `:multinomial`: same, with $C$ (multinomial coefficient sum) replacing $k^n$.
+  - `:multinomial_restricted`: tree-walk worst-case is $O(\text{depth} \cdot k)$ — typically tens of KB regardless of total count.
+  - `:recursive_stabilizer`: same as `:multinomial_restricted`. Streams; the peak is the active stack frame plus per-supercell caches.
+- **`estimated_walltime_seconds`** uses simple per-mode constants (e.g., "exhaustive: 1 µs per labeling check"). Calibrated once during package development against a reference workstation; users with very different hardware get rough estimates, but the order of magnitude is what matters for the safety check.
+- **`chosen_algorithm`** is whatever `:auto` would pick (or what the user passed explicitly). The estimator uses the same decision tree as `enumerate`.
+- **`selection_kind`** is informational — it lets the error message suggest an appropriately-shaped mitigation ("try a tighter radius" vs "smaller volume range").
+- **`notes`** is where the estimator records warnings: "Switched from `:exhaustive` to `:recursive_stabilizer` because the bitmap would exceed memory_budget." "Partition count is 10⁵ at the upper end of the concentration range; consider narrowing." "Radius bound `max_radius=8.0` would scan up to volume 4096; capped at `volume_cap=100`."
+
+#### Why this is separate from `enumerate`
+
+Two reasons:
+
+1. **Composability.** A user can call `estimate_cost(...)` first, see the predicted count, narrow their concentration range, call again, until the size is reasonable. The `enumerate` call uses the *same* estimator under the hood (per §5.5) — it's just done implicitly.
+2. **CI integration.** Regression tests can assert `estimate_cost(...).total_count == reference_count` without running the full enumeration. This catches Pólya-formula bugs separately from labeling-enumeration bugs.
+
+### 7.3 The memory-budget gate
+
+By default, `enumerate(...)` runs the cost estimator and refuses to proceed if `peak_memory_bytes > memory_budget`:
+
+```julia
+function enumerate(parent, sites; supercells, concentration = nothing,
+                   algorithm = :auto, memory_budget = 8 * 2^30, on_overflow = :error,
+                   kwargs...)
+    estimate = estimate_cost(parent, sites; supercells, concentration, algorithm, kwargs...)
+    if estimate.peak_memory_bytes > memory_budget
+        if on_overflow === :error
+            throw(EnumerationTooLargeError(estimate, memory_budget))
+        elseif on_overflow === :warn
+            @warn """Enumeration may exceed memory_budget.
+                     predicted = $(format_bytes(estimate.peak_memory_bytes)),
+                     budget    = $(format_bytes(memory_budget))""" estimate
+        end
+    end
+    # ... proceed to actual enumeration
+end
+```
+
+#### Defaults
+
+- **`memory_budget = 8 * 2^30` (8 GiB).** Big enough for typical research workstations; small enough that asking for $2^{70}$ labelings still triggers the gate. Users on big iron pass `memory_budget = 256 * 2^30` (256 GiB) or whatever their machine actually has.
+- **`on_overflow = :error`.** Safe default. Forces the user to either narrow the search or explicitly raise the budget. Saying "yes, I really do mean it" is one kwarg flip away (`on_overflow = :ignore`).
+
+#### The error type
+
+```julia
+struct EnumerationTooLargeError <: Exception
+    estimate::EnumerationCostEstimate
+    budget_bytes::Int
+end
+
+function Base.showerror(io::IO, e::EnumerationTooLargeError)
+    pred = format_bytes(e.estimate.peak_memory_bytes)
+    bdgt = format_bytes(e.budget_bytes)
+    print(io, """
+    EnumerationTooLargeError: predicted peak memory $(pred) exceeds memory_budget $(bdgt).
+        Predicted total structures: $(e.estimate.total_count)
+        Chosen algorithm:           $(e.estimate.chosen_algorithm)
+        Selection method:           $(e.estimate.selection_kind)
+
+    Mitigations to consider:
+      • Narrow the search: $(suggest_for(e.estimate.selection_kind))
+      • Use streaming algorithm: pass `algorithm = :recursive_stabilizer`
+      • Add concentration restriction: pass `concentration = Concentration(...)`
+      • Raise the budget: pass `memory_budget = $(2 * e.budget_bytes)` (only if you have the RAM)
+      • Override the gate: pass `on_overflow = :ignore` (you accept the risk)
+    """)
+    for note in e.estimate.notes
+        println(io, "  • Note: ", note)
+    end
+end
+
+suggest_for(::Val{:volume_range})   = "shrink your VolumeRange (current: ...)"
+suggest_for(::Val{:radius_bound})   = "tighten max_radius or lower volume_cap"
+suggest_for(::Val{:explicit_hnfs})  = "remove HNFs from your ExplicitHNFs list"
+```
+
+The error message is the user-facing surface of the safety mechanism. It must (a) tell the user *why* the request failed, (b) tell them *what to change*, and (c) give them an explicit override path. The Fortran's `max_binomial` did none of those — it silently picked an alternative algorithm with no diagnostic.
+
+### 7.4 BigInt handling — automatic, not a user choice
+
+The Phase 6 catalog made `L<:LabelingRepresentation` parametric so that `Enumeration{D,L}` can use `Vector{Int8}`, `Int64`, or `BigInt` as the per-structure storage. Phase 7's job is to ensure the choice is *automatic* and *invisible*:
+
+- **Counts always BigInt.** `count_inequivalent` returns `BigInt`; `EnumerationCostEstimate.total_count` is `BigInt`. No user thinking required.
+- **Labeling representation chosen by dispatcher.** During pre-flight, the dispatcher inspects `total_count` and `k^n` (or the multinomial $C$) against `typemax(Int64)`:
+  - $\le \texttt{typemax(Int64)}$ and `total_count * sizeof(Vector{Int8}) > memory_budget / 4`: pick `L = Int64` (compact storage, decode-on-access).
+  - $> \texttt{typemax(Int64)}$: pick `L = BigInt` (slower but correct).
+  - Otherwise: pick `L = Vector{Int8}` (fastest, no decode needed).
+- **`to_labeling(s)` decodes regardless.** User code is `for s in enumerate(...); digits = to_labeling(s); ...; end` — no awareness of `L`.
+
+#### Why this beats the Fortran approach
+
+Fortran enumlib uses `integer*8` everywhere and trusts the user not to overflow it. The 1.0.6 history note in the Fortran HISTORY.md says `max_binomial = 2.63E14` was changed to `1E10` "because the previous value caused overflow." That's a code smell: the safety threshold was set by trial and error, not by a principled overflow check. Julia's `BigInt` cost is a few hundred ns per op vs ~1 ns for `Int64` — but it's only paid when needed, and the needing is detected automatically.
+
+### 7.5 The empty-enumeration case
+
+Some user requests have *zero* valid structures. Two patterns:
+
+1. **Bad concentration / volume mismatch.** `Concentration([1//3, 1//3, 1//3])` requires the cell size $n \cdot n_D$ to be divisible by 3. If `VolumeRange(2:8)` has no such $n$ for the user's $n_D$, the result is empty.
+2. **Site restrictions over-constrain.** Each `Site` has `allowed_labels` of size 1 or 2, but the requested concentration requires species 3 at some position — no labeling exists.
+
+Fortran handles these silently (output zero structures, no diagnostic). Julia throws upfront:
+
+```julia
+struct EmptyEnumerationError <: Exception
+    reason::Symbol            # :no_valid_volume, :site_restriction_conflict, :concentration_unrealizable
+    diagnostic::String        # human-readable explanation with the parameters
+end
+```
+
+The dispatcher walks the (volume, concentration, site-restriction) cross-product upfront — it's a small Cartesian-product loop, microseconds. If empty, throw before any enumeration starts. The error message tells the user *which* combination produced zero (e.g., "no $n$ in 2:8 is divisible by 3"); they fix the input and retry.
+
+This is an opinionated choice: the alternative is "return an empty `Enumeration`." The user explicitly preferred the throw pattern (see §6.5 review). Rationale: silently empty results are a known footgun in enumeration tools. A throw forces the user to confront the mismatch.
+
+### 7.6 Partition-count warnings (high-$k$, concentration-range)
+
+`ConcentrationRange` decomposes into a list of integer multiplicity vectors $(a_1, \ldots, a_k)$ at each cell volume. For high $k$ (≥ 6) and wide ranges, the partition count alone can be in the millions:
+
+$$
+\text{partition\_count}(n, k, \text{ranges}) = \#\{(a_1, \ldots, a_k) : \sum a_i = n, \; a_i \in [\text{range}_i]\}
+$$
+
+Even if each individual partition has a small per-supercell enumeration, the product can be huge. The cost estimator computes `partition_count` as part of its work and surfaces it in `EnumerationCostEstimate.notes`:
+
+> "ConcentrationRange decomposes into 12,847 distinct multiplicity vectors at $n=20$. The cost estimate is the *sum* across all of them; consider narrowing the range or fixing $k$ values you don't actually need to vary."
+
+The check is independent of the memory-budget gate — a user can be under budget *per partition* but blow the wall clock budget *across* partitions. Surfacing the partition count gives them visibility before they commit.
+
+### 7.7 The Fortran `max_binomial` lineage — what it became
+
+For migration / context: the Fortran's `max_binomial = 1E10` (`derivative_structure_generator.f90:1268`) was a hardwired threshold that silently dispatched between two algorithms. In the Julia design:
+
+| Fortran knob | Julia replacement |
+|---|---|
+| `max_binomial = 1E10` (silent algorithm switch) | `memory_budget` (default 8 GiB) + `on_overflow = :error` (loud, with mitigations) |
+| Trial-and-error tuning (1.0.6: `2.63E14` → `1E10`) | Principled cost model (`EnumerationCostEstimate`) calibrated once, not tuned by guess |
+| No user override | `on_overflow = :ignore` lets the user accept the risk explicitly |
+| No diagnostic | `EnumerationTooLargeError` carries the estimate + suggested mitigations |
+
+The Julia version is *more* protective by default (8 GiB is conservative for modern hardware) but *less* paternalistic (the user can always opt out). The Fortran's threshold was both arbitrary *and* unoverridable — the worst combination.
+
+### 7.8 What's NOT in scope for v0.2
+
+Three classes of user protection I considered and explicitly defer:
+
+- **Wall-clock watchdog with auto-abort.** A timeout that kills the enumeration after $T$ seconds. Useful but invasive — requires either checkpointing + resume or losing work mid-enumeration. Out of scope; the user runs `enumerate(...)` inside their own timeout if they want one.
+- **Output-disk-space check.** Predicting the on-disk size of N POSCAR files, refusing if the user's working directory has less. The library doesn't write files; the user composes I/O. Their problem.
+- **Live progress reporting.** A `progress = true` kwarg that prints a percentage as enumeration proceeds. Composes with `ProgressMeter.jl` or `Folds.jl`-style callbacks; the iterator interface gives the user the hook they need. Could add `enumerate_each` parallel/progress variants in v0.3 if demand materializes (per §5.11 Q4 discussion).
+
+### 7.9 Open questions for the user (Phase 7)
+
+1. **`memory_budget` default.** I picked 8 GiB — generous for laptops, conservative for workstations. Should the default be smaller (1 GiB, forcing serious users to opt in) or larger (32 GiB, matching modern dev machines)? I lean 8 GiB as a "Goldilocks" middle but happy to be argued out of it.
+2. **Estimator calibration.** `estimated_walltime_seconds` uses per-mode constants set during package development. Should I (a) ship them hardcoded, (b) ship a one-time `calibrate_cost_model()` function that benchmarks the user's machine and writes constants to a config file, or (c) skip walltime entirely from v0.2 and just report memory? Option (c) is the least likely to lie; option (b) is the most accurate but adds setup friction.
+3. **`EnumerationTooLargeError` as a concrete suggestion engine.** I've sketched the error message with `suggest_for(selection_kind)`. Should I go further — actually compute the *concrete* tighter range that would fit in budget? E.g., "your `VolumeRange(2:20)` requested 10¹² structures; `VolumeRange(2:14)` would request 10⁸, fitting in your budget." That's useful but requires re-running the cost estimator iteratively. Mild cost; more user-friendly. Worth it?
+4. **Partition-count warning threshold.** I have the partition count surfaced as a note. Should there be a `partition_threshold` kwarg that elevates a high partition count to a hard error (per the same `:error/:warn/:ignore` policy as `memory_budget`)? Or is the note in `notes::Vector{String}` enough?
+5. **Should the empty-enumeration case be a throw or a return-empty?** I locked in throw earlier per your preference. Re-confirming: is there any case where return-empty is preferable (e.g., scripts that loop over many parameter sets and want to silently skip the empty ones)? If so, a kwarg `on_empty = :throw` (default) / `:warn` / `:silent` mirrors `on_overflow` and gives the script writers an out.
+6. **Pre-flight as a side effect of `enumerate(...)` — always or opt-out?** Currently the gate runs always. If a power user has already called `estimate_cost` themselves and is sure of the size, the redundant call inside `enumerate` is wasted Pólya work. Worth a `skip_preflight = false` kwarg, or just trust the user with `on_overflow = :ignore`?
+
+### 7.10 What this enables for Phase 8+
+
+Phase 8 (literature survey) gets one explicit deliverable beyond the surveying itself: confirm the Rosenbrock 2016 Pólya algorithm is the right choice for the cost estimator, or surface a faster alternative if one exists in the post-2017 literature. The estimator is a *foundation* for the misuse mitigation; if there's a 10× faster way to count, every cost-estimator call benefits.
+
+Phase 10 (CI / regression) gets the estimator as a regression target: per Phase 7 §7.2 reason 2, asserting `estimate_cost(...).total_count == reference_count` is a cheap unit test for Pólya correctness, separate from the labeling-enumeration tests.
+
+Phase 12 (synthesis) folds the misuse story into the user-facing design document — a "Safety and limits" section a user can read in 5 minutes to understand what protects them and what doesn't.
+<!-- END CLAUDE-ADD-NEW -->
+
+
 ---
 
-*(Sections for Phases 7–12 will be appended below as they're produced.)*
+*(Sections for Phases 8–12 will be appended below as they're produced.)*
