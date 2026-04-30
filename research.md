@@ -204,7 +204,6 @@ Phase 1.5 is done modulo the Morgan 2017 blocker, which is on the user's plate.
 
 ---
 
-<!-- ============= BEGIN CLAUDE-ADD: Phase 2 section ============= -->
 
 ## Phase 2 — Fortran enumlib codebase digest
 
@@ -317,9 +316,7 @@ The 2.0.0 entry overhauled the code to handle "spectator" or "inactive" sites �
 **Implication for the rewrite:** the inactive/equivalent site machinery is genuinely load-bearing (it's the difference between tractable and intractable enumerations for many real materials), but it's also the messiest part of the Fortran code. Phase 6 should design a clean abstraction — probably a single `Site` type that carries (position, allowed_labels, equivalent_to, inactive_label) — rather than the parallel-arrays approach.
 Yes, this need a fresh look and redesign
 
-<!-- BEGIN CLAUDE-RESPONSE: site abstraction -->
 > **Claude:** Logged as a Phase 6 priority. Tentative shape (subject to refinement when we get there): a `Site` struct carrying `(position::SVector{3}, allowed_labels::BitSet, equivalent_to::Int, inactive_label::Union{Nothing,Int})`, with `equivalent_to` enforced via Union-Find at construction so transitivity can't silently break (addresses your gotcha #5 below). The parent lattice + dset becomes a `Vector{Site}` plus the basis matrix, replacing the parallel arrays `dFull/d`, `labelFull/label`, `equivalencies`, `inactives`.
-<!-- END CLAUDE-RESPONSE -->
 
 ### 2.6 Concentration- and site-restricted enumeration
 
@@ -355,9 +352,7 @@ A multilattice has more than one basis site per parent unit cell (HCP = 2, perov
    Off-by-one errors in these bounds silently miss or duplicate atoms.
    But has that ever happened? Is it a problem?
 
-<!-- BEGIN CLAUDE-RESPONSE: off-by-one risk -->
 > **Claude:** Honest answer — I don't have direct evidence it has been a fielded bug. I overcalled the risk; the Fortran code's interior-points loop is well-tested at this point. The phrase was speculative ("silently miss or duplicate atoms" is the *kind* of error those bounds could produce, not one we know happened). Concrete derisking for the rewrite: write a property-based test that, for a curated set of (lattice, HNF, dset) cases, verifies (a) the right number of atoms come out (`n × n_D`) and (b) all atoms are distinct after lattice-reduction. If we get those two right, off-by-one in the loop is caught immediately. So: not a hot risk, but cheap to lock down — Phase 10 task.
-<!-- END CLAUDE-RESPONSE -->
 
 3. **HNF deduplication respects the dset.** Two HNFs are equivalent only if related by a symmetry that permutes the dset *consistently* with the permutation already on each cell. See `docs/notes/multilattice_dset_mapping_writeup.pdf`.
 
@@ -388,7 +383,6 @@ Fragile bits: `:`/`/` parsing, the backspace-and-rewind passes (`io_utils.f90:91
 
 We could rethink this format. Is it closely aligned to the real data structure of the problem? Is it the best way to pose an enumeration problem?
 
-<!-- BEGIN CLAUDE-RESPONSE: rethink struct_enum.in format -->
 > **Claude:** Worth doing. The Fortran format is *operational* (it's what the CLI driver eats) rather than *semantic* (it doesn't model the enumeration problem cleanly). Specifically: it conflates parent lattice description, multilattice dset, label-allowance, equivalencies, concentration constraints, and enumeration parameters all into one freeform text file with positional sensitivity. A cleaner Julia-native posing would separate:
 > 1. **Crystal structure**: `ParentLattice` (basis vectors + dset). Just geometry.
 > 2. **Allowed substitutions**: `Vector{Site}` with per-site `allowed_labels` (covers active/inactive/restricted).
@@ -398,7 +392,6 @@ We could rethink this format. Is it closely aligned to the real data structure o
 > The Julia call site becomes `enumerate(parent, sites, constraints; volume_range=2:10)` rather than reading a magic file. *Per the no-Fortran-compat directive in §2.10 #5:* a one-way `Enumlib.LegacyImport.read_struct_enum_in(path)` reader exists in a separate submodule for migrating existing Fortran setups, but it's not the primary API and not load-bearing.
 >
 > Phase 6 (data structures) and Phase 9 (pymatgen) jointly own this decision.
-<!-- END CLAUDE-RESPONSE -->
 
 #### `struct_enum.out`
 
@@ -415,7 +408,6 @@ start #tot HNF Hdegn labdegn Totdegn #size idx pg SNF HNF "Left transform" label
 Each row encodes index, total found, HNF index, degeneracies, volume, point-group order, SNF diagonal, HNF (9 entries), Left transform (9 entries), labeling string of length n×nD. SNF non-uniqueness means equivalent enumerations can produce different output rows — this is what `compare_two_enum_files` exists to handle.
 Would it be better to store these "rows" in some sort of struct? There is lots of repeated information here. Many structures have the same SNF, or HNF, or left transform...
 
-<!-- BEGIN CLAUDE-RESPONSE: normalize the output format -->
 > **Claude:** Strong yes. The flat row format is denormalized — every structure copies its parent's HNF, SNF, and left transform. For an enumeration of $10^6$ structures sharing a few hundred HNFs, that's gigabytes of redundancy.
 >
 > The natural normalization for in-memory use:
@@ -448,10 +440,8 @@ Would it be better to store these "rows" in some sort of struct? There is lots o
 > Memory drops by the per-supercell-multiplicity factor. Indexing a structure becomes `enum.structures[i]` and accessing its HNF is `enum.supercells[enum.structures[i].supercell_id].hnf`. Serialization uses the normalized form directly via JLD2 (or optionally HDF5) — no flattening, no custom format. *Per the no-Fortran-compat directive in §2.10 #5: pymatgen integration is via PythonCall, not a re-flattened legacy format.*
 >
 > This connects to your "iterator vs writer" point in §3.2.4 below — once the in-memory form is normalized, lazy generation becomes the natural API.
-<!-- END CLAUDE-RESPONSE -->
 I like all of this. One thought to flag and reconsider later: the labeling element in EnumeratedStructure could be replaced a single Int (Big Int?) that could be regenerated into the labeling. Not sure that is efficient, but might save space. Let's flag it and rethink later.
 
-<!-- BEGIN CLAUDE-RESPONSE: labeling-as-integer -->
 > **Claude:** Good instinct — and it's actually exactly the perfect-hash idea (§4.1) applied to storage. Quick sketch of the trade-offs to flag for Phase 6:
 >
 > **What "labeling-as-Int" looks like.** A length-$n$ labeling with $k$ colors is a number in $[0, k^n - 1]$ via the base-$k$ digit hash. For fixed-concentration cases the better hash is the 2012 multinomial hash giving $[0, C-1]$ where $C = \binom{n}{a_1, \ldots, a_k}$ — much smaller. So `EnumeratedStructure.labeling` becomes a single `Int64` (or `BigInt` if it overflows) and the explicit `Vector{Int8}` is regenerated on demand.
@@ -475,7 +465,6 @@ I like all of this. One thought to flag and reconsider later: the labeling eleme
 > - Or define `EnumeratedStructure` parameterized: `EnumeratedStructure{L}` where `L` is `Vector{Int8}`, `Int64`, or `BigInt`. The dispatch at construction picks based on size.
 >
 > Logged as a Phase 6 design point. The current `Vector{Int8}` proposal in my normalized-output sketch above is the *conservative* default; the integer representation is a memory optimization we can opt into when the enumeration is large enough to make it worth the dispatch.
-<!-- END CLAUDE-RESPONSE -->
 
 ### 2.9 Tests
 
@@ -498,7 +487,6 @@ Might sort itself out to some degree if we come up with a better representation,
 3. **Bitstring labeling markers (`lab`, `lm`)** in `generate_permutation_labelings` — opaque, undocumented degeneracy heuristic. Risk surface for the rewrite.
 Tell me more what you mean by this.
 
-<!-- BEGIN CLAUDE-RESPONSE: bitstring markers explained -->
 > **Claude:** I called them "opaque" before reading the 2012 paper. Now that I have, they're not opaque — they're just not commented in the Fortran source. Here's what they do:
 >
 > The 2012 paper's algorithm uses the multinomial mixed-radix hash to map each fixed-concentration configuration to an integer in `[0, C-1]` where `C = multinomial(n; a_1, ..., a_k)`. To eliminate symmetry duplicates, the code allocates a `BitVector` of length `C` (this is `lab` in the Fortran, the "labeling" markers). Initially all bits are false ("not yet visited / not in any orbit").
@@ -524,36 +512,30 @@ Tell me more what you mean by this.
 > ```
 >
 > Three lines once the hash + inverse are in hand. The "risk surface" I flagged is gone now that the 2012 paper has demystified the markers — it's just a vanilla orbit-marking pass.
-<!-- END CLAUDE-RESPONSE -->
 Good catch. We'll make sure that the same opaqueness doesn't happen in the julia code. It will be well documented and commented in the code.
 
 
 4. **SNF non-uniqueness** — left transform is not uniquely determined; `compare_two_enum_files` handles the resulting automorphisms. Julia rewrite needs to either nail down a canonical SNF (NormalForms.jl?) or replicate the automorphism handling. 
 SNF is canonical by definition. It's the left transform that isn't unique. Not sure what effort would be necessary to enforce that. Probably easier not to rely on it and compute equivalencies. In any case, we need to think about this more.
 
-<!-- BEGIN CLAUDE-RESPONSE: SNF terminology correction -->
 > **Claude:** You're right — I was sloppy with the language. The SNF matrix $S$ itself (the diagonal entries $s_1 \mid s_2 \mid s_3$) is canonical given $H$. It's the left and right unimodular transforms $L, R$ in $L H R = S$ that are not unique — many $L, R$ pairs yield the same $S$. And per HISTORY.md 2.0.3, when symlib's SNF routine was updated, the produced $L$ changed even though $S$ didn't, which cascaded into different output rows for "equivalent" enumerations.
 >
 > The correct phrasing is "left-transform non-uniqueness," not "SNF non-uniqueness." I'll fix the wording in the Phase 2 main text and the synthesis bullet on a follow-up pass.
 >
 > Your second point — "probably easier not to rely on it and compute equivalencies" — is the right framing. Rather than fight to canonicalize $L$, we accept that two correct enumerations may disagree on row content and rely on `compare_two_enum_files`-style equivalence checking. That's what the Fortran code already does post-2.0.3. Phase 6 should make this an explicit design decision: **don't expose $L$ in the public output API; keep it internal to the (HNF, labeling) → real-space mapping**, and provide a structure-equivalence comparator for users who need to compare enumerations across versions.
-<!-- END CLAUDE-RESPONSE -->
 Yes
 
 5. **Equivalencies transitivity is unchecked** — if the user passes a non-transitive `equivalencies` array, the code silently produces wrong answers.
 We need to make the new code bullet proof to that failure mode
 
-<!-- BEGIN CLAUDE-RESPONSE: enforce transitivity -->
 > **Claude:** Two ways to make this bulletproof, in order of preference:
 >
 > 1. **Use a representation that enforces transitivity by construction.** A Union-Find / Disjoint-Set structure stores equivalence classes directly: there's no array of pointers that could disagree, just "what class is site `i` in?" — answered in nearly $O(1)$. Julia stdlib doesn't ship one, but `DataStructures.jl`'s `IntDisjointSets` works, or we write a tiny one in ~30 lines. Construction API: the user calls `add_equivalent!(sites, i, j)` and the structure handles the rest. Reading `canonical_site(sites, i)` always returns the canonical representative; it's transitively-correct for free.
 > 2. **Validate at construction.** If we keep the array form for compat with the Fortran format, validate at construction time: walk the array, for each `i`, follow `equivalencies[i]` to fixed point and check that the same canonical site comes back from any starting point in the cycle. Throw a `DomainError` with a descriptive message if not.
 >
 > Lean: option (1). Equivalences are conceptually a partition; using a partition data structure expresses that intent and prevents the failure mode at the type level. Phase 6 design point.
-<!-- END CLAUDE-RESPONSE -->
 I don't anticipate that we'll even want "compat with the Fortran format". Design right, go forward with confidence. Learn from the past, keep the good. Redesign the rest.
 
-<!-- BEGIN CLAUDE-RESPONSE: no Fortran-format compat — strategic note -->
 > **Claude:** This is load-bearing strategic guidance. Lifting it to a top-level **Design Principle 3** in a follow-up cleanup commit, alongside Principles 1 (Fortran file divisions are advisory) and 2 (current Julia layout isn't a baseline). Cascading consequences I want to make explicit so they don't quietly resurface later in the doc:
 >
 > **(a) Equivalencies (the comment you replied to).** Drop option (2) "validate at construction" — that was framed as "if we keep the array form for compat with the Fortran format." We're not. Use Union-Find natively. The user-facing API takes pairs `(i, j)` and adds them to a partition; there's no array format anywhere.
@@ -576,19 +558,16 @@ I don't anticipate that we'll even want "compat with the Fortran format". Design
 > Net effect: the rewrite is meaningfully simpler. We don't have to worry about preserving every quirk of the legacy formats; we design what's right and provide migration paths.
 >
 > Will retro-edit the affected earlier responses (the iterator-first response in §3.2 and the priority list in §3.4) to remove their "compat shim" framing in a follow-up pass before we strip markers.
-<!-- END CLAUDE-RESPONSE -->
 
 
 6. **Concentration partition enumeration uses GCDs** (`enumeration_routines.f90:70`) — for large k, performance unclear.
 We can brainstorm how big k might be, insert some failsafe triggers, or rethink this completely. I don't remember why the GCD was convenient.
 
-<!-- BEGIN CLAUDE-RESPONSE: GCD in concentration partitioning -->
 > **Claude:** I haven't traced the exact `enumeration_routines.f90:70` site, but the typical role of GCDs in this kind of code is *fraction reduction* — reducing concentration ranges $[\text{min\_num}, \text{max\_num}, \text{denom}]$ to lowest terms across multiple species, so cell volumes that don't admit the requested concentration are skipped without enumeration. E.g., for $\text{cRange}_A = [1, 1, 4]$ ($A$ is exactly 25%), only cell volumes that are multiples of 4 can produce that concentration; for cell volume 6 the GCD machinery rejects it before the labeling pass starts.
 >
 > Practical scope: $k$ in materials enumeration is almost always 2 or 3; rarely 4; "high-entropy alloys" cases (HEAs) push to 5–6. So the worst case the algorithm needs to handle gracefully is $k = 5$ or $6$. GCD computations on small integers are ns-fast; the cost isn't in the GCDs themselves, it's in the *number* of partitions to consider, which scales as roughly $\binom{n+k-1}{k-1}$. For $n = 50, k = 6$ that's around 3 million partitions — still tractable.
 >
 > Concrete plan: implement the partition-enumeration with GCD-based pruning per Fortran, but *also* expose a `partition_count(n, k, ranges)` pre-flight that warns if the number of partitions × estimated configurations-per-partition exceeds a threshold. That way users with weird high-$k$ requests get a clear "this will produce $10^{15}$ structures, abort?" prompt rather than silent thrashing. Phase 7 (misuse mitigation) home.
-<!-- END CLAUDE-RESPONSE -->
 That sounds like a good plan
 
 7. **Direct-write to unit 14 inside the enumeration loop** — incomplete output if interrupted.
@@ -616,11 +595,9 @@ To not over-claim: I've not yet read the `support/` PDFs (`interior_points.pdf`,
 
 I've also not exhaustively traced control flow inside the larger files (e.g., every branch of `gen_multilattice_derivatives`). The top-level shape is captured; if Phase 6 surfaces a question that needs deep tracing, I'll spawn a focused agent.
 
-<!-- ============= END CLAUDE-ADD: Phase 2 section ============= -->
 
 ---
 
-<!-- ============= BEGIN CLAUDE-ADD: Phase 3 section ============= -->
 
 ## Phase 3 — Current Julia Enumlib state + Fortran→Julia delta
 
@@ -639,7 +616,6 @@ The package is 1361 LOC across 6 files in `src/`:
 | `radiusEnumeration.jl` | 123 | `radiusEnumHNFs`, `getHNFColorings`, `radEnumByXcellRadius`, `getSymInequivHNFsByCellRadius`, `estimatedTime` — radius-bounded enumeration variants. |
 | `LatticeEnumeration2D.jl` | 481 | Standalone 2D submodule (own module declaration, own deps `Plots`, `SmithNormalForm`, `StaticArrays`). NOT loaded by `Enumlib.jl` by default; users `include` it manually. Defines its **own** `SuperTile` struct (different from the 3D one). |
 
-<!-- BEGIN CLAUDE-RESPONSE: dead structs verified -->
 > **Claude:** Confirmed your suspicion via grep. In the 3D `Enumlib` module:
 > - `SuperTile` is **defined** at `LatticeColoringEnumeration.jl:11` and **exported** at `Enumlib.jl:15`. It is **never constructed** anywhere in the 3D code. Worse, its inner constructor at line 17 has a typo (`daig((HNF).S)` instead of `diag(...)`) — calling it would throw `UndefVarError`. So the struct is both unused *and* broken.
 > - `ColoredTile` is defined to wrap a `SuperTile` plus a colorings vector. Same story — defined and exported, never constructed. Inherits the brokenness via dependency on `SuperTile`'s constructor.
@@ -650,7 +626,6 @@ The package is 1361 LOC across 6 files in `src/`:
 > So three exported-but-dead types in the 3D Enumlib API. Strongest possible signal that Phase 6 should design data structures from first principles. Yes! The fact that exporting these types didn't break anything is itself evidence that the right shape for `Site` / `Supercell` / `Enumeration` hasn't been settled.
 >
 > **Action item I'll take during Phase 6:** delete these three dead structs from the export list and from `LatticeColoringEnumeration.jl`, replace with the new design.
-<!-- END CLAUDE-RESPONSE -->
 
 Tests: `test/runtests.jl` covers HNF generation + coloring counts (9/9 pass against reference values from the 2008 paper's Table IV — FCC 8-site sum = 390, 12-site sum = 7140, etc.). `test/runtests2D.jl` exercises `LatticeEnumeration2D` separately.
 
@@ -718,7 +693,6 @@ Honest accounting:
 - **No `struct_enum.out` writer.** We can read but not write the canonical output format. Phase 9 (pymatgen) is impossible until this is fixed.
 Other than pymatgen, do we really need a writer? Couldn't we make a iterable that stored the necessary information to lazily spit them out as they were requested?
 
-<!-- BEGIN CLAUDE-RESPONSE: iterator-first API -->
 > **Claude:** That's the better framing. Julia idiom is iterators / lazy generators, and an enumeration is naturally one. Pseudocode for the user-facing API:
 >
 > ```julia
@@ -740,13 +714,11 @@ Other than pymatgen, do we really need a writer? Couldn't we make a iterable tha
 > So: **default API is lazy iteration**. The 2017 recursive-stabilizer tree is naturally streaming-friendly; the 2008/2012 crossing-out can also be made to yield as it goes (or, if we want, materialize the visited bitmap eagerly and yield the unique ones — we can decide which when we get there).
 >
 > *Earlier this response framed the `struct_enum.out` writer as a "compat-shim utility." That framing is now retired per your no-Fortran-compat directive in §2.10 #5. We don't ship a struct_enum.out writer at all in the user-facing API; if it's needed for cross-validation against Fortran enumlib output, it lives in an internal-test-only `LegacyExport` module.*
-<!-- END CLAUDE-RESPONSE -->
 
 - **No POSCAR pipeline.** `scratch/{read,make}POSCAR.jl` need cleanup before they can be loaded as module code, and `genPOSCARs` even has a captured-global-`A` bug.
 - **No regression-comparison tooling.** Without something like `compare_two_enum_files`, we can't validate the rewrite against the Fortran gold standard.
 We really need this. The Fortran is extremely strong, heavily battle tested. 
 
-<!-- BEGIN CLAUDE-RESPONSE: regression-comparison priority -->
 > **Claude:** Promoting in the work plan. Currently item (7) in §3.4's order-of-feature-delivery; should move up. Two reasons:
 > 1. Without it we have no objective measure that any new feature is correct against the Fortran reference.
 > 2. It's the *gating* tool for porting concentration restrictions, multilattices, and inactive sites — for each, we run Fortran enumlib on a representative case, run the new Julia code on the same case, compare, iterate.
@@ -756,7 +728,6 @@ We really need this. The Fortran is extremely strong, heavily battle tested.
 > *Earlier draft of (8) read "struct_enum.out writer + pymatgen-compatibility shim." Updated per your no-Fortran-compat directive in §2.10 #5: we don't preserve the file format as a long-term API. Pymatgen integration becomes a Python-callable Julia API via PythonCall (Phase 9), not a file-format shim.*
 >
 > Phase 12 will lock this in; flagging now while the reasoning is fresh.
-<!-- END CLAUDE-RESPONSE -->
 Great
 
 - **Limited test coverage.** 9 tests (all passing). Fortran has tens of thousands of test directories. We don't need to match that volume, but coverage of concentration/site-restriction edge cases will need to grow with the features.
@@ -789,11 +760,9 @@ This sounds good.
 
 For the rewrite I'd recommend keeping it as an explicit submodule (`Enumlib.LatticeEnumeration2D`) loaded on demand via `using Enumlib.LatticeEnumeration2D`, so the Plots dependency stays optional. The 2D code shares concepts with 3D (HNFs, colorings, supertiles) but uses its own types — worth a Phase 6 look at whether we can collapse some of that duplication.
 
-<!-- ============= END CLAUDE-ADD: Phase 3 section ============= -->
 
 ---
 
-<!-- ============= BEGIN CLAUDE-ADD: Phase 4 — paper digests (in progress) ============= -->
 
 ## Phase 4 — Paper digests
 
@@ -882,7 +851,6 @@ The total run time is dominated by step 5 + 6, both of which are linear in the n
 - **The "perfect hash" framing** (Sec. II.C.2) suggests a clean Julia data model: at the SNF level, labelings are just `Vector{Int8}` of length $n$ that index into a `BitVector` of length $k^n$. Phase 6 should consider this representation for the dedup pass; current `getUniqueColorings` uses a `BitVector` of length `k^n` already, which is consistent.
 I like this idea a lot. Can you explain it a bit more verbosely.
 
-<!-- BEGIN CLAUDE-RESPONSE: perfect hash explained -->
 > **Claude:** Glad it lands. Here's the verbose version. The Hart-Forcade 2008 algorithm has a beautifully simple data model that the current Julia code is *almost* already using; making it explicit clarifies the design.
 >
 > **Setup.** A labeling of a supercell with $n$ sites and $k$ atom types is a function $\sigma: \{1, \ldots, n\} \to \{0, 1, \ldots, k-1\}$. Equivalently, a length-$n$ vector with entries in $\{0, \ldots, k-1\}$. There are exactly $k^n$ such labelings.
@@ -925,7 +893,6 @@ I like this idea a lot. Can you explain it a bit more verbosely.
 > The current `getUniqueColorings(k, pG)` is already structured around this idea — it uses a `BitVector` of length `k^n` and walks `CartesianIndices`. The cleanup for Phase 6 is mostly wording: state explicitly that the labeling space *is* $[0, k^n - 1]$, that the bitmap *is* the dedup state, and document the bijection cleanly. The current implementation hides this behind a `CartesianIndices` iteration which obscures the underlying perfect-hash structure.
 >
 > Once this representation is made explicit, the 2012 paper's multinomial hash and the 2017 paper's location vectors slot in as natural specializations: same dedup loop, different (more compact) hash + inverse.
-<!-- END CLAUDE-RESPONSE -->
 Good
 
 - **Incompleteness of FWZ-style correlation deduplication** is the historical reason the geometry-free approach was developed. The Julia rewrite must not regress on this — any future "fast deduplication" optimization (Phase 8 / Shinohara 2020) needs to be checked for completeness in the same way.
@@ -1007,11 +974,9 @@ The routine `get_dvector_permutations` in `derivative_structure_generator.f90` c
 
 - **The current Julia code's `nD` parameter** is on the right shape for multilattices but the symmetry-on-$D \times G$ machinery is incomplete. Specifically: the existing `getPermG` operates on supercell sites (one label per site), not on the $D \times G$ Cartesian product. Need to either generalize `getPermG` or layer a multilattice-aware wrapper. The former is better, don't you think?
 
-<!-- BEGIN CLAUDE-RESPONSE: generalize over wrapper -->
 > **Claude:** Yes, generalize. Wrappers introduce an extra abstraction layer (you have to remember which version you're calling, what its semantics are, when to convert), and they tend to leak — eventually some caller wants to skip the wrapper for performance and you have two parallel APIs. Generalizing keeps one canonical function with one canonical signature; the singleton-dset case ($n_D = 1$) is just a degenerate input that the same code handles cleanly.
 >
 > Concrete shape (Phase 6): `getPermG(supercell::Supercell, parent::ParentLattice) :: Vector{Vector{Int}}` returning permutations on `n × n_D` sites. When `parent.dset == [zero_vector]`, the result reduces to the current single-site permutation list and existing call sites work unchanged.
-<!-- END CLAUDE-RESPONSE -->
 
 - **A `Multilattice` (or `ParentLattice`) struct** in the redesign should carry $\{A, D\}$ together. Phase 6 design point: should single-lattice cases be a special case (`D = [zero_vector]`) of the multilattice path, or should there be two code paths? My lean: one code path (always $D \times G$); the singleton case has $|D|=1$ and degenerates cleanly. One code path is also my lean as well.
 - **The `multilattice_dset_mapping_writeup.pdf` is the canonical reference.** It will be the next LaTeX-ification target alongside Phase 6 work, since the equations in Sec. IV.2.b–d and the Appendix are exactly what the implementation needs.
@@ -1236,13 +1201,10 @@ Not implemented. Phase 6 design notes:
 
 1. **The Pólya pre-flight reference.** Section 3.1 says "a recently developed numerical algorithm for the Pólya enumeration theorem" (refs 16-18) — that's *Pólya, Read 2012*; *Pólya 1937*; **and Rosenbrock, Morgan, Hart, Curtarolo, Forcade *J. Exp. Algorithmics* 21, 1 (2016)**. This last reference is potentially in scope for Phase 8 — it's the numerical Pólya algorithm that powers the pre-flight estimator. Worth grabbing. I put it in the papers folder.
 
-<!-- BEGIN CLAUDE-RESPONSE: Rosenbrock paper renamed and queued -->
 > **Claude:** Renamed your `papers_polya.pdf` → `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf` per our naming convention. Confirmed first page: Rosenbrock, Morgan, Hart, Curtarolo, Forcade, *ACM J. Exp. Algorithmics* **21**, 1.11 (Aug 2016). DOI: 10.1145/2955094. This is the numerical Pólya implementation that the Morgan 2017 tree algorithm references for its pre-flight count. I'll digest it as **§4.6** in a follow-up Phase 4 commit (small addition; one paper). It directly enables Phase 7 (misuse mitigation) since the pre-flight count is the user-protection feature.
-<!-- END CLAUDE-RESPONSE -->
 
 2. **The "smallest first" sort order**. Section 3 notes that placing colors smallest-first minimizes top-level branching. This is a heuristic, not proved optimal. Worth checking whether the Julia implementation should preserve this default and whether other orderings ever win. How would we test that?
 
-<!-- BEGIN CLAUDE-RESPONSE: testing sort orders -->
 > **Claude:** Concrete test design (Phase 10 work, but the sketch):
 >
 > Pick a small panel of cases that span the algorithmic regime — say 8 cases:
@@ -1261,15 +1223,12 @@ Not implemented. Phase 6 design notes:
 > Pre-flight prediction: smallest-first wins on average (the heuristic argument is sound — fewer top-level branches = less stabilizer-group work amortized lower in the tree). Largest-first will likely lose substantially. The interesting question is whether *any* alternative ever beats smallest-first, which would tell us when to expose the kwarg.
 >
 > One-page benchmark in `bench/sort_order.jl`, run once during Phase 6 implementation, results documented in the design notes.
-<!-- END CLAUDE-RESPONSE -->
 
 3. **Arrows vs. our scope**. The arrow material is non-trivially intertwined with the coloring tree in Fortran; the Julia rewrite should design the `Tree` API so that an arrow extension *could* slot in cleanly later without forcing the rest of the code to anticipate it. Phase 6 design responsibility. We don't need the arrows, ever. Even if we did, the design was faulty. We need to start from scratch if we ever do arrows again.
 
-<!-- BEGIN CLAUDE-RESPONSE: arrows fully out of scope -->
 > **Claude:** Updating the directive: arrows are fully out of scope, full stop. Removing the "design Tree API for arrow extensibility" point — that was overcaution and would only complicate the Tree code without payoff. The Julia `Tree` struct will not anticipate arrows in any way. If a future researcher wants arrow enumeration, they design from scratch with a different starting point.
 >
 > Will also remove the Tree's `arrow_group::GroupList` field hint and the related extension discussion from the rewrite-implications synthesis. One less degree of freedom is one less source of bugs.
-<!-- END CLAUDE-RESPONSE -->
 
 
 #### Terminology added to the glossary
@@ -1414,7 +1373,6 @@ After all five papers, here's the cumulative algorithmic landscape:
 
 For the immediate rewrite (v0.1 → v0.2), focus on Pólya counting + the 2008/2012/2017 algorithms with clean dispatch. ZDD is a v0.3+ optimization for users who hit the memory wall the 2017 tree creates. It also raises an open question for Phase 6: should the canonical representative of an orbit be lex-maximum (2020 convention) or depth-first-first (older convention)? Lex-maximum is cleaner mathematically and composes with the ZDD formalism, but the 2017 tree algorithm uses location-vector ordering which is its own thing. Worth a deliberate decision rather than inheriting one by accident.
 
-<!-- ============= END CLAUDE-ADD: Phase 4 — paper digests (complete) ============= -->
 
 ---
 
