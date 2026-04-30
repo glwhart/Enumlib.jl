@@ -1855,7 +1855,30 @@ Tell me more about how we are planning to use `Site` and `Sites` types.
 > - **`Site`** is one position in (or near) the parent cell where atomic substitution can happen. It carries (a) the position itself and (b) the set of allowed atomic species at that position. The set determines whether the site is "active" (>1 species allowed → free configurational variable) or "inactive" (1 species allowed → fixed, doesn't enumerate).
 > - **`Sites`** is the collection of all `Site`s in the problem, plus an equivalence relation declaring which sites should be treated as identical for enumeration purposes (e.g., images on opposite faces of a slab; symmetry-related positions the user wants to constrain to share labels).
 >
-> **Construction flow.** The user typically starts with the dset of the parent lattice (say, 2 sites for HCP), creates one `Site` per dset element with whatever species each can host, and wraps them in `Sites`. Then optionally calls `equate!(sites, i, j)` to declare equivalencies.
+> **Construction flow.** The user typically starts with the dset of the parent lattice (say, 2 sites for HCP), creates one `Site` per dset element with whatever species each can host, and wraps them in `Sites`. Then optionally calls `equate!(sites, i, j)` to declare equivalencies. Be "equivalencies" we mean that the two sites are connected by a symmetry? Or that the same label *must* be present on both sites - no configurational degree of freedom? The latter were called inactive sites in the UNCLE code, iirc. I'm just trying to get the terminology correct...  
+
+<!-- BEGIN CLAUDE-RESPONSE: equivalencies vs inactive terminology -->
+> **Claude:** Important distinction — nailing it down so we use it consistently:
+>
+> | Concept | Definition | Behavior in enumeration |
+> |---|---|---|
+> | **Inactive site** | `Site` whose `allowed_labels` has size 1 (one species allowed) | Removed from the labeling space; species is hardcoded |
+> | **Equivalent sites** (declared via `equate!(sites, i, j)`) | Two *distinct* sites the user declares must carry the *same* label across configurations | Both sites participate in the enumeration but are constrained to share a label — two configurational variables collapsed into one |
+>
+> They're related (both reduce configurational freedom) but distinct:
+> - Inactive: "this site has no choice — it's always species X."
+> - Equivalent: "these two sites *have* a choice — but always the *same* choice."
+>
+> **UNCLE's "inactive"** ↔ our "inactive" (single allowed label, hardcoded). Same concept, same name.
+>
+> **UNCLE / Fortran's `equivalencies` array** ↔ our `equate!` (user-declared partition, sites in the same class share their label). Originally added to enumlib for the slab-image case — a site at $z=0$ and its image at $z=L$ are physically the same atom and must share labels even though no parent-lattice rotation maps one to the other.
+>
+> **Algorithmic difference:**
+> - Inactive sites are *stripped* before the labeling enumeration starts. They re-enter the output afterward, with their hardcoded species.
+> - Equivalent sites *participate* in the enumeration but contribute one "effective site" per equivalence class. The dispatcher passes only the canonical representative to the algorithm; after enumeration, every member of the class gets the canonical's label copied in.
+>
+> Adding both definitions (and "equivalencies" as the partition relation) to `docs/notes/glossary.tex` in the finalization commit so the terminology is locked in for Phase 7+.
+<!-- END CLAUDE-RESPONSE -->
 >
 > **Algorithm consumption.** The dispatcher (`enumerate(...)`) reads `Sites` to know:
 > 1. The number of "effective sites" per parent cell = number of *active*, *canonical* sites = `length(active_canonical_sites(sites))`.
@@ -1885,6 +1908,7 @@ The full graph fits on one screen. No parallel arrays, no dead types, no Fortran
 <!-- BEGIN CLAUDE-RESPONSE: type-graph-fits-on-screen -->
 > **Claude:** Just meant the type-relationship diagram (which type holds which other type) is visually small — no chains of indirection, no 20-deep type hierarchies. The composition depth is roughly `ParentLattice → Sites → Supercell → EnumeratedStructure → Enumeration` and that's it. Removing the metaphor: the catalog is small enough to read top-to-bottom in one sitting and hold in your head.
 <!-- END CLAUDE-RESPONSE -->
+Got it. Thanks.
 
 ### 6.3 `ParentLattice`
 
@@ -1917,6 +1941,39 @@ struct ParentLattice
 > The math doesn't require the origin in the dset: `getCartesianPts` and the interior-points loops iterate over `(HNF translations) × (dset positions)` regardless of where the dset is anchored. Updated the constructor to drop the assertion (commented out above; will be deleted on the cleanup pass).
 >
 > One small caveat to flag for users: `pointGroup(A)` returns symmetries that fix the origin in lattice coordinates. If a user's chosen dset anchoring breaks the parent's symmetry (e.g., a dset that's supposed to have inversion through (½, ½, ½)), they may need to translate their basis matrix to put the relevant symmetry center at the origin. That's a user responsibility regardless of where the dset sits.
+
+Well, calculating the "pointgroup" of a lattice with a dset is equivalent to calculating the "spacegroup" of a crystal where the dset is all atoms of the same type. Fractional translations must be included in the symmetries of a multilattice. Pointgroup only applies to simple lattices.
+
+<!-- BEGIN CLAUDE-RESPONSE: space group vs point group — correctness fix -->
+> **Claude:** Correct, and this is a real correctness issue I missed. `pointGroup(A)` returns only the *Bravais lattice's* point-group symmetries (rotations/reflections that fix the lattice as a geometric object, no fractional translations). For a multilattice $M = L + D$, the relevant symmetry group is the *space group* of $M$ when the dset is treated as same-species atoms — and that includes screws and glides (rotations combined with fractional translations).
+>
+> The Fortran code handles this distinction: `LG` is the lattice point group, but `get_dvector_permutations` then computes how each lattice rotation $N$ acts on the dset, finding the necessary fractional translation $d_N \in D$ such that $f_N(x) = Nx + d_N$ is actually a symmetry of $M$ (Hart-Forcade 2009 §IV / Appendix). So Fortran *does* compute the space-group symmetries; it just stores the point-group rotations and the dset-translation pairs separately.
+>
+> **Updating the design:**
+> - **Field name:** `point_group::Vector{...}` → `space_group::Vector{SymmetryOp}` on `ParentLattice`.
+> - **New type `SymmetryOp`:** carries a rotation `R::SMatrix{3,3,Int}` (in lattice coordinates) plus a fractional translation `t::SVector{3,Float64}`. For a single Bravais lattice, all `t == 0`.
+> - **Construction:** computed via Spacey's space-group function. Need to verify Spacey's API — if it doesn't already expose a multilattice-aware space-group function, options are (a) call out to `Spglib.jl` for spacegroup, (b) ask Spacey upstream to add it, (c) port the Fortran's `get_dvector_permutations` logic for the dset-translation step.
+>
+> Sketch:
+>
+> ```julia
+> struct SymmetryOp
+>     R::SMatrix{3,3,Int,9}        # lattice-coord rotation/reflection
+>     t::SVector{3,Float64}        # fractional translation in [0,1)^3; zero for Bravais
+> end
+>
+> struct ParentLattice{D}
+>     A::SMatrix{D,D,Float64}
+>     dset::Vector{SVector{D,Float64}}
+>     space_group::Vector{SymmetryOp}     # was: point_group::Vector{SMatrix{...}}
+> end
+> ```
+>
+> The downstream consequences are minimal: every place I'd written `parent.point_group` becomes `[op.R for op in parent.space_group]` (when only the rotation is needed) or `parent.space_group` directly (when the translation matters too — e.g., in `get_dvector_permutations`). The `Supercell.permutation_group` computation gets richer because it now folds in the fractional translations.
+>
+> **Phase 8 to-do:** confirm Spacey's space-group API; if absent, decide between Spglib dependency vs. porting the Fortran logic.
+>
+> Applying the rename + struct addition in the finalization commit alongside SupercellSelection and parametric-D refactors.
 <!-- END CLAUDE-RESPONSE -->
         Asm = SMatrix{3,3,Float64,9}(A)
         ds = [SVector{3,Float64}(d) for d in dset]
@@ -1959,6 +2016,7 @@ What is this function doing exactly? I think I understand. An inactive site can 
 >
 > Also added an `is_active(s::Site) = !is_inactive(s)` companion for readability at call sites where the positive form reads more naturally.
 <!-- END CLAUDE-RESPONSE -->
+Good idea
 
 mutable struct Sites
     list::Vector{Site}
@@ -1998,6 +2056,18 @@ end
 
 # The canonical site index for `i` (root of its equivalence class).
 # Equivalence classes are *user-declared* (via `equate!`), not symmetry-computed -- see CLAUDE-RESPONSE above.
+We need to add that definition to the glossary, I think.
+
+<!-- BEGIN CLAUDE-RESPONSE: glossary entries confirmed -->
+> **Claude:** Confirmed. Adding three terms to `docs/notes/glossary.tex` in the finalization commit:
+>
+> 1. **Inactive site** — site with one allowed label.
+> 2. **Equivalent sites** — two distinct sites declared via `equate!` to share their label.
+> 3. **Equivalencies** — the user-declared partition relation across sites; the union of all `equate!` calls.
+>
+> All three placed in the existing "Equivalence and reduction" section of the glossary, between the existing entries.
+<!-- END CLAUDE-RESPONSE -->
+
 canonical(s::Sites, i::Integer) = find_root!(s.equiv, i)
 
 # Iteration: list active, canonical sites only
@@ -2287,6 +2357,22 @@ In general, I don't think we want volume_range defaults. In fact, we don't alway
 > **Backward-compat sweetener (if you want it):** keep a `volume_range` keyword as a thin alias that constructs `VolumeRange` under the hood. Trade-off is that we then have two ways to say the same thing; my mild lean is to NOT include the alias and force users to write the more honest form.
 >
 > **Should I refactor Phase 5 and Phase 6 to reflect this now**, or leave it as a flag for follow-up cleanup before Phase 7? Lean toward refactor now since both phases are still under review; once we move to Phase 7+ the assumption ossifies. If you say go, I'll do a follow-up edit pass that updates the §5.2 signature, the §5.4 decision tree, and the §6 catalog references in one commit.
+
+Yes, refactor now.
+
+<!-- BEGIN CLAUDE-RESPONSE: SupercellSelection refactor confirmed -->
+> **Claude:** Applying in the finalization commit. The pass updates:
+> - **§5.2 function signature:** `volume_range::AbstractRange{Int}` (required) → `supercells::SupercellSelection` (required); drop `fixed_cells` (now subsumed by `ExplicitHNFs`).
+> - **§5.4 decision tree:** insert "1. Generate HNF list from `supercells`" at the top; the rest of the tree is unchanged but now reads from a pre-computed HNF list rather than a volume range.
+> - **§5.6 / §5.8 examples:** replace `volume_range = 2:8` with `supercells = VolumeRange(2:8)` etc.
+> - **§5.7 multilattice paragraph:** unchanged conceptually but the wording "supercell sizes" generalizes to "supercells from the selection."
+> - **§5.10 Fortran-comparison table:** add a row for the SupercellSelection abstraction.
+> - **§5.11 question 1:** the volume_range default discussion is moot; supercells is required.
+> - **§6.2 type catalog:** add four rows (`SupercellSelection`, `VolumeRange`, `RadiusBound`, `ExplicitHNFs`).
+> - **§6.6 cost-estimator references:** the `EnumerationCostEstimate` notes field can mention which `SupercellSelection` subtype was used.
+> - **§6.10 worked example:** `supercells = VolumeRange(2:6)` etc.
+>
+> One commit, marked. The user-facing impact is one slightly more verbose call site per program.
 <!-- END CLAUDE-RESPONSE -->
 
 ```julia
@@ -2363,6 +2449,11 @@ end
 >
 > So `class_size` = "number of HNFs that the symmetry reduction in step 2 of the 2008 algorithm collapsed into one representative." Two HNFs in the same class give equivalent enumerations (same set of derivative structures up to a relabeling of supercell sites). The permutation-group isomorphism follows but isn't itself the defining test.
 <!-- END CLAUDE-RESPONSE -->
+That's a good distinction to keep straight. Remember this point when we are generating documentation and we are explaining the theory behind the algorithm.
+
+<!-- BEGIN CLAUDE-RESPONSE: documentation flag noted -->
+> **Claude:** Logged for the eventual user-doc / theory section: when explaining HNF symmetry classes, lead with the *defining* relation ("$H_2 \cong H_1$ iff there exists $R$ in the parent point group such that $H_1 R H_2^{-1}$ is unimodular"), and present the permutation-group isomorphism as a *consequence* — not the other way around. Same pattern for any other "symmetry equivalence" we explain.
+<!-- END CLAUDE-RESPONSE -->
 
 struct InequivalentCount
     total::BigInt
@@ -2403,6 +2494,50 @@ sites = Sites([Site(d, BitSet(0:2)) for d in hcp.dset])
 
 # 3. (Optional) declare equivalencies. Here, pretend sites 1 and 2 should be treated identically.
 # equate!(sites, 1, 2)
+> this is kind of a silly example. If there are only two sites, and you declare each one the same, the enumeration is rather trivial, essentially equivalent to a 1-lattice. Doesn't really illustrate a real case. A more realistic case might be barium titenate (an example used in Spacey) where you could have configurational freedom on the A and B sites, but the oxigen sites are fixed. And maybe you can think of other cases where we'd want to enforce equivalency?
+
+<!-- BEGIN CLAUDE-RESPONSE: better example — perovskite + slab equivalencies -->
+> **Claude:** Agreed the 2-site HCP equivalencies example was contrived. Replacing with two patterns in the finalization commit:
+>
+> **Pattern A (inactive sites): Perovskite ABO₃, A and B substitutional, oxygens fixed.** A real materials use case (BaTiO₃, SrTiO₃-style). Five-site dset; A and B sites are active with substitutional freedom; three oxygen sites are *inactive* (single allowed label).
+>
+> ```julia
+> A_perov = SMatrix{3,3}(1.0, 0.0, 0.0,
+>                        0.0, 1.0, 0.0,
+>                        0.0, 0.0, 1.0)
+>
+> dset_perov = [SVector(0.0, 0.0, 0.0),       # A site (corner)
+>               SVector(0.5, 0.5, 0.5),       # B site (body center)
+>               SVector(0.5, 0.5, 0.0),       # O site
+>               SVector(0.5, 0.0, 0.5),       # O site
+>               SVector(0.0, 0.5, 0.5)]       # O site
+>
+> perov = ParentLattice(A_perov, dset_perov)
+>
+> # Species 0 and 1 substitute on A and B; species 2 (O) is locked on all O sites.
+> sites = Sites([
+>     Site(dset_perov[1], BitSet([0, 1])),   # A: substitutional
+>     Site(dset_perov[2], BitSet([0, 1])),   # B: substitutional
+>     Site(dset_perov[3], BitSet([2])),      # O: inactive
+>     Site(dset_perov[4], BitSet([2])),      # O: inactive
+>     Site(dset_perov[5], BitSet([2])),      # O: inactive
+> ])
+> # No equate! call: A and B are independent; oxygens are inactive (single label) so they
+> # automatically drop out of the labeling space without any equivalence declaration.
+> ```
+>
+> **Pattern B (equivalencies — distinct from inactive): Slab geometry with mirror-image layers.** A user has a thin-film slab with $N$ layers, and the slab's mirror symmetry across the central plane forces layer $i$ and layer $N-i+1$ to share their composition. The *parent symmetry doesn't capture this* because the slab vacuum breaks 3D periodicity — it's a user-imposed constraint reflecting the physics of the slab geometry. So the user creates a `Site` per layer (each with full substitutional freedom) and calls `equate!(sites, i, N-i+1)` for each mirror pair.
+>
+> ```julia
+> slab = ParentLattice(A_slab, layer_positions)        # one dset element per layer
+> sites = Sites([Site(p, BitSet([0, 1])) for p in layer_positions])
+> for i in 1:N÷2
+>     equate!(sites, i, N - i + 1)                     # mirror-image equivalencies
+> end
+> ```
+>
+> Pattern A illustrates *inactive sites*; Pattern B illustrates *equivalencies* (in the sense clarified earlier in §6.2). Both are realistic; the original 2-site HCP example illustrated neither. Will replace §6.10 in the finalization commit.
+<!-- END CLAUDE-RESPONSE -->
 
 # 4. (Optional) constrain to a specific concentration.
 c = Concentration([1//3, 1//3, 1//3])    # equimolar ternary
@@ -2524,6 +2659,7 @@ A short list of questions that affect the catalog and need your input before Pha
 >
 > Conclusion: cache it. The memory cost is trivial; the time savings are nontrivial; the code is simpler than lazy-computing with thread-safe memoization.
 <!-- END CLAUDE-RESPONSE -->
+Good
 4. **`Enumeration{L}` vs `LazyEnumeration{L}` — same type or different?** I've drafted them as different types. Alternative: one type with a `materialized::Bool` flag. The two-types form is type-stable and ergonomic; flag form is one type to remember. Lean toward two types unless you prefer the flag. Me too. two types great.
 5. **`Concentration` constructor accepting integers.** `Concentration([15, 17])` reads as "15 of species 1, 17 of species 2." But this is ambiguous if the user intends "15:17 ratio" vs "exactly 15 of A and 17 of B in a 32-cell." I've defined the integer form to mean ratio (it normalizes by the sum). Worth a clearer constructor name like `Concentration_ratio([15, 17])` to disambiguate? Yes, maybe. It's verbose but it's only used at the beginning. Clarity better than brevity in this case. Do you agree?
 
@@ -2562,6 +2698,28 @@ A short list of questions that affect the catalog and need your input before Pha
 >
 > If "occupations" lands for you, I think that's the most natural domain word — chemists/materials scientists routinely talk about "site occupations" for exactly this concept. `occupations(s)` is short, domain-correct, and has zero collision risk in our type catalog. It might actually be better than `label_vector(s)` from the user's perspective even though it doesn't say "label."
 <!-- END CLAUDE-RESPONSE -->
+<!-- I'm leaning towards something active, with a verb, or something that implies a conversion, something like hash2labeling or something. I want it to be really clear that we are converting from one representation to another. -->
+
+<!-- BEGIN CLAUDE-RESPONSE: Q6 brainstorm — verb-based names -->
+> **Claude:** Verb-based / conversion-implying brainstorm:
+>
+> 1. **`hash2labeling(s)`** — explicit conversion. Reads as "from hash to labeling form." Common Julia idiom (`base2int`, `string2int`, etc., though Julia stdlib prefers `parse`-style naming). Unambiguous about direction.
+> 2. **`decode_labeling(s)`** — "decode" verb. Accurate when `L = Int64`/`BigInt` (decoding a hash); slight friction when `L = Vector{Int8}` (no decoding needed — the function is a no-op). Mild semantic mismatch across `L` shapes.
+> 3. **`to_labeling(s)`** — Julia convention `to_X` / `as_X`. "Convert to labeling form." Reads naturally regardless of the underlying `L`. Doesn't say "verb" but does imply conversion.
+> 4. **`unpack_labeling(s)`** — "unpack from compact form." Suggests packing existed; works for the hash case; awkward for `Vector{Int8}` (already unpacked).
+> 5. **`materialize_labeling(s)`** — "make the labeling concrete." Verb-y. Matches the original "materialize" intuition with the noun appended.
+> 6. **`labeling(s)`** — drop the verb; noun-as-property-accessor. "Give me the labeling for this structure."
+>
+> If the priority is "really clear that we are converting from one representation to another," **`hash2labeling(s)`** is most explicit. Trade-off: the name implies a hash exists; for `L = Vector{Int8}` the name is mildly misleading (the function dispatches on both, but the user reading the name might wonder).
+>
+> If the priority is *consistency* across `L` (same name reads naturally regardless of which storage type the user has), **`to_labeling(s)`** wins — it's accurate as "convert to labeling form" for both the hash and the already-decoded cases.
+>
+> **My pick: `to_labeling(s)`.** Verb-implying via the Julia `to_X` convention; reads cleanly across all `L`; no false promises about hashes existing under the hood.
+>
+> **Backup pick: `hash2labeling(s)`** if you really want the explicitness about direction. The mild semantic mismatch with `Vector{Int8}` storage is a small cost given that nearly all users in practice will have hashes (the `Vector{Int8}` case is rare, just a small-enumeration default).
+>
+> Lock in either and we strip + finalize. Both are concrete improvements over `materialize`.
+<!-- END CLAUDE-RESPONSE -->
 7. **2D enumeration types.** `LatticeEnumeration2D` currently has its own (different) `SuperTile` etc. Should the 2D version reuse `ParentLattice` / `Sites` / `Supercell` (with 2×2 matrices instead of 3×3 via parametric dimension), or stay separate? Lean toward "reuse via dimension parameter" but it's invasive. This is tricky because I don't expect the 2D stuff to get used much (but surface scientist and layered materials people might really like it). I lean away from something invasive but we'll we regret it later if 2D applications go viral?
 
 <!-- BEGIN CLAUDE-RESPONSE: Q7 parametric dimension as cheap insurance -->
@@ -2595,6 +2753,11 @@ A short list of questions that affect the catalog and need your input before Pha
 > **What this rules out (for now):** wholesale unification of the 3D and 2D code paths in v0.2. The current standalone `LatticeEnumeration2D` stays as-is in v0.2; v0.3+ could fold it into the parametric scheme if 2D demand materializes.
 >
 > **Lean: do this.** The parametric annotations are cheap insurance against having to break the API later. If 2D never gets demand, we lose ~10 lines of `{D}` annotations and zero runtime cost. If 2D goes viral, we extend without breaking 3D users. Risk-reward is asymmetric in favor of doing it now.
+<!-- END CLAUDE-RESPONSE -->
+Let's do it now.
+
+<!-- BEGIN CLAUDE-RESPONSE: parametric D confirmed -->
+> **Claude:** Applying in the finalization commit. Every type definition in §6 gets `{D}` parametrization (with constructors that infer `D` from the input matrix's first dimension). All current usage stays as `ParentLattice{3}` etc.; the 2D path stays in the standalone submodule for v0.2 but the type catalog is structurally ready to absorb 2D when needed.
 <!-- END CLAUDE-RESPONSE -->
 
 ### 6.14 What this enables for Phase 7+
