@@ -60,7 +60,7 @@ That all sounds great.
 | 3 | Current Julia Enumlib state + Fortran→Julia delta | done | Capability inventory + gap analysis. See Phase 3 section below. |
 | 4 | Paper digests (Hart-Forcade 2008, 2009, 2012; Morgan-Hart-Forcade 2017; Shinohara et al. 2020) | done | All five papers digested. |
 | 5 | Algorithmic dispatch strategy | done | Public API surface + auto-dispatch decision tree + 5-mode algorithm catalogue + pre-flight gate + Fortran-comparison table. See Phase 5 section below. |
-| 6 | Data-structure design proposals | not started | Replacing `enumStr`; staging structs across the workflow. |
+| 6 | Data-structure design proposals | done | 12-type catalog + invariants + construction APIs + Fortran↔Julia comparison + 7 open questions. See Phase 6 section below. |
 | 7 | Misuse / scale-safety mechanisms | not started | Pre-flight estimators, `BigInt`, bit-hash dedup, soft caps. |
 | 8 | External literature survey | not started | The "big ask." Heuristic pass. Includes the Seko paper hunt. |
 | 9 | Pymatgen integration analysis | not started | What's needed to drop in as a replacement. |
@@ -1823,4 +1823,443 @@ Go with two functions
 
 ---
 
-*(Sections for Phases 6–12 will be appended below as they're produced.)*
+<!-- ============= BEGIN CLAUDE-ADD: Phase 6 section ============= -->
+
+## Phase 6 — Data-structure design proposals
+
+This is the type catalog the rewrite hangs on. Phase 5 referenced placeholders (`Site`, `Supercell`, `EnumeratedStructure`, `Enumeration`, `InequivalentCount`, `EnumerationCostEstimate`, `Concentration`, `ConcentrationRange`, `HNF`); Phase 6 nails them down with field definitions, invariants, construction APIs, and the rationale.
+
+The design is informed by:
+- **Design Principles 1–3** (top of doc): Fortran file divisions advisory; current Julia layout not a baseline; no Fortran-format compat.
+- **The five algorithmic modes** (Phase 5): types must serve unrestricted enumeration, fixed-concentration, site-restricted, recursive-stabilizer, and (future) ZDD without forcing the dispatch to special-case.
+- **Iterator-first API** (§3.2 review): `Enumeration` is iterable and lazy by default.
+- **Phase 4 review feedback**: Site abstraction unifies parallel arrays, equivalencies via Union-Find, labeling-as-Int as opt-in for memory-bound cases, no exposed `L` (left transform), Tier 2 `InequivalentCount` from v0.2.
+
+### 6.1 Design principles for the type catalog
+
+Five rules I'll apply consistently below:
+
+1. **Validate at construction.** Inner constructors check invariants (HNF lower-triangular bounds, concentration fractions sum to 1, point group has identity, …). Fail loud at construction, never silently at runtime.
+2. **Immutable by default.** All types are `struct`, not `mutable struct`, unless there's a clear need (essentially: only the iteration state inside the enumeration loop is mutable). Immutability gives free hashing/equality and prevents many classes of bugs.
+3. **Static arrays for fixed-shape data.** `SMatrix{3,3,...}` and `SVector{3,...}` from `StaticArrays.jl` for crystallographic basis matrices and positions. Allocation-free, vectorized, fast.
+4. **Don't expose internal state in the public API.** The SNF left transform $L$ is computed when needed and not stored on `Supercell`. The visited bitmap is internal to the dedup pass, never escapes.
+5. **No global state.** No `setupChebyTable(k)`-style side effects, no module-level caches. Per-call caches live inside the iterator's state.
+
+### 6.2 Type catalog overview
+
+| Type | Purpose | Mutability | Notes |
+|---|---|---|---|
+| `ParentLattice` | The crystal: basis vectors + dset (multilattice basis sites) + cached point group | immutable | Constructed once per study; reused across many `enumerate` calls |
+| `Site` | Per-dset-site description: position + allowed atomic species | immutable | One per element of the dset, then potentially expanded with site-restriction sites |
+| `Sites` | Collection of `Site` plus an `IntDisjointSets` for equivalencies | mutable* | *Only the disjoint-set is mutable, for `equate!` calls during construction |
+| `Concentration` | A single concentration: `Vector{Rational{Int}}` summing to 1 | immutable | Used for fixed-concentration enumeration |
+| `ConcentrationRange` | Per-species (min, max) Rational bounds | immutable | Decomposes into a list of `Concentration`s at each cell volume |
+| `HNF` | Validated lower-triangular integer 3×3 matrix | immutable | Inner constructor enforces HNF bounds |
+| `Supercell` | An HNF + cached SNF diagonal + cached permutation group | immutable | One per symmetry-distinct HNF class; shared by many `EnumeratedStructure`s |
+| `Enumeration{L}` | Top-level result: parent + sites + supercells + structures, parametrized by labeling representation `L` | immutable | Iterable and indexable |
+| `EnumeratedStructure{L}` | A single enumerated structure: supercell ref + labeling + degeneracies + concentration | immutable | Yielded by iteration over `Enumeration{L}` |
+| `InequivalentCount` | Pólya-derived count, total + breakdowns | immutable | Returned by `count_inequivalent(...; breakdown=true)` |
+| `EnumerationCostEstimate` | Pre-flight prediction: count + peak memory + walltime + chosen algorithm | immutable | Returned by `estimate_cost(...)` |
+| `HNFClass` | Symmetry-equivalence class of HNFs at a given volume | immutable | Used inside `InequivalentCount.by_hnf_class` |
+
+The full graph fits on one screen. No parallel arrays, no dead types, no Fortran-format encodings.
+
+### 6.3 `ParentLattice`
+
+The geometric description of the parent crystal: basis vectors + dset.
+
+```julia
+using StaticArrays
+using Spacey: pointGroup    # symmetry library; returns lattice-coord rotations
+
+struct ParentLattice
+    A::SMatrix{3,3,Float64,9}            # column j is the j-th basis vector (Cartesian)
+    dset::Vector{SVector{3,Float64}}     # basis sites in fractional coords (within [0,1)^3)
+    point_group::Vector{SMatrix{3,3,Int,9}}   # lattice point group in lattice coords (LG in Fortran's terminology)
+
+    function ParentLattice(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector})
+        @assert size(A) == (3, 3) "Basis matrix must be 3×3"
+        @assert det(A) > 0 "Basis matrix must have positive determinant (right-handed)"
+        @assert all(0 .<= d .< 1 for d in dset) "All d-vectors must be in [0,1)"
+        @assert any(iszero, dset) "dset must contain the origin (convention)"
+        Asm = SMatrix{3,3,Float64,9}(A)
+        ds = [SVector{3,Float64}(d) for d in dset]
+        pg = pointGroup(Asm)             # cache the point group at construction
+        new(Asm, ds, pg)
+    end
+end
+
+# Convenience: single-lattice (Bravais) constructor
+ParentLattice(A) = ParentLattice(A, [SVector{3,Float64}(0,0,0)])
+```
+
+**Notes:**
+- `point_group` is computed once at construction and cached. The Fortran computes it on every call to `gen_multilattice_derivatives` — wasteful when the same parent is used for many enumerations.
+- We store the *integer* lattice-coord point group, not the Cartesian one. Conversions to Cartesian happen on demand inside the geometric routines (`map_to_real_space`, etc.).
+- `dset` always contains the origin (`SVector(0,0,0)`) by convention. Single Bravais lattices have just `[origin]`; HCP has 2; perovskite has 5.
+
+### 6.4 `Site` and `Sites`
+
+The unification of the Fortran's `dFull/d`, `labelFull/label`, `digitFull/digit`, `equivalencies`, and `inactives` arrays. Per Phase 4 review: a single struct, with Union-Find for equivalencies enforcing transitivity by construction.
+
+```julia
+using DataStructures: IntDisjointSets, union!, find_root!
+
+struct Site
+    position::SVector{3,Float64}    # fractional coords; can match a dset element OR be a sub-site
+    allowed_labels::BitSet          # subset of {0, ..., k-1}
+end
+
+is_inactive(s::Site) = length(s.allowed_labels) == 1
+
+mutable struct Sites
+    list::Vector{Site}
+    equiv::IntDisjointSets         # disjoint-set over indices 1:length(list)
+    function Sites(list::AbstractVector{Site})
+        new(collect(list), IntDisjointSets(length(list)))
+    end
+end
+
+# Equate two sites (idempotent, transitive by construction)
+function equate!(s::Sites, i::Integer, j::Integer)
+    union!(s.equiv, i, j)
+    return s
+end
+
+# The canonical site index for `i` (root of its equivalence class)
+canonical(s::Sites, i::Integer) = find_root!(s.equiv, i)
+
+# Iteration: list active, canonical sites only
+function active_canonical_sites(s::Sites)
+    seen_roots = Set{Int}()
+    [(i, s.list[i]) for i in eachindex(s.list)
+     if !is_inactive(s.list[i]) && (root = canonical(s, i); push!(seen_roots, root); root == i)]
+end
+```
+
+**Why `BitSet` for `allowed_labels`.** Sets of small nonneg integers. `BitSet` gives O(1) membership and very compact storage. `Set{Int}` would also work but with hash overhead.
+
+**Why the `Sites` wrapper rather than a `Vector{Site}`.** Equivalencies are conceptually a partition over the site indices. Storing the partition state on individual `Site` objects (e.g., a `parent::Int` field) makes reading correct but writing fragile — you can break transitivity by setting `Site.parent` directly. With Union-Find centralized in `Sites.equiv`, transitivity is enforced by the data structure; users can't break it.
+
+**Inactive vs equivalent.** "Inactive" = single allowed label (no configurational freedom on this site). "Equivalent" = same physical/symmetry role as another site. Both reduce the active enumeration space. Both are first-class on `Site` / `Sites` rather than tracked in parallel arrays.
+
+### 6.5 `Concentration` and `ConcentrationRange`
+
+Per Phase 5 §5.2: `concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing`. Both types use `Rational{Int}` for clean handling of fractions.
+
+```julia
+struct Concentration
+    fractions::Vector{Rational{Int}}      # one per species; should sum to 1
+    function Concentration(fractions::AbstractVector{<:Rational})
+        @assert sum(fractions) == 1//1 "Concentration fractions must sum to 1"
+        @assert all(0 <= f <= 1 for f in fractions) "Each fraction must be in [0,1]"
+        @assert length(fractions) >= 2 "Need at least 2 species for a meaningful concentration"
+        new(collect(Rational{Int}, fractions))
+    end
+end
+
+# Convenience constructors
+Concentration(integers::AbstractVector{<:Integer}) =
+    Concentration([n // sum(integers) for n in integers])
+# e.g., Concentration([15, 17])  ↔  [15//32, 17//32]
+
+struct ConcentrationRange
+    bounds::Vector{Tuple{Rational{Int}, Rational{Int}}}    # one (min, max) per species
+    function ConcentrationRange(bounds::AbstractVector)
+        @assert all(0 <= lo <= hi <= 1 for (lo, hi) in bounds) "Each bound must satisfy 0 ≤ min ≤ max ≤ 1"
+        new(collect(Tuple{Rational{Int}, Rational{Int}}, bounds))
+    end
+end
+
+# Resolve a Concentration to integer multiplicities at a given supercell size
+function multiplicities(c::Concentration, n_total::Integer)
+    multiset = [Int(c.fractions[i] * n_total) for i in eachindex(c.fractions)]
+    @assert sum(multiset) == n_total "Concentration fractions don't divide n_total cleanly: $multiset"
+    multiset
+end
+
+# Resolve a ConcentrationRange to a list of Concentrations at a given supercell size
+function concentrations_in_range(cr::ConcentrationRange, n_total::Integer)
+    # Enumerate all integer (a_1, ..., a_k) with sum n_total satisfying the per-species bounds
+    # Returns Vector{Concentration}
+    ...
+end
+```
+
+**The user calls:**
+```julia
+c = Concentration([15, 17])                     # 15:17 binary; resolves to 15//32 + 17//32 at n*nD = 32
+cr = ConcentrationRange([(2//5, 3//5), (2//5, 3//5)])    # binary, each species in [40%, 60%]
+```
+
+**The dispatcher's job.** When the user passes `Concentration`, the dispatcher resolves it to multiplicities at each cell volume in `volume_range`. If the multiplicities don't divide cleanly (e.g., `Concentration([1//2, 1//2])` at $n=3$, can't have 1.5 atoms of each), the dispatcher skips that volume with a one-line warning.
+
+When the user passes `ConcentrationRange`, the dispatcher walks each volume × each integer concentration in the range. The decision tree from §5.4 then runs per-concentration.
+
+### 6.6 `HNF` and `Supercell`
+
+```julia
+struct HNF
+    matrix::SMatrix{3,3,Int,9}
+    function HNF(m::AbstractMatrix{<:Integer})
+        @assert size(m) == (3, 3) "HNF must be 3×3"
+        # Lower-triangular form check
+        @assert m[1,2] == 0 && m[1,3] == 0 && m[2,3] == 0 "HNF must be lower-triangular"
+        a, c, f = m[1,1], m[2,2], m[3,3]
+        @assert a > 0 && c > 0 && f > 0 "HNF diagonals must be positive"
+        @assert 0 <= m[2,1] < c "HNF[2,1] out of range [0, $(c-1)]"
+        @assert 0 <= m[3,1] < f "HNF[3,1] out of range [0, $(f-1)]"
+        @assert 0 <= m[3,2] < f "HNF[3,2] out of range [0, $(f-1)]"
+        new(SMatrix{3,3,Int,9}(m))
+    end
+end
+
+# Convenience accessors
+volume(h::HNF) = h.matrix[1,1] * h.matrix[2,2] * h.matrix[3,3]   # det of lower triangular = diagonal product
+Base.det(h::HNF) = volume(h)
+
+struct Supercell
+    parent_id::Int                          # index into the Enumeration's parent (almost always 1, but kept for future)
+    hnf::HNF
+    snf::SVector{3,Int}                     # diagonal of SNF: (s_1, s_2, s_3) with s_1 | s_2 | s_3
+    point_group_order::Int                  # |stabilizer of this superlattice| from the parent point group
+    permutation_group::Vector{Vector{Int}}  # permutations of the n*nD supercell sites induced by stabilizer + translations
+    # Note: SNF left transform L is intentionally NOT stored. Recomputed when needed
+    # for (HNF, labeling) → real-space mapping. Per Phase 4 review §2.10 #4: L isn't unique.
+end
+```
+
+**Why no `L` field.** The SNF $S = L H R$ has unique $S$ but non-unique $L, R$. Storing $L$ on `Supercell` would (a) leak the non-uniqueness into the public API and (b) make two correct enumerations look "different" if their $L$'s happened to differ. Internal routines that need $L$ recompute it on demand from the HNF.
+
+**Why cache `permutation_group`.** Computing it from the HNF + parent point group is the most expensive step per supercell. Caching saves the recomputation across all labelings on the same supercell. Memory cost: a few KB per supercell, vs hundreds of supercells per typical enumeration → negligible.
+
+### 6.7 Labeling representation (parametric)
+
+Per Phase 4-5 review: `Vector{Int8}` default for ergonomics, `Int64`/`BigInt` opt-in for memory-bound cases. The parametric type is what makes both work without runtime dispatch.
+
+```julia
+# A labeling is one of:
+#   Vector{Int8}   — n*nD entries in 0:k-1, the "decoded" form
+#   Int64          — base-k or multinomial hash, decoded on demand
+#   BigInt         — same as Int64 but for very-large enumerations
+
+const LabelingRepresentation = Union{Vector{Int8}, Int64, BigInt}
+
+# Encode/decode helpers — same machinery as the perfect-hash discussion in §4.1
+function encode_basek(digits::AbstractVector{<:Integer}, k::Integer)::BigInt
+    result = BigInt(0)
+    for j in length(digits):-1:1
+        result = result * k + digits[j]
+    end
+    result
+end
+
+function decode_basek(idx::Integer, k::Integer, n::Integer)::Vector{Int8}
+    out = zeros(Int8, n)
+    x = idx
+    for j in 1:n
+        out[j] = Int8(mod(x, k))
+        x ÷= k
+    end
+    out
+end
+
+# For fixed-concentration: the multinomial hash from HNF 2012 §3.1 is similar but with Cᵢ as mixed radixes
+# (skipped here for brevity; same encode/decode pattern, different radix scheme)
+```
+
+**The per-`Enumeration` choice.** Each `Enumeration{L}` commits to one labeling representation across all its structures. The dispatcher picks based on the algorithm:
+
+- `:exhaustive` (full $k^n$ table): `L = Vector{Int8}` if total memory < threshold; else `L = Int64` if the index fits; else `L = BigInt`.
+- `:multinomial`: same logic with $C$ instead of $k^n$.
+- `:recursive_stabilizer`: streams as `Vector{Int8}` typically (the tree's location vector is small).
+- `:bdd`: irrelevant — the BDD is the storage; `EnumeratedStructure` materializes from a path.
+
+**The user's view.** The user gets `Enumeration{L}` and iterates. Convenience accessors (`materialize(s)::Vector{Int8}`) hide the representation:
+
+```julia
+for s in enumerate(parent, sites; volume_range=2:10)
+    digits = materialize(s)              # always returns Vector{Int8}, regardless of L
+    # ...
+end
+```
+
+So users don't need to think about `L` unless they're optimizing memory. Library authors writing extensions can dispatch on `EnumeratedStructure{L}` if they need the underlying representation.
+
+### 6.8 `EnumeratedStructure{L}` and `Enumeration{L}`
+
+The output types. Per §3.2 review: normalized representation, `Supercell` shared across many `EnumeratedStructure`s.
+
+```julia
+struct EnumeratedStructure{L<:LabelingRepresentation}
+    supercell_id::Int                    # index into Enumeration.supercells
+    labeling::L                          # representation chosen at the Enumeration level
+    hnf_degeneracy::Int                  # number of HNFs in this supercell's symmetry class
+    labeling_degeneracy::Int             # for label-rotation duplicates within the supercell
+    concentration::Concentration         # the realized concentration for this structure
+end
+
+struct Enumeration{L<:LabelingRepresentation}
+    parent::ParentLattice
+    sites::Sites
+    supercells::Vector{Supercell}        # ~hundreds; shared across structures
+    structures::Vector{EnumeratedStructure{L}}    # ~thousands to billions
+end
+
+# Iteration: yields EnumeratedStructure{L} values
+Base.length(e::Enumeration) = length(e.structures)
+Base.iterate(e::Enumeration, state=1) =
+    state > length(e.structures) ? nothing : (e.structures[state], state + 1)
+Base.eltype(::Type{Enumeration{L}}) where L = EnumeratedStructure{L}
+Base.IteratorSize(::Type{<:Enumeration}) = Base.HasLength()
+```
+
+**For lazy iteration** (the user-facing entry from `enumerate(...)`), we *don't* materialize `structures::Vector{...}` upfront. Instead, return a `LazyEnumeration{L}` that's a `Channel`-like or generator producing structures one at a time:
+
+```julia
+struct LazyEnumeration{L}
+    parent::ParentLattice
+    sites::Sites
+    state::EnumerationState              # algorithm-specific iteration state
+end
+
+# Same iterator interface, but produces structures on demand
+Base.IteratorSize(::Type{<:LazyEnumeration}) = Base.SizeUnknown()
+Base.iterate(e::LazyEnumeration{L}, state=...) where L = ...
+
+# Convert lazy → eager when the user wants the full materialized form
+Base.collect(e::LazyEnumeration{L}) where L = ... # walks the iterator, builds Enumeration{L}
+```
+
+Both `Enumeration{L}` and `LazyEnumeration{L}` satisfy the iterator protocol. The user can treat them interchangeably for `for` loops and `foreach`; only `length()`, `getindex(i)`, and `collect()` differ.
+
+**Why the parametric `L` is cleaner than an abstract type.** Inside the iterator's hot loop, dispatching on a parametric type is statically resolved — no runtime overhead. Dispatching on an abstract supertype would require dynamic dispatch per yielded structure. For an enumeration yielding billions of structures, that's the difference between fast and slow.
+
+### 6.9 `InequivalentCount`, `EnumerationCostEstimate`, `HNFClass`
+
+Per Phase 5 review: Tier 2 in v0.2.
+
+```julia
+struct HNFClass
+    # A symmetry-equivalence class of HNFs at a given volume.
+    representative::HNF                  # one HNF in the class
+    class_size::Int                      # number of HNFs that are symmetry-equivalent to this one
+end
+
+struct InequivalentCount
+    total::BigInt
+    by_volume::Vector{Tuple{Int, BigInt}}                         # (n, count_at_n)
+    by_concentration::Vector{Tuple{Concentration, BigInt}}        # populated when concentration was a range
+    by_hnf_class::Dict{HNFClass, BigInt}                          # for diagnostic exploration
+end
+
+struct EnumerationCostEstimate
+    total_count::BigInt                      # predicted #structures
+    peak_memory_bytes::Int                   # worst-case peak across the chosen algorithm's lifetime
+    estimated_walltime_seconds::Float64      # predicted; uses simple per-mode rules of thumb
+    chosen_algorithm::Symbol                 # :exhaustive, :multinomial, :recursive_stabilizer, …
+    notes::Vector{String}                    # warnings, e.g., "Switched to :recursive_stabilizer because :exhaustive's bitmap would exceed memory_budget"
+end
+```
+
+`InequivalentCount` is the structured return of `count_inequivalent(...; breakdown=true)`. `EnumerationCostEstimate` is the structured return of `estimate_cost(...)`.
+
+### 6.10 Construction patterns
+
+A typical end-to-end flow:
+
+```julia
+using Enumlib
+using StaticArrays
+
+# 1. Define the parent lattice (HCP example: hexagonal Bravais + 2-element dset).
+A_hcp = SMatrix{3,3}(1.0, 0.0, 0.0,
+                     0.5, sqrt(3)/2, 0.0,
+                     0.0, 0.0, sqrt(8/3))
+dset_hcp = [SVector(0.0, 0.0, 0.0),
+            SVector(1/3, 1/3, 1/2)]
+hcp = ParentLattice(A_hcp, dset_hcp)
+
+# 2. Define the sites and allowed substitutions. Both d-sites can take any of 3 species.
+sites = Sites([Site(d, BitSet(0:2)) for d in hcp.dset])
+
+# 3. (Optional) declare equivalencies. Here, pretend sites 1 and 2 should be treated identically.
+# equate!(sites, 1, 2)
+
+# 4. (Optional) constrain to a specific concentration.
+c = Concentration([1//3, 1//3, 1//3])    # equimolar ternary
+
+# 5. Enumerate.
+for s in enumerate(hcp, sites; volume_range=2:6, concentration=c)
+    process(s)
+end
+
+# Or use the callback form (per §5.11 Q4):
+enumerate_each(hcp, sites; volume_range=2:6, concentration=c) do s
+    process(s)
+end
+
+# Or count without enumerating.
+count = count_inequivalent(hcp, sites; volume_range=2:6, concentration=c; breakdown=true)
+@show count.total
+@show count.by_volume
+```
+
+### 6.11 Comparison vs Fortran's types
+
+| Fortran | Julia |
+|---|---|
+| `parLV(3,3)`, `d(:,:)`, `nD`, `LG` (4 separate arrays) | `ParentLattice` (one struct, `point_group` cached) |
+| `dFull(:,:)`, `labelFull(:,:)`, `digitFull(:)`, `equivalencies(:)`, `inactives(:,:)` (5 parallel arrays) | `Sites` (one struct with `IntDisjointSets`) |
+| `cRange(k, 3)` (integer matrix [min_num, max_num, denom] per species) | `ConcentrationRange` (Rational bounds) |
+| HNF as `integer, dimension(3,3)` (no validation) | `HNF` struct with construction validation |
+| `RotPermList{perm, RotIndx, nL, v}` | `Supercell` (HNF + SNF + permutation_group cached) |
+| `derivStruct{diag, pLat, dVec, nD, HNF, L, n, labeling, conc}` (all fields denormalized per structure) | `EnumeratedStructure{L}` (5 fields, supercell_id refers to shared `Supercell`) |
+| Output as `struct_enum.out` flat rows | `Enumeration{L}` in-memory + JLD2 default serialization |
+| `derivCryst`, `cryst` (declared "Not used yet") | not in the catalog (dead types not carried forward) |
+
+The Julia catalog is 11 types vs Fortran's 8 active types + 5 parallel arrays + custom file format. The win isn't in count; it's in *coherence* — every relationship is a typed reference, not an array index that the user has to remember to keep in sync.
+
+### 6.12 What's NOT in the catalog (and why)
+
+To be explicit about omissions:
+
+- **No `Tree`-related types.** The Morgan 2017 algorithm uses an enumeration tree internally, but the tree's state is private to the algorithm — never escapes into the user-facing types. From the user's view, the tree algorithm just yields `EnumeratedStructure` values like any other algorithm.
+- **No global state types.** No `LookupTables`, no `BasisCache`. Anything that needs caching lives inside an iterator's state.
+- **No file-format types.** No `StructEnumIn`, no `StructEnumOut`. The `LegacyImport` submodule has its own internal types for parsing the Fortran format; they don't escape the submodule.
+- **No `SuperTile`, `ColoredTile`, `ParentLattice` (the old one).** The Phase 4 review verified those were dead. Replaced by `ParentLattice` (renamed but redesigned), `Supercell`, and the parametric `Enumeration{L}` / `EnumeratedStructure{L}`.
+- **No `enumStr`.** Replaced by `EnumeratedStructure{L}` with shared `Supercell`. Old `enumStr` is preserved in `LegacyImport` for reading legacy `struct_enum.out` files.
+- **No `RotPermList`.** Folded into `Supercell.permutation_group` (the `perm` part) and `Supercell.point_group_order` (the `RotIndx` count). The `v` field for lattice shifts is recomputed on demand inside `map_to_real_space`.
+
+### 6.13 Open design questions for the user
+
+A short list of questions that affect the catalog and need your input before Phase 7 can proceed cleanly:
+
+1. **`Sites` — partition vs. validation.** I picked `IntDisjointSets` (Union-Find) for equivalencies, with `equate!(sites, i, j)` as the construction API. Alternative: take an `Vector{Vector{Int}}` of equivalence classes upfront and validate it's a partition. The first is more flexible for incremental construction; the second matches users who already know the equivalence classes from the problem setup. Lean toward Union-Find?
+2. **`HNF` validation strictness.** I have inner-constructor `@assert`s validating the lower-triangular HNF bounds. In production these should probably be `throw(ArgumentError(...))` instead of `@assert` (which gets stripped at `--check-bounds=no`). Convert to throws?
+3. **`Supercell.permutation_group` storage size.** For a single enumeration, ~hundreds of `Supercell`s × ~tens to thousands of permutations × `n*nD` Ints each. Worst case maybe ~10 MB. Acceptable cache size, or worth lazy-computing?
+4. **`Enumeration{L}` vs `LazyEnumeration{L}` — same type or different?** I've drafted them as different types. Alternative: one type with a `materialized::Bool` flag. The two-types form is type-stable and ergonomic; flag form is one type to remember. Lean toward two types unless you prefer the flag.
+5. **`Concentration` constructor accepting integers.** `Concentration([15, 17])` reads as "15 of species 1, 17 of species 2." But this is ambiguous if the user intends "15:17 ratio" vs "exactly 15 of A and 17 of B in a 32-cell." I've defined the integer form to mean ratio (it normalizes by the sum). Worth a clearer constructor name like `Concentration_ratio([15, 17])` to disambiguate?
+6. **`materialize(s)` accessor.** Convenience function `materialize(s::EnumeratedStructure{L}) :: Vector{Int8}` decodes the labeling regardless of `L`. Naming alternatives: `decode`, `to_vector`, `digits_of`, `expand`. Pick one to lock in?
+7. **2D enumeration types.** `LatticeEnumeration2D` currently has its own (different) `SuperTile` etc. Should the 2D version reuse `ParentLattice` / `Sites` / `Supercell` (with 2×2 matrices instead of 3×3 via parametric dimension), or stay separate? Lean toward "reuse via dimension parameter" but it's invasive.
+
+### 6.14 What this enables for Phase 7+
+
+Phase 7 (misuse / scale safety) reads off this catalog directly:
+- Pre-flight estimator returns `EnumerationCostEstimate`.
+- `BigInt` representation handled via the parametric `L` type — no separate API path.
+- The `memory_budget` check happens against `EnumerationCostEstimate.peak_memory_bytes`.
+
+Phase 9 (pymatgen) reads off this catalog: `Enumeration{L}` is what the Python wrapper sees and adapts to pymatgen's `Structure` objects. Conversion is `EnumeratedStructure → real_space_atoms → pymatgen.Structure`.
+
+Phase 10 (CI / regression) reads off this catalog: the regression-comparison utility takes two `Enumeration` values and compares them up to symmetry-equivalence. No file-format intermediation needed.
+
+Phase 11 (DFT outputs) reads off this catalog: the POSCAR writer takes `EnumeratedStructure + ParentLattice + Sites` and emits VASP format.
+
+Phase 12 (synthesis) folds this into a final design document.
+
+<!-- ============= END CLAUDE-ADD: Phase 6 section ============= -->
+
+---
+
+*(Sections for Phases 7–12 will be appended below as they're produced.)*
