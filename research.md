@@ -1953,6 +1953,9 @@ Well, calculating the "pointgroup" of a lattice with a dset is equivalent to cal
 > - **Field name:** `point_group::Vector{...}` → `space_group::Vector{SymmetryOp}` on `ParentLattice`.
 > - **New type `SymmetryOp`:** carries a rotation `R::SMatrix{3,3,Int}` (in lattice coordinates) plus a fractional translation `t::SVector{3,Float64}`. For a single Bravais lattice, all `t == 0`.
 > - **Construction:** computed via Spacey's space-group function. Need to verify Spacey's API — if it doesn't already expose a multilattice-aware space-group function, options are (a) call out to `Spglib.jl` for spacegroup, (b) ask Spacey upstream to add it, (c) port the Fortran's `get_dvector_permutations` logic for the dset-translation step.
+> Do we really need to change anything in Spacey? Can't enumlib just call spacegroup, passing in the lattice, dset, and a set of labels that are all the same? This issues seems an enumlib-side issue, not any problem with Spacey. Am I understanding your response?
+
+
 >
 > Sketch:
 >
@@ -1972,6 +1975,38 @@ Well, calculating the "pointgroup" of a lattice with a dset is equivalent to cal
 > The downstream consequences are minimal: every place I'd written `parent.point_group` becomes `[op.R for op in parent.space_group]` (when only the rotation is needed) or `parent.space_group` directly (when the translation matters too — e.g., in `get_dvector_permutations`). The `Supercell.permutation_group` computation gets richer because it now folds in the fractional translations.
 >
 > **Phase 8 to-do:** confirm Spacey's space-group API; if absent, decide between Spglib dependency vs. porting the Fortran logic.
+
+Same question as above. I must be missing something.
+
+<!-- BEGIN CLAUDE-RESPONSE-NEW: Spacey spacegroup — actual state -->
+> **Claude:** You're right conceptually, and I was being unnecessarily vague. Let me give the precise picture after actually checking Spacey's source.
+>
+> Spacey **does** define the type and function we want:
+> - `struct Crystal` with fields `a1, a2, a3` (basis vectors), `r::Array{Float64,2}` (atomic positions), `a::Array{Int}` (atom-type labels per position).
+> - `spacegroup(c::Crystal)` function.
+>
+> So conceptually you're 100% right: from Enumlib we construct a `Crystal(a1, a2, a3, dset_as_columns, ones(Int, n_D))` (uniform labels = "all the same species") and call `spacegroup(c)`. No Spacey API redesign needed.
+>
+> **The actual gotcha:** in the current Spacey version on your machine (`~/.julia/packages/Spacey/e3K3Q/src/Spacey.jl:233`), the body of `spacegroup` is a stub:
+>
+> ```julia
+> function spacegroup(c::Crystal)
+>      return true
+> end
+> ```
+>
+> The signature exists; the implementation does not — it returns `true` regardless of input. So the *API* is fine but the *function doesn't actually compute anything yet*.
+>
+> So the real options are:
+> 1. **Implement `spacegroup` in Spacey upstream** — natural home, since `pointGroup` lives there and `spacegroup` is the multilattice generalization. A contribution to Spacey, not a fork.
+> 2. **Implement it in Enumlib** — port the Fortran's space-group/dset-translation logic. Works without touching Spacey, but the algorithm logically belongs in a symmetry library, not an enumeration library.
+> 3. **Use Spglib.jl as a fallback** — has full space-group computation, but adds a non-trivial dep (binary library + bindings).
+>
+> **My recommendation:** option 1. Implement `spacegroup(c::Crystal)` in Spacey (probably ~50–150 lines based on the Fortran reference), submit upstream, and Enumlib calls it. If the upstream merge is slow, we vendor a temporary copy inside Enumlib (e.g., `Enumlib.Internal.spacegroup`) until the Spacey PR lands.
+>
+> So you weren't missing anything. My earlier response made it sound like Spacey's API was unclear or needed redesigning, which it doesn't — the function and type already exist with the right shape. The work needed is implementing a function that was previously stubbed out. Phase 8 to-do (revised): port the Fortran's space-group computation, propose it upstream to Spacey, vendor temporarily inside Enumlib if needed.
+<!-- END CLAUDE-RESPONSE-NEW -->
+
 >
 > Applying the rename + struct addition in the finalization commit alongside SupercellSelection and parametric-D refactors.
 <!-- END CLAUDE-RESPONSE-NEW -->
