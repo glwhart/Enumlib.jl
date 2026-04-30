@@ -1713,6 +1713,13 @@ The named-symbol algorithm choice + auto-dispatch + memory-budget kwarg replace 
 > **Cost of supporting it.** The Pólya algorithm computes per-volume / per-concentration counts as part of its work anyway — they're intermediate values inside the cycle-index sum. Returning them costs zero extra computation; just don't discard. The struct is ~10 lines of code; the kwarg adds ~3 lines of dispatch.
 >
 > **My recommendation:** ship Tier 1 (BigInt return) in v0.2, add Tier 2 in v0.2.x or v0.3 once we've seen what users actually want from the breakdown. Risk is low (purely additive) so deferring isn't dangerous. But if you'd like Tier 2 in v0.2 from the start, it's small.
+
+Let's do Tier 2 in v0.2 from the start
+
+<!-- BEGIN CLAUDE-RESPONSE: Tier 2 confirmed for v0.2 -->
+> **Claude:** Locked in. v0.2 ships both `count_inequivalent(...)` returning `BigInt` and `count_inequivalent(...; breakdown=true)` returning `InequivalentCount`. Phase 6 puts `InequivalentCount` in the type catalog with the four fields (`total`, `by_volume`, `by_concentration`, `by_hnf_class`).
+<!-- END CLAUDE-RESPONSE -->
+
 >
 > Tentative shape locked in for Phase 6: `InequivalentCount` struct exists in the type catalog regardless of whether it's the immediate return. Then we can wire either API on top.
 <!-- END CLAUDE-RESPONSE -->
@@ -1765,12 +1772,68 @@ The named-symbol algorithm choice + auto-dispatch + memory-budget kwarg replace 
 > - If parallelism is the goal, `foreach(callback, enumerate(...))` + a parallel `foreach` from `Folds.jl` or `Transducers.jl` gets there without needing our API to know about it.
 >
 > **The case for v0.2.** If you anticipate users plugging Enumlib into DFT pipelines (as you said in the original prompt is the typical application), the callback form is the API they'd reach for. It's short, it documents intent ("for each enumerated structure, do X"), and it leaves room for parallelism / progress / abort later without breaking the user-facing signature.
+
+Let's do this. I think this will be a common use case.
+
+<!-- BEGIN CLAUDE-RESPONSE: callbacks confirmed for v0.2 -->
+> **Claude:** Locked in for v0.2. Naming pattern decision below.
+<!-- END CLAUDE-RESPONSE -->
 >
 > **My recommendation, revised:** include `on_each::Union{Nothing, Function} = nothing` in `enumerate(...)` from v0.2. Default behavior (no callback) returns the iterator; with callback, it consumes the iterator and applies the callback eagerly, returning `nothing`. Two return shapes for one function isn't ideal, so alternatively: a small wrapper `enumerate_each(callback, parent, sites; ...)` that's purely for the callback case and returns nothing.
 >
 > Open: which name pattern do you prefer? `enumerate(...; on_each=...)` (one function, two return shapes) or `enumerate_each(callback, ...)` (two functions, clean separation)?
 <!-- END CLAUDE-RESPONSE -->
+I'm not sure. What things should I consider here?
 
+<!-- BEGIN CLAUDE-RESPONSE: callback API design — factors -->
+> **Claude:** Six things to weigh; some are stylistic, some are real engineering trade-offs.
+>
+> **1. Type stability.** Julia's compiler infers a function's return type from its arguments + dispatch. A function whose return type depends on a *kwarg value* (i.e., one shape when `on_each=nothing`, another when `on_each=cb`) is type-unstable: callers compiled once for the kwarg-less case can't assume the return type. In hot paths this matters — type instability prevents inlining and forces dynamic dispatch. Two-functions wins here cleanly: `enumerate(...)` returns `Iterator{EnumeratedStructure}`, `enumerate_each(cb, ...)` returns `Nothing`. Neither needs to dispatch on a value.
+>
+> **2. `do`-block syntax.** Julia has a beautiful sugar for "first arg is a callback":
+>
+> ```julia
+> # With do block — only works when callback is first positional arg:
+> enumerate_each(parent, sites; volume_range=2:8) do s
+>     energy = compute_dft(s)
+>     save_to_database(s, energy)
+> end
+>
+> # Without do block — kwarg form requires you to write the lambda inline or hoist it:
+> enumerate(parent, sites; volume_range=2:8,
+>           on_each = s -> begin
+>               energy = compute_dft(s)
+>               save_to_database(s, energy)
+>           end)
+> ```
+>
+> The `do` form is significantly nicer for non-trivial callbacks. It's the strongest argument for two functions in my view. Note: `do` syntax also works if `enumerate_each` takes the callback as a *positional* arg (Julia matches `do` to the first positional function arg). Kwarg-form callbacks can't use `do`.
+>
+> **3. Convention in the Julia ecosystem.** Base has both patterns and they coexist:
+> - `foreach(f, iter)` — separate function for the consume-with-callback case (this is exactly the pattern I'm proposing for `enumerate_each`).
+> - `open(f, path)` — function takes the callback as first arg; supports `do`.
+> - `Threads.@threads for` — macro form, neither a kwarg nor a separate function.
+>
+> Cross-pattern, when a function "just consumes" with a callback, the convention is two-functions-with-do-friendly-form (like `foreach`, `open`, `lock`, `withenv`). When a function "produces and the callback is incidental", kwarg form sometimes appears (like `Plots.plot(...; series_callback=...)`). Enumeration → callback → side-effect feels squarely in the `foreach`/`open` camp.
+>
+> **4. Future extensibility.** If we later want parallel/threaded callbacks, that's another set of behaviors:
+> - Two-functions: add `enumerate_pmap(f, ...)`, `enumerate_threaded(f, ...)`, etc. Clean.
+> - Kwarg-form: add `parallel = true`, `threaded = true` kwargs to `enumerate`. Each adds another value the function's behavior depends on; the function bloats.
+>
+> Naming related variants is generally cheaper than expanding one function's kwarg surface. Two-functions wins again.
+>
+> **5. Discoverability.** With one function: `?enumerate` shows the callback option in the docstring. With two: the user has to find `enumerate_each` separately. Mitigations for the two-function case: cross-references in each docstring, alphabetical doc listing, IDE tab-completion (typing `enumerate_` shows both `enumerate` and `enumerate_each`). In practice this is a real but minor cost.
+>
+> **6. Mental model.** Some users think "I want to enumerate, applying X to each" as one operation; others think "I want to enumerate, then apply X" as two. The first lean toward kwarg form, the second toward two-functions. The `do` block is so canonical in Julia that even users from the "one operation" camp adapt to it quickly.
+>
+> ---
+>
+> **What I'd choose:** `enumerate_each(callback, parent, sites; ...)` — two functions, clean separation, do-block friendly, type-stable, naturally extensible to parallel variants. The single biggest reason is the `do`-block: for non-trivial callbacks (the realistic case in DFT pipelines) the syntactic difference is significant.
+>
+> But the trade-offs above are the things to weigh; if you have a strong preference for the kwarg form for code-reading reasons, that's a fair choice too. The `do`-block question is the one that would tip me decisively toward two functions if I were doing this solo.
+>
+> If you want a hybrid: `enumerate(...)` always returns the iterator; `enumerate_each(cb, ...)` is the callback form. Both exist, neither has surprising return shapes. (`enumerate(...; on_each=cb)` becomes a thin alias if you want it later — easy to add, no commitment now.)
+<!-- END CLAUDE-RESPONSE -->
 
 
 <!-- ============= END CLAUDE-ADD: Phase 5 section ============= -->
