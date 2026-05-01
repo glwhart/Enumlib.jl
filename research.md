@@ -2848,7 +2848,6 @@ Phase 11 (DFT outputs) reads off this catalog: the POSCAR writer takes `Enumerat
 Phase 12 (synthesis) folds this into a final design document.
 
 
-<!-- BEGIN CLAUDE-ADD-NEW -->
 ## Phase 7 — Misuse / scale-safety mechanisms
 
 The original Fortran enumlib was frequently misused — researchers from materials applications would request enumerations that produced lists in the billions or hit out-of-memory walls, with no guardrails between the request and the run. Phase 7 designs the user-protection layer for the Julia rewrite: a pre-flight cost estimator, a memory budget enforced by default, BigInt-safe counting and labeling, structured errors with actionable mitigations, and explicit handling of the edge cases (empty enumerations, partition explosions) that Fortran handled silently or not at all.
@@ -3067,6 +3066,8 @@ The check is *independent* of the memory-budget gate — the caller can be under
 
 Default threshold = 10,000 distinct multiplicity vectors. Above that, the naïve caller almost certainly has the range too wide. The `:warn` and `:ignore` escape hatches are there for the rare expert case that genuinely wants every partition.
 
+The 10,000 figure is admittedly arbitrary — picked as a starting point that's "something rather than nothing," not from data. The constant carries a `TODO(v0.3): revisit threshold based on usage telemetry` comment in code, and `EnumerationCostEstimate.partition_count` is always populated (even when under threshold) so users see the magnitudes their workflows naturally produce. Re-tuned in v0.3 once real usage gives us a basis.
+
 ### 7.7 The Fortran `max_binomial` lineage — what it became
 
 For migration / context: the Fortran's `max_binomial = 1E10` (`derivative_structure_generator.f90:1268`) was a hardwired threshold that silently dispatched between two algorithms. In the Julia design:
@@ -3132,7 +3133,7 @@ Three classes of user protection I considered and explicitly defer:
 
 4. **Partition-count warning threshold.** I have the partition count surfaced as a note. Should there be a `partition_threshold` kwarg that elevates a high partition count to a hard error (per the same `:error/:warn/:ignore` policy as `memory_budget`)? Or is the note in `notes::Vector{String}` enough?
 
-> **Claude:** Locked — paternalistic default. v0.2 ships:
+> **Claude:** Locked — paternalistic default with explicit "revisit me" hook. v0.2 ships:
 >
 > ```julia
 > partition_threshold::Int = 10_000        # default: error above this
@@ -3142,6 +3143,8 @@ Three classes of user protection I considered and explicitly defer:
 > Threshold of 10,000 picked as the rough boundary where "I might want to look at all of these" turns into "this is going to take hours and almost certainly isn't what I meant." Above 10,000 distinct multiplicity vectors, the naïve caller almost certainly has the concentration range too wide. The error message names the offending range and suggests narrowing.
 >
 > The `:warn` and `:ignore` escape hatches are there for the rare expert case (e.g., literature-validation runs that genuinely want every partition). Default is `:error`.
+>
+> **Re-evaluation flag.** Acknowledged the threshold is arbitrary. Three things land in v0.2 to make the future re-evaluation cheap: (1) a `# TODO(v0.3): revisit threshold based on usage telemetry` comment on the constant in code; (2) the partition-gate's `EnumerationCostEstimate.partition_count` is reported even when under threshold, so users naturally see the magnitudes their workflows produce; (3) §7.6 prose carries the same "ship-now-revise-later" caveat so the design doc doesn't read as if the number is sacred. We adjust based on real data once we have any.
 
 5. **Should the empty-enumeration case be a throw or a return-empty?** I locked in throw earlier per your preference. Re-confirming: is there any case where return-empty is preferable (e.g., scripts that loop over many parameter sets and want to silently skip the empty ones)? If so, a kwarg `on_empty = :throw` (default) / `:warn` / `:silent` mirrors `on_overflow` and gives the script writers an out.
 
@@ -3158,9 +3161,171 @@ Phase 8 (literature survey) gets one explicit deliverable beyond the surveying i
 Phase 10 (CI / regression) gets the estimator as a regression target: per Phase 7 §7.2 reason 2, asserting `estimate_cost(...).total_count == reference_count` is a cheap unit test for Pólya correctness, separate from the labeling-enumeration tests.
 
 Phase 12 (synthesis) folds the misuse story into the user-facing design document — a "Safety and limits" section a user can read in 5 minutes to understand what protects them and what doesn't.
+
+
+---
+
+<!-- BEGIN CLAUDE-ADD-NEW -->
+## Phase 8 — External literature survey
+
+The "big ask" from `firstprompt.md`: enumlib has been cited hundreds of times; somewhere in those citations are algorithmic improvements, alternative implementations, and integration cases the rewrite should know about. This phase is a heuristic pass — not exhaustive — covering algorithmic competitors, the adjacent software ecosystem, the Julia dependency landscape, and the specific outstanding tasks that earlier phases queued for here.
+
+### 8.1 Scope and methodology
+
+What this phase *is*: a structured survey of the four areas that affect the rewrite design — (a) algorithmic alternatives or improvements, (b) competing/adjacent software the Julia rewrite may interoperate with or be compared against, (c) the Julia-ecosystem dependencies we either inherit or contribute to, (d) the explicit follow-up tasks earlier phases tagged as Phase 8.
+
+What this phase is *not*: an exhaustive citation graph traversal. The 200+ Google-Scholar citations of Hart-Forcade 2008 alone are not all algorithmically relevant; many cite the original papers as a methodology reference for downstream computational-materials work (e.g., "we used enumlib to generate candidate structures"). Surveying them all is a months-long task suited to a graduate student, not a single-pass research session. Phase 12 (synthesis) gets a placeholder for "schedule a deeper citation survey" if the heuristic pass below leaves real algorithmic gaps unfilled.
+
+**Search method used in this pass:** targeted topic queries on (1) post-2017 derivative-structure / superstructure enumeration improvements, (2) HEA / disordered-alloy enumeration tooling 2022-2024, (3) ML-based crystal-structure enumeration alternatives, (4) Julia symmetry / lattice / enumeration ecosystem, (5) Pólya-counter implementations, (6) symmetry-breaking / canonical-augmentation literature (McKay & lineage), (7) the post-Shinohara 2020 BDD line.
+
+### 8.2 Algorithmic alternatives and improvements
+
+Three families of algorithmic work in the post-2017 (post-Morgan-tree) literature surface as worth knowing about:
+
+#### 8.2.1 BDD / ZDD (Shinohara 2020 — already digested in §4.5)
+
+The 2020 paper presents a Zero-suppressed Binary Decision Diagram approach that scales better than enumlib in their tests. Already digested. Phase 8 follow-up (per §4.5 reference harvest):
+
+| Ref | Citation | Relevance to rewrite |
+|---|---|---|
+| 16 | Mustapha et al., *J. Phys.: Condens. Matter* **25**, 105401 (2013) | Third school of derivative-structure enumeration (CRYSTAL code group at Torino). Worth a one-paragraph digest in v0.3 — uncomfirmed whether it's faster than enumlib, but it's the only major non-enumlib enumerator besides BDD. |
+| 23 | Iwashita et al., TCS-TR-A-10-64 (2013) | Frontier-based ZDD method; foundation of Shinohara's work. Foundational reading if/when we implement `:bdd` algorithm. |
+| 25 | Horiyama et al., CCCG (2018) | **Highest priority follow-up.** Non-isomorphism elimination via lex-maximum representative — applicable to *any* enumeration algorithm including the Hart-Forcade tree, not just BDD. May offer a cleaner canonical-representative choice than the current "first reached in tree traversal" convention. Worth digesting before v0.3. |
+| 35, 36 | Bryant, BDD foundations (1986, 1992) | Background for `:bdd` algorithm only; not load-bearing for v0.2. |
+
+#### 8.2.2 Canonical augmentation (McKay 1998 lineage)
+
+McKay's *Isomorph-Free Exhaustive Generation* (J. Algorithms 1998) and the broader canonical-augmentation framework underpins essentially all symmetry-aware enumeration outside the materials-science world (graph theory, combinatorial chemistry, satisfiability solvers, model checkers). Two ideas potentially transferable to derivative-structure enumeration:
+
+1. **Lex-leader symmetry-breaking predicates** — the same lex-maximum representative idea as Horiyama 2018 (above), but with a much longer pedigree in the SAT/CP literature. Used as a symmetry-breaking constraint *during* enumeration rather than a deduplication *after*. Relevant for any future "enumerate-with-symmetry-constraints" mode (e.g., enumerate only structures with a specific Wyckoff site occupied by species X).
+2. **Canonical deletion / canonical extension** — at each tree expansion, accept only nodes whose canonical-deletion path matches the current path. This is the rigorous version of Hart-Forcade's "first-reached" convention. The rigor matters when the tree is being parallelized or when partial trees are checkpointed and resumed.
+
+Both are theoretical possibilities for v0.3+, not v0.2 work. Logged as Phase 12 open questions.
+
+**Reference:** McKay, B. D., *Isomorph-free exhaustive generation*, J. Algorithms **26**, 306 (1998). PDF: <https://users.cecs.anu.edu.au/~bdm/papers/orderly.pdf>. Combined with the more recent symmetry-breaking SAT literature (Itzhakov & Codish, *Complete Symmetry Breaking for Finite Models*, arXiv:2502.10155), this is the rigor-grounded perspective on what enumlib's tree algorithm has been doing heuristically.
+
+#### 8.2.3 Numerical Pólya — Rosenbrock 2016 confirmed as best-in-class
+
+The Phase 5 / Phase 7 design uses Rosenbrock-Morgan-Hart-Curtarolo-Forcade *J. Exp. Algorithmics* **21**, 1.11 (2016) for the cost-estimator's count. A targeted search for *post-2016* numerical Pólya improvements turned up nothing better. The 2016 paper (DOI 10.1145/2955094) appears to remain best-in-class for the kind of counts the cost estimator needs. Reference Python+Fortran implementation: <https://github.com/rosenbrockc/polya>. Confirmed: no faster algorithm to chase; the Phase 7 §7.2 estimator design stands.
+
+#### 8.2.4 ML-based "enumeration" alternatives — different problem, not a replacement
+
+A 2024-era trend in the materials literature replaces explicit enumeration with random-sampling + machine-learning-potential filtering (Seko et al., *npj Comp. Mat.* 2024 on globally-stable enumeration via polynomial MLPs; Nature 2024 on "exhaustive search for novel multicomponent alloys with brute force and machine learning"). These are **not** drop-in replacements for derivative-structure enumeration:
+
+- Enumlib produces *all* symmetry-distinct structures up to a size bound — exhaustive and provable. The MLP-sampling work produces a *biased* sample weighted toward low-energy configurations, with no completeness guarantee.
+- The two approaches are complementary, not competitive: enumlib's output is the input to MLP training (the MLP needs labeled energies; enumlib gives the structure list). Several 2024 papers explicitly use enumlib upstream.
+
+**Implication for the rewrite:** this is the dominant *consumer* of enumlib output. Phase 11 (DFT outputs) and Phase 9 (pymatgen) need to deliver structures in the formats these workflows want — POSCAR, ASE Atoms, pymatgen Structure. Already on the priority list.
+
+### 8.3 Adjacent software ecosystem
+
+The rewrite isn't going into a vacuum. Four ecosystems matter:
+
+| Tool | Language | Role | Interaction with Enumlib.jl |
+|---|---|---|---|
+| **CASM** (PRISMS / U.Mich) | C++ | Cluster-expansion + enumeration + Monte Carlo for multicomponent solids | Has its own internal enumeration (PRISMS group, distinct algorithm). Not a dependency; not a target. |
+| **ATAT** (Van de Walle) | C++ | SQS generation, cluster expansion, enumeration via `corrdump`/`mmaps` | Uses its own enumeration; commonly compared to enumlib in materials papers. Independent codebase. |
+| **ICET** (Ångström / Eriksson) | Python | Cluster-expansion package; calls enumlib internally for structure enumeration | **Direct downstream consumer.** ICET uses pymatgen's `EnumlibAdaptor`, which calls Fortran enumlib. Once Enumlib.jl is mature, ICET becomes a candidate to migrate to a `juliacall`-based dispatch path (Phase 9). |
+| **pymatgen** (Materials Project) | Python | The dominant Python materials-science library | **Direct downstream consumer.** `pymatgen.command_line.enumlib_caller.EnumlibAdaptor` shells out to compiled Fortran `enum.x` and `makestr.x`. Pain points and migration plan covered in Phase 9. |
+| **sqsgenerator** (Gehringer 2023) | C++/Python | Special quasi-random structure generation, both Monte-Carlo and *systematic enumeration* | Recent (2023) entrant; uses systematic enumeration as one of its two modes. Worth a Phase 9 sub-task to check if it would be a candidate consumer of Enumlib.jl as the enumeration backend. Reference: Gehringer et al., *Comp. Phys. Commun.* **286**, 108664 (2023). |
+
+#### Specific pymatgen pain points to address (preview of Phase 9)
+
+A 2024 GitHub issue (#4185) reports that the `MagneticStructureEnumerator` timeout (which uses `EnumlibAdaptor` underneath) doesn't honor user-supplied limits — the adapter shells out to a Fortran subprocess that can exceed the timeout silently. The fix (PR #4276) adjusted Python-side timeout handling. This is the kind of friction a native-Julia replacement (called via `juliacall`) eliminates: no subprocess, no timeout escapes, errors as exceptions instead of nonzero exit codes. Concrete win to advertise during Phase 9 outreach to the pymatgen maintainers.
+
+### 8.4 Julia-ecosystem dependency landscape
+
+What's already in the Julia ecosystem that intersects with Enumlib.jl's needs:
+
+| Package | Maintainer | What it gives us | Status |
+|---|---|---|---|
+| **MinkowskiReduction.jl** | `glwhart` (Gus) | 3D lattice reduction; cleaner symmetry input. Already a dep. | Stable, used by Enumlib.jl today. |
+| **Spacey.jl** | `glwhart` (Gus) | `pointGroup(A)` and `Crystal` type. `spacegroup(c::Crystal)` exists as a stub. | **Outstanding implementation work** — see §8.5. |
+| **Spglib.jl** (singularitti) | `singularitti` | Julia wrapper around the C `spglib` library (the de-facto symmetry library in materials science; powers ASE, pymatgen, AFLOW). Computes space groups, primitive cells, equivalent atoms. | Mature; offers a fallback / cross-check for the Spacey.spacegroup port. Adds a binary dependency. |
+| **Crystalline.jl** | `thchr` (Christensen, MIT) | Heavy-duty symmetry analysis: space groups (3D + magnetic + subperiodic), Wyckoff positions, irreducible representations, band representations. Research-grade, breaking changes possible. | Probably overkill for our needs — we want one specific function (multilattice space group), not the whole machinery. Worth knowing about for *future* features (e.g., Wyckoff-position-aware enumeration). |
+| **SymmetryReduceBZ.jl** | `jerjorg` | Brillouin-zone reduction; primitive-cell tools. | Adjacent, probably not a dep. |
+| **Combinatorics.jl** | community | `multinomial`, basic permutation utilities | Already a dep; provides primitives but not Pólya. |
+
+#### Notably absent from the Julia ecosystem
+
+- **No Julia-native Pólya enumeration package.** Searches turned up zero existing Pólya counters in JuliaHub; the only implementations are Wolfram's `OrbitInventory`, Sage's `cycle_index`, and the Rosenbrock Python+Fortran code. **Implication:** the §5.3 / §7.2 cost estimator implementation is a from-scratch Julia port. Per §5.3 review, this can be extracted as a standalone `Polya.jl` package once Enumlib's API stabilizes — there's no incumbent to coordinate with.
+- **No Julia derivative-structure enumeration package other than Enumlib.jl itself.** Confirmed by search; we're it.
+
+### 8.5 Spacey.spacegroup — confirmed outstanding
+
+Verified the stub status across all installed Spacey versions on the host machine: `spacegroup(c::Crystal)` body in `~/.julia/packages/Spacey/{e3K3Q,Buxr5,bjFht}/src/Spacey.jl` is identical:
+
+```julia
+function spacegroup(c::Crystal)
+     return true
+end
+```
+
+So this is a real outstanding task, not a misreading on my part. Three implementation options (recap from §6.3):
+
+1. **Implement upstream in Spacey** — natural home; Spacey already has the `Crystal` type and `pointGroup`. ~50–150 lines based on the Fortran reference. Lifetime risk: depends on review responsiveness from upstream Spacey maintainer (Gus — that's you).
+2. **Implement in Enumlib (`Enumlib.Internal.spacegroup`)** — works without touching Spacey, but the algorithm logically belongs in a symmetry library. Acceptable as a temporary vendor while a Spacey PR is in flight.
+3. **Use Spglib.jl** — full space-group machinery with a battle-tested algorithm, but adds a non-trivial dep (binary library + C bindings + JLL package). Gives us Wyckoff positions, primitive-cell finding, equivalent atoms for free.
+
+**Recommendation: option 1 (upstream) with option 2 as a fallback during the PR period; consider option 3 as a `Pkg.weakdep` for users who want spglib's full machinery and are willing to take the binary dep.** The dual-path (vendored Julia implementation primary; spglib optional via weakdep) gives users a pure-Julia default and a high-confidence fallback for tricky cases.
+
+**Concrete sub-tasks for v0.2 readiness:**
+1. Port the Fortran `get_dvector_permutations` (multilattice space-group construction from lattice point group + dset). ~50 lines of Fortran → ~80 lines of Julia.
+2. Land it as `Spacey.spacegroup(c::Crystal)` returning `Vector{SymmetryOp{3}}` (matching the Phase 6 §6.3 catalog type).
+3. If upstream merge is slow, vendor as `Enumlib.Internal.spacegroup` with a clear "TODO: remove once Spacey PR #N lands" comment.
+4. Add a Spglib.jl-backed cross-check in the test suite — for any input crystal, the orbits computed from Enumlib's spacegroup should match Spglib's `get_symmetry_dataset` modulo ordering. Gives us validation against the most-trusted implementation in the ecosystem.
+
+### 8.6 Pólya-counter-in-Julia — no existing package
+
+Searched JuliaHub and the Julia Discourse for Pólya enumeration packages. Confirmed:
+
+- No `Polya.jl` exists.
+- `Combinatorics.jl` provides `multinomial` and `permutations` but not Pólya cycle-index sums.
+- The closest existing implementations are non-Julia: Wolfram `OrbitInventory[]`, Sage `species`/`cycle_index`, the Rosenbrock Python+Fortran reference (<https://github.com/rosenbrockc/polya>).
+
+**Decision (per §5.3 review):** implement Pólya inside Enumlib as `Enumlib.Polya` submodule for v0.2; extract to a standalone `Polya.jl` in v0.3 once the API has stabilized. The Rosenbrock reference implementation gives us a tested algorithm and a validation oracle (count-by-count comparison against the Python implementation in the test suite).
+
+### 8.7 Recommendations distilled for the rewrite
+
+Synthesizing across §8.2–§8.6, the concrete things this survey changes or confirms in the rewrite plan:
+
+1. **Confirmed: Rosenbrock 2016 is best-in-class for the cost-estimator's Pólya count.** No need to chase a faster algorithm. Phase 7 §7.2 design is correct.
+2. **Confirmed: no incumbent Julia Pólya counter to coordinate with.** Build inside Enumlib; extract later.
+3. **New: high-priority Phase 8.5 sub-task — port `Spacey.spacegroup` (with a Spglib.jl cross-check in tests).** Concrete enough to schedule. Owner: Gus + me; ~80 lines of Julia + tests.
+4. **New: digest Horiyama 2018 (lex-max non-isomorphism) before v0.3.** Potential improvement to the canonical-representative choice in the tree algorithm. Single paper; one-paragraph digest in research.md as §4.7.
+5. **Confirmed: pymatgen integration is the highest-leverage downstream win** — `EnumlibAdaptor`'s timeout / subprocess pain (issue #4185) is a concrete migration motivator, not just a generic "Julia is faster" pitch. Phase 9 should lead with this.
+6. **New: sqsgenerator (Gehringer 2023) is a candidate downstream consumer** beyond the obvious pymatgen / ICET / ASE. Worth a Phase 9 sub-task to scope the integration ask.
+7. **Out of scope for v0.2: BDD algorithm (Shinohara 2020).** Already deferred; survey confirms there's no urgency from the broader literature to bring it forward. Phase 12 keeps the v0.3+ scheduling.
+8. **Out of scope for v0.2: McKay-style canonical-augmentation rigor.** Theoretical improvement, not a pain point users are reporting. Phase 12 captures it as a "when we're feeling rigorous" v0.3+ item.
+
+### 8.8 What's NOT in this survey
+
+To be honest about the limits of the heuristic pass:
+
+- **Full enumlib citation graph.** I didn't walk all 200+ Hart-Forcade 2008 citations. The targeted searches surfaced the algorithmically distinct work (Mustapha 2013 / Shinohara 2020 / Rosenbrock 2016) and the major adjacent tooling (CASM, ICET, ATAT, sqsgenerator), but a deeper pass might surface niche improvements in domain-specific subliteratures (magnetic structures, surface alloys, oxide enumeration). Phase 12 logs this as "schedule a graduate-student citation pass."
+- **Magnetic / spin-aware enumeration.** The pymatgen `MagneticStructureEnumerator` adds a magnetic-moment dimension on top of the species labeling. enumlib supports this via post-processing (the labeling dimension gets repurposed); whether the Julia rewrite should make magnetic moments a first-class label dimension is a Phase 6+ design call I haven't surfaced. Logged for the user's review.
+- **Surface / interface enumeration.** The slab equivalencies pattern (§6.10 Pattern B) is the slice of this we've handled. The full surface-reconstruction enumeration literature (Sun et al., Persson group) is its own thing.
+- **Vibrational / displacement enumeration (Morgan 2017 §3.3).** Already digested in §4.4. Whether v0.2 implements the displacement-DOF extension is a Phase 6+ scoping call.
+
+### 8.9 Open follow-ups for the author (Phase 8)
+
+1. **Schedule a deeper citation survey (or not).** This pass found the algorithmically distinct work; deeper digging is best done by someone tracking the materials-science literature continuously. Worth scheduling as a v0.3 milestone (graduate-student task), or call this survey enough?
+2. **Spacey.spacegroup ownership.** I propose porting the Fortran's logic and landing it as a Spacey PR. As Spacey's maintainer you'd self-merge. Sound right, or do you want to consider option 3 (Spglib.jl as the primary backend) instead?
+3. **Magnetic-moment first-class support.** The pymatgen `MagneticStructureEnumerator` is one of the few enumlib downstream consumers that *adds* a dimension to the labeling (spin direction). Make that first-class in Enumlib.jl (a `Vector{Vector{Int}}` labeling per site), or keep it as a downstream concern (caller post-processes the species labeling)?
+4. **Horiyama 2018 priority.** Digest before v0.2 (might inform the canonical-representative choice for the tree algorithm), or after (improvement candidate, not blocker)?
+
+### 8.10 What this enables for Phase 9+
+
+Phase 9 (pymatgen integration) inherits a concrete pitch — the `EnumlibAdaptor` subprocess + timeout pain (issue #4185) is a migration motivator, not just a "Julia is faster" handwave. Plus the candidate downstream consumers list (ICET, sqsgenerator, ASE) for the integration outreach.
+
+Phase 10 (CI / regression) inherits two cross-checks: (a) Spglib.jl-backed validation of `Spacey.spacegroup` outputs; (b) Rosenbrock Python implementation as a count-by-count oracle for the Pólya estimator. Both are concrete reference implementations to test against.
+
+Phase 11 (DFT outputs) inherits the format priority order from §8.2.4 — POSCAR (VASP, broadest reach), ASE `Atoms` (the Python ecosystem's de-facto exchange format), pymatgen `Structure` (Materials Project ecosystem). All three feed the ML-MLP training pipelines that are the dominant 2024-era consumer.
+
+Phase 12 (synthesis) inherits the explicit "deferred citation pass" placeholder so we don't lose track of the literature still to be reviewed.
 <!-- END CLAUDE-ADD-NEW -->
 
 
 ---
 
-*(Sections for Phases 8–12 will be appended below as they're produced.)*
+*(Sections for Phases 9–12 will be appended below as they're produced.)*
