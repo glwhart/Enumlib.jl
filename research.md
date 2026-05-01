@@ -1374,6 +1374,58 @@ After all five papers, here's the cumulative algorithmic landscape:
 For the immediate rewrite (v0.1 → v0.2), focus on Pólya counting + the 2008/2012/2017 algorithms with clean dispatch. ZDD is a v0.3+ optimization for users who hit the memory wall the 2017 tree creates. It also raises an open question for Phase 6: should the canonical representative of an orbit be lex-maximum (2020 convention) or depth-first-first (older convention)? Lex-maximum is cleaner mathematically and composes with the ZDD formalism, but the 2017 tree algorithm uses location-vector ordering which is its own thing. Worth a deliberate decision rather than inheriting one by accident.
 
 
+### 4.6 Rosenbrock, Morgan, Hart, Curtarolo & Forcade 2016 — *Numerical Algorithm for Pólya Enumeration Theorem*
+
+**Citation.** Rosenbrock, Morgan, Hart, Curtarolo, Forcade, *ACM J. Exp. Algorithmics* **21**, 1.11 (Aug 2016). DOI: 10.1145/2955094. PDF: `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`. Reference implementation: <https://github.com/rosenbrockc/polya>.
+
+Already cross-referenced from Phase 5 §5.3 and Phase 7 §7.2 — this is the algorithm powering the cost-estimator's `total_count`. Skipping a full digest here (would duplicate §7.2 prose); the substantive design implications were captured at the Phase 7 round when the algorithm was confirmed best-in-class. Open `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf` if you want the full algorithm walkthrough; everything load-bearing for the Julia rewrite is already in §7.2.
+
+### 4.7 Bublikov 2011 — *Combinatorial Approach to the Simulation of Superstructures of the NaCl Type*
+
+**Citation.** D. N. Bublikov, *Crystallography Reports* **56**(1), 89–100 (2011). DOI: 10.1134/S106377451101007X. (Translated from Russian *Kristallografiya* **56**(1), 95–106, 2011.) Author affiliation: Southern State University, Bol'shaya Sadovaya ul. 105, Rostov-on-Don, 344006 Russia. PDF: `papers/Bublikov_2011_CombinatorialApproachNaClSuperstructures.pdf` (provided directly by the author, hard to find online).
+
+#### Problem
+
+Enumerate cation arrangements in superstructures of the NaCl type, subject to *valence balance* constraints (both global electroneutrality and local — the sum of cation charges around each oxygen). Practical motivation: predict possible stoichiometries and orderings for ionic compounds with $A^{+m_A} B^{+m_B} \ldots X^{-2}$-like formulas (binary, ternary, quaternary cation mixtures on the NaCl cation sublattice).
+
+#### Why this is a different problem from enumlib's
+
+Three structural specializations:
+
+1. **Fixed parent structure.** NaCl-type only ($Fm\bar{3}m$, $a$ = lattice parameter, two-atom motif at $(0,0,0)$ and $(½,½,½)$). No HNF generation, no general lattice support. Compare: enumlib enumerates over arbitrary HNFs of arbitrary parent multilattices.
+2. **Restricted supercell shape.** "Cubic Fragments" (CFs) of size $n = 4 \cdot x^3$ for integer $x$ — i.e., $\{4, 32, 108, 256, 500, 864, 1372, \ldots\}$ FUs. These are *cubic* supercells only; no tetragonal, triclinic, or other Bravais distortions of the supercell. Compare: enumlib accepts any HNF.
+3. **Physics-based filter.** Each candidate labeling must satisfy global valence balance (sum of cation charges = oxygen charge × $n_O$) AND local valence balance (Pauling's second rule: sum of cation charges around each oxygen ≈ oxygen charge). Most candidates are rejected on these grounds alone. Compare: enumlib is chemistry-agnostic — labels are abstract integers.
+
+So this is a *narrower* problem than enumlib solves, with chemistry constraints baked in. It's a niche application paper, not a general-purpose enumeration algorithm.
+
+#### Algorithmic ideas worth carrying
+
+Reading past the NaCl-specific framing, three ideas have meaningful overlap with enumlib's machinery:
+
+1. **The "rejection algorithm" (§3.1.1) — substitution-based equivalence test.** For two CFs (i.e., two candidate labelings of the same supercell), Bublikov substitutes the colors of one into all 24 rotation-related copies and compares color sequences. Equivalent iff any substitution matches. This is a *direct geometric* equivalence test, vs enumlib's quotient-group action approach. Pros: simple, self-evident correctness; no group-theoretic machinery needed. Cons: $O(|G| \cdot n)$ per pair vs enumlib's $O(n)$ per labeling using the precomputed permutation group. For the millions-to-billions of structures enumlib handles, the quotient-group approach is asymptotically dominant. **Verdict: not a replacement; not worth porting.**
+
+2. **Lex-order pre-filter on multiplicity vectors (§3.1).** Bublikov rejects multiplicity vectors that don't satisfy `sum(color 0) ≥ sum(color 1) ≥ … ≥ sum(color k-1)` upfront — a cheap symmetry-breaking constraint that prunes the obvious label-permutation duplicates before the expensive equivalence tests run. enumlib's label-exchange deduplication does the equivalent work *post*-enumeration via the label-rotation step (Hart-Forcade 2008 step 5c). Doing it as a *pre-filter* on the multiplicity vector saves work in the high-$k$ branch where many candidate stoichiometries are equivalent under label-permutation. **Verdict: minor efficiency idea worth checking against the Morgan 2017 recursive-stabilizer tree implementation — if the tree doesn't already short-circuit equivalent multiplicity-vector permutations, this is a small win for v0.3+. Not a v0.2 priority.**
+
+3. **User-supplied predicates as enumeration filters (§3.2).** This is the genuinely interesting idea. Bublikov's valence-balance filter is a *user-supplied predicate* — given a partial or complete cation arrangement, returns true iff the global + local valence balance is satisfied. The cleanest generalization for enumlib: let users supply arbitrary `predicate(partial_labeling, depth) -> Bool` callbacks that prune branches during the recursive-stabilizer tree walk. The ionic-crystal valence-balance check is one example; other examples that come to mind: "no two adjacent sites have species X," "minimum distance constraint between species pairs," "maximum strain when the labeling is mapped to real space." This is a real new feature, deferred but worth scoping. **Verdict: a v0.3 feature — `enumerate(parent, sites; ..., predicate = my_filter)` where `my_filter` is called at each tree-node candidate and pruned branches don't get expanded.**
+
+#### What's NOT useful for enumlib
+
+- **The CF (cubic-fragment) shape restriction.** Less general than enumlib's HNF approach. Don't adopt.
+- **The valence-balance constraint itself.** Chemistry-specific; would need to know oxidation states. enumlib is intentionally chemistry-agnostic. Stays out of the core; available via the predicate hook above for users who want it.
+- **The "BERNSIDE program" reference.** Author's local Russian-only tool, no link, dead end for integration.
+
+#### Synthesis
+
+Bublikov 2011 is a niche application paper that uses a specialized version of the same combinatorial enumeration ideas as enumlib, with chemistry constraints baked in. The valuable take-away for the rewrite is *one new feature concept*: user-supplied predicate filters during enumeration (the third bullet above). This goes onto the v0.3+ list as `enumerate(...; predicate = ...)`. The ideas behind ideas 1 and 2 above don't survive the asymptotic comparison with enumlib's quotient-group approach.
+
+Useful confirmation, too: Bublikov surfaces no pre-2011 algorithmic technique that enumlib hasn't already absorbed. So in the citing-graph sense, this paper *cites* but doesn't *upgrade* the Hart-Forcade machinery. A useful negative result.
+
+#### Updates this digest triggers
+
+- **§5.4 dispatch tree:** add a future row for `predicate` kwarg → `:recursive_stabilizer` (the only mode that can prune at internal tree nodes). Not in v0.2.
+- **§7.9 Phase 7 question list:** add Q7 — "predicate filter as a Phase 8 v0.3+ candidate?" Already implicitly captured in "What's NOT in scope for v0.2"; promoting it to a named candidate.
+- **§8.10 (what enables Phase 9+):** the predicate-filter idea is a Phase 8 → v0.3+ deliverable.
+
 ---
 
 
@@ -3179,6 +3231,10 @@ The "big ask" from `firstprompt.md`: enumlib has been cited hundreds of times; s
 >
 > Logged as a Phase 8 follow-up: digest the Bublikov 2011 ionic-crystal paper once we have a hard pointer. If it turns up something algorithmically applicable to the multilattice case (rather than ionic-specific), it slots into §8.2 as a fourth algorithmic family alongside BDD, McKay-canonical-augmentation, and Pólya. Filing the user's broader observation too: this is *exactly* the kind of citing-literature gem we want to surface, and the heuristic search method I used in §8.1 won't reliably find papers in non-English-first journals or under variant romanizations. That's a real limitation worth naming in §8.8 ("What's NOT in this survey").
 
+This paper is hard to find online, it seems. I had a pdf copy in email from the author. I put it in the papers folder.
+
+> **Claude:** Got it — found `papers/CRRP89.pdf`, confirmed it's Bublikov 2011 *Crystallography Reports* **56**(1), 89–100 (DOI: 10.1134/S106377451101007X), renamed to `papers/Bublikov_2011_CombinatorialApproachNaClSuperstructures.pdf` per the naming convention, and digested as **§4.7** (added inline above the Phase 5 section). One-line summary of the digest's verdict: niche NaCl-only application paper, but it surfaces *one* genuinely useful design idea — user-supplied predicate filters during enumeration (`enumerate(..., predicate = my_filter)`) — that's worth queueing for v0.3+. The other algorithmic ideas in the paper don't survive the asymptotic comparison with enumlib's quotient-group machinery. Useful negative result on the citing-literature side: this paper *cites* but doesn't *upgrade* Hart-Forcade. See §4.7 for the full digest, including the v0.3+ predicate-filter feature spec.
+
 ### 8.1 Scope and methodology
 
 What this phase *is*: a structured survey of the four areas that affect the rewrite design — (a) algorithmic alternatives or improvements, (b) competing/adjacent software the Julia rewrite may interoperate with or be compared against, (c) the Julia-ecosystem dependencies we either inherit or contribute to, (d) the explicit follow-up tasks earlier phases tagged as Phase 8.
@@ -3247,6 +3303,7 @@ The Phase 5 / Phase 7 design uses Rosenbrock-Morgan-Hart-Curtarolo-Forcade *J. E
 > - User-facing API design. The function takes a permutation group, $k$, and (optionally) a multiplicity vector and returns a `BigInt`. That's the whole API. Resist the urge to add 15 keyword arguments.
 >
 > **My advice on whether to do it:** yes, take a day or two in a separate session. The benchmark-against-three-oracles validation property is rare and valuable. And you'll know much faster than I will whether the Rosenbrock algorithm has any subtle gotchas that don't show up in the paper.
+Thanks. Noted
 
 #### 8.2.4 ML-based "enumeration" alternatives — different problem, not a replacement
 
@@ -3296,6 +3353,7 @@ What's already in the Julia ecosystem that intersects with Enumlib.jl's needs:
 > **Caveat on this advice:** I haven't talked to the `Combinatorics.jl` maintainer or scanned their recent PR cadence. If you wanted to be a good ecosystem citizen, the polite first step would be to file an issue on `Combinatorics.jl` titled "Pólya enumeration: in scope?" and let the maintainer signal whether they want it. Quick, costs nothing, and tells you whether to pursue path A (PR) or path B (standalone). My above analysis is the prior; their answer is the data.
 >
 > **Recommendation:** standalone `Polya.jl`, but file the discoverability question on `Combinatorics.jl` first as a courtesy. If they want it as a PR, great; if they prefer it standalone, you have explicit ecosystem buy-in for the standalone choice.
+Noted.
 
 #### Notably absent from the Julia ecosystem
 
@@ -3324,7 +3382,12 @@ I'm confused. I already implemented spacegroup in Spacey just a couple of days a
 > 1. Tag `v0.8.0` is already pushed (verified — visible on GitHub's tag list).
 > 2. Open the v0.8.0 release on GitHub and comment `@JuliaRegistrator register` on the release commit (or use the `JuliaRegistrator` GitHub App if it's installed on the repo). Standard registration flow; usually merged into General within a couple of days by the registry bot's CI checks.
 >
-> **For Enumlib's near-term work:** while waiting for the General registry merge, point Enumlib's `Project.toml` at the dev copy via `Pkg.develop(path="../Spacey.jl")`. That's already the workflow we'd use for co-developing related packages anyway. Once v0.8.0 lands in General, switch back to a normal `Spacey = "0.8"` `[compat]` entry.
+> **For Enumlib's near-term work:** while waiting for the General registry merge, point Enumlib's `Project.toml` at the dev copy via `Pkg.develop(path="../Spacey.jl")`. 
+Why don't you go ahead and do that. Thanks.
+
+> **Claude:** Done. Ran `Pkg.develop(path="../Spacey.jl")` in Enumlib's project; `Project.toml` and `Manifest.toml` now point Spacey at the local dev copy. Quick smoke test confirmed: `using Spacey; spacegroup(Crystal([1.0 0 0; 0 1.0 0; 0 0 1.0], reshape([0.0,0,0],3,1), [1]; coords=:fractional))` returns 48 operations for simple cubic — exactly what we want. (Heads-up: the `Crystal` constructor signature changed in v0.8.0 — it now takes a 3×3 basis matrix + atomic positions matrix + species vector + a `coords=:fractional|:cartesian` keyword. The old `Crystal(a1, a2, a3, r, types)` form is gone. Phase 6 §6.3's `ParentLattice{D}` outer constructor needs a one-line update to call the new `Crystal(A, hcat(ds...), ones(Int, length(ds)); coords=:fractional)` form when constructing the temporary Crystal for `spacegroup`. Logged in §6.3 as a small follow-up; non-blocking for the design.)
+
+That's already the workflow we'd use for co-developing related packages anyway. Once v0.8.0 lands in General, switch back to a normal `Spacey = "0.8"` `[compat]` entry.
 >
 > **Updates this triggers in research.md:**
 > - §6.3 / §8.5 prose currently says "the function is stubbed" — that's wrong for the implementation, right only for what's currently in the registry. Updating to reflect the real status: implemented in v0.8.0 on GitHub, awaiting registration. The Phase 8 follow-up task changes from "port the Fortran spacegroup logic" to "register v0.8.0 in General + update Enumlib's compat once available."
@@ -3424,7 +3487,12 @@ To be honest about the limits of the heuristic pass:
 > 2. **Wide-spread test cases.** Need a corpus of magnetically-ordered structures with known enumerations to validate against. pymatgen's `MagneticStructureEnumerator` test suite is a starting point.
 > 3. **API documentation.** The user-facing complexity goes up. The naïve caller doesn't want to think about magnetic groups; the magnetic-materials user does. Two-tier documentation.
 >
-> **My recommendation: design Phase 6 to *anticipate* this, but don't implement v0.2.** Concretely:
+> **My recommendation: design Phase 6 to *anticipate* this, but don't implement v0.2.** 
+Great. Let's keep it on the list of later things. Sounds like a project in Spacey.jl as well.
+
+> **Claude:** Confirmed. The Spacey.jl side is the magnetic-group computation (Shubnikov groups; ~150-line port from the literature, similar in scale to spacegroup); the Enumlib.jl side is the labeling/dispatch extension (parametric `LabelType`; `MagneticOp{D}` to extend `SymmetryOp{D}` with the time-reversal flag; predicate-aware label space). Two coordinated packages, one feature. v0.3 milestone candidate; logging in Phase 12 with the cross-repo dependency note so we don't lose track that *both* sides need to land for the feature to ship.
+
+Concretely:
 > - Keep `Site.allowed_labels::BitSet` for v0.2 — works for the non-magnetic 99% case.
 > - Make the labeling representation parametric on a `LabelType` so v0.3 can extend it without breaking v0.2 users (`Vector{Int8}` → `Vector{LabelType}` where `LabelType<:Union{Int8, Tuple{Int8,Int8}}`).
 > - Document the `space_group` field on `ParentLattice` as "structural space group; magnetic group is a planned v0.3 extension via a separate `magnetic_group` field."
