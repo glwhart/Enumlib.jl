@@ -2557,11 +2557,12 @@ end
 struct EnumerationCostEstimate
     total_count::BigInt                      # predicted #structures
     peak_memory_bytes::Int                   # worst-case peak across the chosen algorithm's lifetime
-    estimated_walltime_seconds::Float64      # predicted; uses simple per-mode rules of thumb
     chosen_algorithm::Symbol                 # :exhaustive, :multinomial, :recursive_stabilizer, …
     selection_kind::Symbol                   # :volume_range, :radius_bound, or :explicit_hnfs (so warnings can suggest "try a tighter radius" vs "smaller volume range")
-    notes::Vector{String}                    # warnings, e.g., "Switched to :recursive_stabilizer because :exhaustive's bitmap would exceed memory_budget"
+    partition_count::Int                     # # of distinct multiplicity vectors across the request (1 if no concentration range)
+    notes::Vector{String}                    # advisory messages, e.g., "Switched to :recursive_stabilizer because :exhaustive's bitmap would exceed memory_budget"
 end
+# (estimated_walltime_seconds deferred to v0.3 — see §7.9 Q2)
 ```
 
 `InequivalentCount` is the structured return of `count_inequivalent(...; breakdown=true)`. `EnumerationCostEstimate` is the structured return of `estimate_cost(...)`.
@@ -2850,7 +2851,9 @@ Phase 12 (synthesis) folds this into a final design document.
 <!-- BEGIN CLAUDE-ADD-NEW -->
 ## Phase 7 — Misuse / scale-safety mechanisms
 
-The original Fortran enumlib was widely misused — researchers from materials applications would request enumerations that produced lists in the billions or hit out-of-memory walls, with no guardrails between the request and the run. Phase 7 designs the user-protection layer for the Julia rewrite: a pre-flight cost estimator, a memory budget enforced by default, BigInt-safe counting and labeling, structured errors with actionable mitigations, and explicit handling of the edge cases (empty enumerations, partition explosions) that Fortran handled silently or not at all.
+The original Fortran enumlib was frequently misused — researchers from materials applications would request enumerations that produced lists in the billions or hit out-of-memory walls, with no guardrails between the request and the run. Phase 7 designs the user-protection layer for the Julia rewrite: a pre-flight cost estimator, a memory budget enforced by default, BigInt-safe counting and labeling, structured errors with actionable mitigations, and explicit handling of the edge cases (empty enumerations, partition explosions) that Fortran handled silently or not at all.
+
+> **Claude:** Reworded "widely" → "frequently."
 
 The Phase 6 catalog already contains the load-bearing types: `EnumerationCostEstimate`, `EmptyEnumerationError`, the `memory_budget` and `on_overflow` kwargs on `enumerate(...)`, the parametric `L` for `BigInt`-sized labelings. Phase 7 binds them into a coherent user-protection story.
 
@@ -2862,7 +2865,7 @@ Drawn from the original Fortran enumlib's known failure modes (Phase 2 §2.10) a
 |---|---|---|---|
 | **Combinatorial blow-up** | User requests $k=2$, $n=70$, all concentrations: $2^{70}$ labelings. Bitmap alone is 128 EiB. | Hardwired `max_binomial = 1E10` threshold silently changes algorithm; otherwise crashes with OOM. | Pre-flight estimator + `memory_budget` + `on_overflow=:error` (default); structured `EnumerationTooLargeError` |
 | **Partition explosion (high $k$)** | User requests $k=10$, $n=20$, concentration range: number of integer partitions of multiplicity vectors is $\sim 10^7$, each with its own enumeration. | No protection. Runs until OOM or wall-clock kills it. | `partition_count` warning surfaced via `EnumerationCostEstimate.notes`; same `:error/:warn/:ignore` policy |
-| **Empty enumeration** | User requests `Concentration([1//3, 1//3, 1//3])` with `VolumeRange(2:8)` — no $n$ in 2..8 is divisible by 3, so nothing fits. | Silent: returns zero structures with no diagnostic. | `EmptyEnumerationError` thrown upfront with a suggested fix (e.g., "try VolumeRange(3:9:6)") |
+| **Empty enumeration** | User requests `Concentration([1//5, 4//5])` with `VolumeRange(2:4)` — no $n$ in 2..4 is divisible by 5, so no integer multiplicity vector fits. | Silent: returns zero structures with no diagnostic. | `EmptyEnumerationError` thrown upfront with a suggested fix (e.g., "try `VolumeRange(5:10)`") |
 | **Integer overflow in count** | At $k=4$, $n=40$ the labeling space exceeds `typemax(Int64)`. | The Fortran's per-volume count fits in `integer*8`; the algorithm code path then silently misbehaves on indexing. | All counts are `BigInt`; `Enumeration{D,L}` picks `L = BigInt` automatically when needed (no user choice required) |
 | **Unrealistic radius bound** | User requests `RadiusBound(max_radius = 100.0)`: scans a billion HNFs to find Minkowski-reduced ones. | N/A — radius enumeration is a Julia addition, not in Fortran. | `volume_cap` field on `RadiusBound` (default `typemax(Int)`) is the safety stop; cost estimator factors it in |
 | **Disk-fill via streaming output** | User pipes 10⁹ structures to POSCARs in a single directory. | N/A — Fortran wrote one file (`struct_enum.out`); pymatgen wrappers later split. | Out of scope for the core library; users compose with their own I/O. The lazy iterator gives them control over when each structure becomes a file. |
@@ -2877,12 +2880,14 @@ The first three (blow-up / partition explosion / empty) are the classes that gen
 struct EnumerationCostEstimate
     total_count::BigInt                  # predicted #structures (Pólya / fixed-conc Pólya)
     peak_memory_bytes::Int               # worst-case peak across the chosen algorithm's lifetime
-    estimated_walltime_seconds::Float64  # predicted; uses simple per-mode rules of thumb
     chosen_algorithm::Symbol             # :exhaustive, :multinomial, :recursive_stabilizer, …
     selection_kind::Symbol               # :volume_range, :radius_bound, :explicit_hnfs
-    notes::Vector{String}                # warnings, e.g., partition_count, algorithm fallback
+    partition_count::Int                 # # of distinct multiplicity vectors across the request (1 if no concentration range)
+    notes::Vector{String}                # warnings, e.g., algorithm fallback, partition concerns
 end
 ```
+
+(Per Q2 lock-in: `estimated_walltime_seconds` deferred to v0.3 — option (c). v0.2 reports only memory and counts, which we can predict accurately. Walltime varies enough across hardware that hardcoded constants would lie.)
 
 #### How each field is computed
 
@@ -2892,10 +2897,10 @@ end
   - `:multinomial`: same, with $C$ (multinomial coefficient sum) replacing $k^n$.
   - `:multinomial_restricted`: tree-walk worst-case is $O(\text{depth} \cdot k)$ — typically tens of KB regardless of total count.
   - `:recursive_stabilizer`: same as `:multinomial_restricted`. Streams; the peak is the active stack frame plus per-supercell caches.
-- **`estimated_walltime_seconds`** uses simple per-mode constants (e.g., "exhaustive: 1 µs per labeling check"). Calibrated once during package development against a reference workstation; users with very different hardware get rough estimates, but the order of magnitude is what matters for the safety check.
-- **`chosen_algorithm`** is whatever `:auto` would pick (or what the user passed explicitly). The estimator uses the same decision tree as `enumerate`.
+- **`chosen_algorithm`** is whatever `:auto` would pick (or what was passed explicitly). The estimator uses the same decision tree as `enumerate`.
 - **`selection_kind`** is informational — it lets the error message suggest an appropriately-shaped mitigation ("try a tighter radius" vs "smaller volume range").
-- **`notes`** is where the estimator records warnings: "Switched from `:exhaustive` to `:recursive_stabilizer` because the bitmap would exceed memory_budget." "Partition count is 10⁵ at the upper end of the concentration range; consider narrowing." "Radius bound `max_radius=8.0` would scan up to volume 4096; capped at `volume_cap=100`."
+- **`partition_count`** is the number of distinct multiplicity vectors when a `ConcentrationRange` was supplied (1 otherwise). Computed once during pre-flight and used by the partition-overflow gate (§7.6).
+- **`notes`** is where the estimator records advisory messages: "Switched from `:exhaustive` to `:recursive_stabilizer` because the bitmap would exceed memory_budget." "Radius bound `max_radius=8.0` would scan up to volume 4096; capped at `volume_cap=100`."
 
 #### Why this is separate from `enumerate`
 
@@ -2909,17 +2914,36 @@ Two reasons:
 By default, `enumerate(...)` runs the cost estimator and refuses to proceed if `peak_memory_bytes > memory_budget`:
 
 ```julia
+# Adapt to the host machine — 25% of physical RAM, with a 2 GiB floor.
+default_memory_budget() = max(2 * 2^30, Int(Sys.total_memory() ÷ 4))
+
 function enumerate(parent, sites; supercells, concentration = nothing,
-                   algorithm = :auto, memory_budget = 8 * 2^30, on_overflow = :error,
+                   algorithm = :auto,
+                   memory_budget = default_memory_budget(),
+                   on_overflow = :error,
+                   partition_threshold = 10_000,
+                   on_partition_overflow = :error,
+                   skip_preflight = false,
                    kwargs...)
-    estimate = estimate_cost(parent, sites; supercells, concentration, algorithm, kwargs...)
-    if estimate.peak_memory_bytes > memory_budget
-        if on_overflow === :error
-            throw(EnumerationTooLargeError(estimate, memory_budget))
-        elseif on_overflow === :warn
-            @warn """Enumeration may exceed memory_budget.
-                     predicted = $(format_bytes(estimate.peak_memory_bytes)),
-                     budget    = $(format_bytes(memory_budget))""" estimate
+    if !skip_preflight
+        estimate = estimate_cost(parent, sites; supercells, concentration, algorithm, kwargs...)
+        if estimate.peak_memory_bytes > memory_budget
+            if on_overflow === :error
+                throw(EnumerationTooLargeError(estimate, memory_budget))
+            elseif on_overflow === :warn
+                @warn """Enumeration may exceed memory_budget.
+                         predicted = $(format_bytes(estimate.peak_memory_bytes)),
+                         budget    = $(format_bytes(memory_budget))""" estimate
+            end
+        end
+        if estimate.partition_count > partition_threshold
+            if on_partition_overflow === :error
+                throw(PartitionExplosionError(estimate, partition_threshold))
+            elseif on_partition_overflow === :warn
+                @warn """Concentration range has $(estimate.partition_count) distinct
+                         multiplicity vectors (threshold $(partition_threshold)).
+                         Cost is the sum across all of them.""" estimate
+            end
         end
     end
     # ... proceed to actual enumeration
@@ -2928,8 +2952,10 @@ end
 
 #### Defaults
 
-- **`memory_budget = 8 * 2^30` (8 GiB).** Big enough for typical research workstations; small enough that asking for $2^{70}$ labelings still triggers the gate. Users on big iron pass `memory_budget = 256 * 2^30` (256 GiB) or whatever their machine actually has.
-- **`on_overflow = :error`.** Safe default. Forces the user to either narrow the search or explicitly raise the budget. Saying "yes, I really do mean it" is one kwarg flip away (`on_overflow = :ignore`).
+- **`memory_budget = default_memory_budget()`** — 25% of `Sys.total_memory()`, with a 2 GiB floor. Adapts on the fly to the host: 16 GB laptop → 4 GiB budget; 256 GB workstation → 64 GiB; 4 GB CI runner → 2 GiB floor. **Caveat:** `Sys.total_memory()` reports the *machine's* RAM, not the cgroup/Slurm/Kubernetes allocation in containerized environments. HPC users on a shared cluster need to pass `memory_budget = $SLURM_MEM_PER_NODE` (or similar) explicitly.
+- **`on_overflow = :error`.** Safe default. Forces the caller to either narrow the search or explicitly raise the budget. Saying "yes, I really do mean it" is one kwarg flip away (`on_overflow = :ignore`).
+- **`partition_threshold = 10_000`** + **`on_partition_overflow = :error`.** Paternalistic by design — the naïve caller asking for a wide concentration range with $k \ge 6$ almost certainly didn't mean to enumerate 10⁵+ distinct multiplicity vectors. Power users override (`on_partition_overflow = :ignore`) for literature-validation runs.
+- **`skip_preflight = false`.** Default runs the gate. Power users who already called `estimate_cost` themselves can pass `skip_preflight = true` to skip the redundant Pólya count. Distinct from `on_overflow = :ignore`, which *runs* the estimator and ignores the result.
 
 #### The error type
 
@@ -2986,7 +3012,7 @@ Fortran enumlib uses `integer*8` everywhere and trusts the user not to overflow 
 
 Some user requests have *zero* valid structures. Two patterns:
 
-1. **Bad concentration / volume mismatch.** `Concentration([1//3, 1//3, 1//3])` requires the cell size $n \cdot n_D$ to be divisible by 3. If `VolumeRange(2:8)` has no such $n$ for the user's $n_D$, the result is empty.
+1. **Bad concentration / volume mismatch.** `Concentration([1//5, 4//5])` requires the cell size $n \cdot n_D$ to be divisible by 5. If `VolumeRange(2:4)` (and $n_D = 1$) has no such $n$, the result is empty.
 2. **Site restrictions over-constrain.** Each `Site` has `allowed_labels` of size 1 or 2, but the requested concentration requires species 3 at some position — no labeling exists.
 
 Fortran handles these silently (output zero structures, no diagnostic). Julia throws upfront:
@@ -2998,11 +3024,15 @@ struct EmptyEnumerationError <: Exception
 end
 ```
 
-The dispatcher walks the (volume, concentration, site-restriction) cross-product upfront — it's a small Cartesian-product loop, microseconds. If empty, throw before any enumeration starts. The error message tells the user *which* combination produced zero (e.g., "no $n$ in 2:8 is divisible by 3"); they fix the input and retry.
+The dispatcher walks the (volume, concentration, site-restriction) cross-product upfront — it's a small Cartesian-product loop, microseconds. If empty, throw before any enumeration starts. The error message tells the caller *which* combination produced zero (e.g., "no $n$ in 2:4 is divisible by 5"); they fix the input and retry.
 
-This is an opinionated choice: the alternative is "return an empty `Enumeration`." The user explicitly preferred the throw pattern (see §6.5 review). Rationale: silently empty results are a known footgun in enumeration tools. A throw forces the user to confront the mismatch.
+> **Claude:** Fixed the broken example (3 and 6 *are* divisible by 3, so the original would not have been empty). New example uses `Concentration([1//5, 4//5])` with `VolumeRange(2:4)` — no $n \in 2..4$ is divisible by 5, which is unambiguously empty.
 
-### 7.6 Partition-count warnings (high-$k$, concentration-range)
+This is an opinionated choice: the alternative is "return an empty `Enumeration`." You (as author) locked in the throw pattern in §6.5 review — rationale: silently empty results are a known footgun in enumeration tools. A throw forces the *caller* to confront the mismatch.
+
+> **Claude:** Fixed the "user / author" conflation. Going forward in this document I'll use "the caller" or "the end user" when I mean the person running the enumeration, and reserve "the user" / "you" for *you* (Gus) as the author/designer reviewing the design. Sweep applied to §7.5; will keep it consistent in Phases 8–12.
+
+### 7.6 Partition-count gate (high-$k$, concentration-range)
 
 `ConcentrationRange` decomposes into a list of integer multiplicity vectors $(a_1, \ldots, a_k)$ at each cell volume. For high $k$ (≥ 6) and wide ranges, the partition count alone can be in the millions:
 
@@ -3010,11 +3040,32 @@ $$
 \text{partition\_count}(n, k, \text{ranges}) = \#\{(a_1, \ldots, a_k) : \sum a_i = n, \; a_i \in [\text{range}_i]\}
 $$
 
-Even if each individual partition has a small per-supercell enumeration, the product can be huge. The cost estimator computes `partition_count` as part of its work and surfaces it in `EnumerationCostEstimate.notes`:
+Even if each individual partition has a small per-supercell enumeration, the product can be huge. Per the §7.9 Q4 lock-in, this is a first-class gate (not just an advisory note):
 
-> "ConcentrationRange decomposes into 12,847 distinct multiplicity vectors at $n=20$. The cost estimate is the *sum* across all of them; consider narrowing the range or fixing $k$ values you don't actually need to vary."
+```julia
+struct PartitionExplosionError <: Exception
+    estimate::EnumerationCostEstimate
+    threshold::Int
+end
 
-The check is independent of the memory-budget gate — a user can be under budget *per partition* but blow the wall clock budget *across* partitions. Surfacing the partition count gives them visibility before they commit.
+function Base.showerror(io::IO, e::PartitionExplosionError)
+    print(io, """
+    PartitionExplosionError: ConcentrationRange decomposes into $(e.estimate.partition_count)
+    distinct multiplicity vectors (threshold = $(e.threshold)). The cost estimate is the *sum*
+    across all of them, which usually means a much larger total enumeration than intended.
+
+    Mitigations to consider:
+      • Narrow the ConcentrationRange (e.g., tighter per-species (min,max) bounds).
+      • Reduce k by merging species that don't actually need to vary independently.
+      • Override the gate: pass `on_partition_overflow = :ignore` (you accept the risk).
+      • Raise the threshold: pass `partition_threshold = $(2 * e.threshold)`.
+    """)
+end
+```
+
+The check is *independent* of the memory-budget gate — the caller can be under budget *per partition* but still trip this gate *across* partitions. Both gates fire upfront in pre-flight; either one can fail the request before any enumeration starts.
+
+Default threshold = 10,000 distinct multiplicity vectors. Above that, the naïve caller almost certainly has the range too wide. The `:warn` and `:ignore` escape hatches are there for the rare expert case that genuinely wants every partition.
 
 ### 7.7 The Fortran `max_binomial` lineage — what it became
 
@@ -3022,12 +3073,13 @@ For migration / context: the Fortran's `max_binomial = 1E10` (`derivative_struct
 
 | Fortran knob | Julia replacement |
 |---|---|
-| `max_binomial = 1E10` (silent algorithm switch) | `memory_budget` (default 8 GiB) + `on_overflow = :error` (loud, with mitigations) |
-| Trial-and-error tuning (1.0.6: `2.63E14` → `1E10`) | Principled cost model (`EnumerationCostEstimate`) calibrated once, not tuned by guess |
-| No user override | `on_overflow = :ignore` lets the user accept the risk explicitly |
-| No diagnostic | `EnumerationTooLargeError` carries the estimate + suggested mitigations |
+| `max_binomial = 1E10` (silent algorithm switch) | `memory_budget = default_memory_budget()` + `on_overflow = :error` (loud, with concrete mitigations) |
+| Trial-and-error tuning (1.0.6: `2.63E14` → `1E10`) | Principled cost model (`EnumerationCostEstimate`) tracking `peak_memory_bytes`, not a guess |
+| No caller override | `on_overflow = :ignore` and `skip_preflight = true` are explicit escape hatches |
+| No diagnostic | `EnumerationTooLargeError` carries the estimate + binary-searched concrete mitigation |
+| No partition awareness | `partition_threshold = 10_000` + `PartitionExplosionError` for high-$k$ ranges |
 
-The Julia version is *more* protective by default (8 GiB is conservative for modern hardware) but *less* paternalistic (the user can always opt out). The Fortran's threshold was both arbitrary *and* unoverridable — the worst combination.
+The Julia version is *more* protective by default (machine-aware budget; partition gate; clear errors) but *less* paternalistic (multiple explicit escape hatches). The Fortran's threshold was both arbitrary *and* unoverridable — the worst combination.
 
 ### 7.8 What's NOT in scope for v0.2
 
@@ -3035,16 +3087,69 @@ Three classes of user protection I considered and explicitly defer:
 
 - **Wall-clock watchdog with auto-abort.** A timeout that kills the enumeration after $T$ seconds. Useful but invasive — requires either checkpointing + resume or losing work mid-enumeration. Out of scope; the user runs `enumerate(...)` inside their own timeout if they want one.
 - **Output-disk-space check.** Predicting the on-disk size of N POSCAR files, refusing if the user's working directory has less. The library doesn't write files; the user composes I/O. Their problem.
-- **Live progress reporting.** A `progress = true` kwarg that prints a percentage as enumeration proceeds. Composes with `ProgressMeter.jl` or `Folds.jl`-style callbacks; the iterator interface gives the user the hook they need. Could add `enumerate_each` parallel/progress variants in v0.3 if demand materializes (per §5.11 Q4 discussion).
+- **Live progress reporting.** A `progress = true` kwarg that prints a percentage as enumeration proceeds. Desirable but deferred — composes with `ProgressMeter.jl` or `Folds.jl`-style callbacks today (the iterator interface gives the caller the hook they need), and we can add a first-class `enumerate_each` parallel/progress variant in v0.3 (per §5.11 Q4 discussion). Worth promoting from "out of scope" to "future feature, planned."
 
-### 7.9 Open questions for the user (Phase 7)
+> **Claude:** Acknowledged — promoted from "out of scope" to "future feature, planned" in the bullet above. Composability via `ProgressMeter.jl` is the v0.2 answer; first-class `progress = true` on a v0.3 milestone.
 
-1. **`memory_budget` default.** I picked 8 GiB — generous for laptops, conservative for workstations. Should the default be smaller (1 GiB, forcing serious users to opt in) or larger (32 GiB, matching modern dev machines)? I lean 8 GiB as a "Goldilocks" middle but happy to be argued out of it.
-2. **Estimator calibration.** `estimated_walltime_seconds` uses per-mode constants set during package development. Should I (a) ship them hardcoded, (b) ship a one-time `calibrate_cost_model()` function that benchmarks the user's machine and writes constants to a config file, or (c) skip walltime entirely from v0.2 and just report memory? Option (c) is the least likely to lie; option (b) is the most accurate but adds setup friction.
+### 7.9 Open questions for the author (Phase 7)
+
+> **Claude:** Section header corrected ("user" → "author"). Same renaming applied throughout my responses below.
+
+1. **`memory_budget` default.** I picked 8 GiB — generous for laptops, conservative for workstations. Should the default be smaller (1 GiB, forcing serious callers to opt in) or larger (32 GiB, matching modern dev machines)? I lean 8 GiB as a "Goldilocks" middle but happy to be argued out of it.
+
+> **Claude:** Yes — Julia exposes the system's physical memory directly. `Sys.total_memory()` returns the total RAM on the machine in bytes (UInt64), and `Sys.free_memory()` returns currently-available bytes. So instead of a hardcoded 8 GiB constant, the default can be a fraction of physical RAM:
+>
+> ```julia
+> default_memory_budget() = max(2 * 2^30, Sys.total_memory() ÷ 4)  # 25% of RAM, floor 2 GiB
+> ```
+>
+> A 16 GB laptop gets 4 GiB budget; a 256 GB workstation gets 64 GiB; a tiny CI runner with 4 GB falls back to the 2 GiB floor. This adapts on the fly with no caller intervention.
+>
+> **Caveats:**
+> - `Sys.total_memory()` reports the *machine's* RAM, not the cgroup/Slurm/Kubernetes allocation in containerized environments. On a shared cluster, a job allocated 8 GB of a 256 GB box still sees 256 GB. For HPC users this is the wrong number; they'd need to pass `memory_budget = $SLURM_MEM_PER_NODE` explicitly. Acceptable — those users already script their submission.
+> - The fraction (25% by default) is itself a tunable. 25% leaves headroom for the JIT, the GC's working set, the caller's own data structures, and OS buffer cache. A user running nothing else can crank it to 75%; a user inside a Jupyter notebook with a fat dataset wants the default.
+>
+> **Recommendation:** ship `default_memory_budget()` as the default, document the cgroup caveat, let HPC users pass an explicit value. This is a strict improvement over a hardcoded 8 GiB constant.
+
+2. **Estimator calibration.** `estimated_walltime_seconds` uses per-mode constants set during package development. Should I (a) ship them hardcoded, (b) ship a one-time `calibrate_cost_model()` function that benchmarks the caller's machine and writes constants to a config file, or (c) skip walltime entirely from v0.2 and just report memory? Option (c) is the least likely to lie; option (b) is the most accurate but adds setup friction.
+
+> **Claude:** Locked: option (c). v0.2 ships only `peak_memory_bytes` and `total_count`; `estimated_walltime_seconds` is dropped from `EnumerationCostEstimate` for v0.2 and revisited in v0.3 once we have real benchmark data from in-the-wild use. The struct definition in §6.9 will be updated to remove the field. v0.3 can re-add it backed by either hardcoded constants (if the variance turns out small across hardware) or a `calibrate_cost_model()` flow.
+
 3. **`EnumerationTooLargeError` as a concrete suggestion engine.** I've sketched the error message with `suggest_for(selection_kind)`. Should I go further — actually compute the *concrete* tighter range that would fit in budget? E.g., "your `VolumeRange(2:20)` requested 10¹² structures; `VolumeRange(2:14)` would request 10⁸, fitting in your budget." That's useful but requires re-running the cost estimator iteratively. Mild cost; more user-friendly. Worth it?
+
+> **Claude:** Yes — locked in. Implementation: when the estimator overflows the budget, binary-search the offending parameter (the upper bound of `VolumeRange.range`, or `RadiusBound.max_radius`) for the largest value that fits. Each probe is one Pólya count; ~log₂(range) probes total — milliseconds for typical ranges. The result goes into the error message:
+>
+> ```
+> EnumerationTooLargeError: predicted peak memory 248 GiB exceeds memory_budget 8 GiB.
+>     Predicted total structures: 1.4 × 10¹²
+>     Selection method:           :volume_range  (currently 2:20)
+>
+> Concrete fix that fits your budget:
+>     VolumeRange(2:14) would request ~3.2 × 10⁸ structures, ~6.1 GiB peak.
+> ```
+>
+> For `:explicit_hnfs` the engine can't suggest a tighter list automatically, so it falls back to the qualitative "remove HNFs from your list" message. For `:radius_bound` it binary-searches `max_radius`. For `:volume_range` it binary-searches the upper bound.
+
 4. **Partition-count warning threshold.** I have the partition count surfaced as a note. Should there be a `partition_threshold` kwarg that elevates a high partition count to a hard error (per the same `:error/:warn/:ignore` policy as `memory_budget`)? Or is the note in `notes::Vector{String}` enough?
+
+> **Claude:** Locked — paternalistic default. v0.2 ships:
+>
+> ```julia
+> partition_threshold::Int = 10_000        # default: error above this
+> on_partition_overflow::Symbol = :error   # :error, :warn, :ignore — same policy as on_overflow
+> ```
+>
+> Threshold of 10,000 picked as the rough boundary where "I might want to look at all of these" turns into "this is going to take hours and almost certainly isn't what I meant." Above 10,000 distinct multiplicity vectors, the naïve caller almost certainly has the concentration range too wide. The error message names the offending range and suggests narrowing.
+>
+> The `:warn` and `:ignore` escape hatches are there for the rare expert case (e.g., literature-validation runs that genuinely want every partition). Default is `:error`.
+
 5. **Should the empty-enumeration case be a throw or a return-empty?** I locked in throw earlier per your preference. Re-confirming: is there any case where return-empty is preferable (e.g., scripts that loop over many parameter sets and want to silently skip the empty ones)? If so, a kwarg `on_empty = :throw` (default) / `:warn` / `:silent` mirrors `on_overflow` and gives the script writers an out.
+
+> **Claude:** Locked — throw stays as the only behavior in v0.2. No `on_empty` kwarg. The hypothetical script-loop case is real but speculative; we add the kwarg if and when a real user reports the friction. Easier to add an escape hatch later than to remove one (which would break the silent-loopers).
+
 6. **Pre-flight as a side effect of `enumerate(...)` — always or opt-out?** Currently the gate runs always. If a power user has already called `estimate_cost` themselves and is sure of the size, the redundant call inside `enumerate` is wasted Pólya work. Worth a `skip_preflight = false` kwarg, or just trust the user with `on_overflow = :ignore`?
+
+> **Claude:** Locked — `skip_preflight::Bool = false` kwarg added to `enumerate(...)`. Default is `false` (gate runs); power user passes `skip_preflight = true` to bypass. This is distinct from `on_overflow = :ignore` — `:ignore` *runs* the estimator and ignores the result; `skip_preflight = true` skips the estimator entirely (saving the Pólya count cost). Both escape hatches available; the default is the safe path.
 
 ### 7.10 What this enables for Phase 8+
 
