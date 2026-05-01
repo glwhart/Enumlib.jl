@@ -3169,6 +3169,15 @@ Phase 12 (synthesis) folds the misuse story into the user-facing design document
 ## Phase 8 — External literature survey
 
 The "big ask" from `firstprompt.md`: enumlib has been cited hundreds of times; somewhere in those citations are algorithmic improvements, alternative implementations, and integration cases the rewrite should know about. This phase is a heuristic pass — not exhaustive — covering algorithmic competitors, the adjacent software ecosystem, the Julia dependency landscape, and the specific outstanding tasks that earlier phases queued for here.
+> The ZDD/BDD 2020 algorithm is one that we found and is in papers. We've already addressed that possible avenue and we'll skip it for v1. But this is an example of exactly the things I'm hoping to find in the citing literature.
+> In that vein, can you look at the 2011 paper by bublikov Crystallography Reports. It's also an enumeration work, but related to ionic crystals. A slightly different problem space but may contain gems or at least ideas for the enumlib effort.
+
+> **Claude (Bublikov 2011):** I tried to find it. Two targeted searches against *Crystallography Reports* (the English translation of *Kristallografiya*) and against ionic-crystal enumeration in the 2011 timeframe came back empty — no hit on a surname matching "Bublikov" in any spelling I tried (Bublikov, Bublyk, Bubikov, Bublik). Possible the surname I'm searching against is misremembered, or the paper is under a different romanization. Two ways to unstick it:
+>
+> 1. **DOI or volume/page if you have it handy.** A direct citation lets me fetch the PDF and produce a proper digest as §4.7 (alongside a possible Horiyama 2018 §4.8 — see §8.9 Q4 below).
+> 2. **Author affiliation guess.** If you recall whether the group was at Moscow / Novosibirsk / St. Petersburg / Kiev, that narrows the search; *Crystallography Reports* publishes a lot of Russian crystallographic work and I can scan the 2011 issues directly.
+>
+> Logged as a Phase 8 follow-up: digest the Bublikov 2011 ionic-crystal paper once we have a hard pointer. If it turns up something algorithmically applicable to the multilattice case (rather than ionic-specific), it slots into §8.2 as a fourth algorithmic family alongside BDD, McKay-canonical-augmentation, and Pólya. Filing the user's broader observation too: this is *exactly* the kind of citing-literature gem we want to surface, and the heuristic search method I used in §8.1 won't reliably find papers in non-English-first journals or under variant romanizations. That's a real limitation worth naming in §8.8 ("What's NOT in this survey").
 
 ### 8.1 Scope and methodology
 
@@ -3177,6 +3186,10 @@ What this phase *is*: a structured survey of the four areas that affect the rewr
 What this phase is *not*: an exhaustive citation graph traversal. The 200+ Google-Scholar citations of Hart-Forcade 2008 alone are not all algorithmically relevant; many cite the original papers as a methodology reference for downstream computational-materials work (e.g., "we used enumlib to generate candidate structures"). Surveying them all is a months-long task suited to a graduate student, not a single-pass research session. Phase 12 (synthesis) gets a placeholder for "schedule a deeper citation survey" if the heuristic pass below leaves real algorithmic gaps unfilled.
 
 **Search method used in this pass:** targeted topic queries on (1) post-2017 derivative-structure / superstructure enumeration improvements, (2) HEA / disordered-alloy enumeration tooling 2022-2024, (3) ML-based crystal-structure enumeration alternatives, (4) Julia symmetry / lattice / enumeration ecosystem, (5) Pólya-counter implementations, (6) symmetry-breaking / canonical-augmentation literature (McKay & lineage), (7) the post-Shinohara 2020 BDD line.
+
+> Another TODO for post-v1. A hard look at SQS, SSOS, and related applications, primarly in the HEA space.
+
+> **Claude:** Logged for post-v1. Concrete v0.3 milestone: dedicated §4.x digest pass on (a) the Zunger-Wei-Ferreira 1990 SQS paper and the modern reformulation, (b) Special-Symmetric Ordered Structures (SSOS) literature post-2015, (c) the HEA-specific enumeration pain points — wide concentration ranges, $k \ge 5$, where SQS / SSOS / enumlib's exhaustive list each have different sweet spots. Probably half a dozen papers; one or two algorithmic ideas worth folding into the dispatch decision tree (§5.4) for the high-$k$ branch. Adding to the §8.10 enables-Phase-9+ list explicitly.
 
 ### 8.2 Algorithmic alternatives and improvements
 
@@ -3190,7 +3203,7 @@ The 2020 paper presents a Zero-suppressed Binary Decision Diagram approach that 
 |---|---|---|
 | 16 | Mustapha et al., *J. Phys.: Condens. Matter* **25**, 105401 (2013) | Third school of derivative-structure enumeration (CRYSTAL code group at Torino). Worth a one-paragraph digest in v0.3 — uncomfirmed whether it's faster than enumlib, but it's the only major non-enumlib enumerator besides BDD. |
 | 23 | Iwashita et al., TCS-TR-A-10-64 (2013) | Frontier-based ZDD method; foundation of Shinohara's work. Foundational reading if/when we implement `:bdd` algorithm. |
-| 25 | Horiyama et al., CCCG (2018) | **Highest priority follow-up.** Non-isomorphism elimination via lex-maximum representative — applicable to *any* enumeration algorithm including the Hart-Forcade tree, not just BDD. May offer a cleaner canonical-representative choice than the current "first reached in tree traversal" convention. Worth digesting before v0.3. |
+| 25 | Horiyama et al., CCCG (2018) | **Highest priority follow-up.** Non-isomorphism elimination via lex-maximum representative — applicable to *any* enumeration algorithm including the Hart-Forcade tree, not just BDD. May offer a cleaner canonical-representative choice than the current "first reached in tree traversal" convention. **Front burner per author** — digest before v0.2 alongside §4.x; see §8.9 Q4. |
 | 35, 36 | Bryant, BDD foundations (1986, 1992) | Background for `:bdd` algorithm only; not load-bearing for v0.2. |
 
 #### 8.2.2 Canonical augmentation (McKay 1998 lineage)
@@ -3202,11 +3215,38 @@ McKay's *Isomorph-Free Exhaustive Generation* (J. Algorithms 1998) and the broad
 
 Both are theoretical possibilities for v0.3+, not v0.2 work. Logged as Phase 12 open questions.
 
+> **Claude:** Acknowledged. Phase 12 keeps the McKay / canonical-augmentation thread as a v0.3+ rigor improvement candidate.
+
 **Reference:** McKay, B. D., *Isomorph-free exhaustive generation*, J. Algorithms **26**, 306 (1998). PDF: <https://users.cecs.anu.edu.au/~bdm/papers/orderly.pdf>. Combined with the more recent symmetry-breaking SAT literature (Itzhakov & Codish, *Complete Symmetry Breaking for Finite Models*, arXiv:2502.10155), this is the rigor-grounded perspective on what enumlib's tree algorithm has been doing heuristically.
 
 #### 8.2.3 Numerical Pólya — Rosenbrock 2016 confirmed as best-in-class
 
 The Phase 5 / Phase 7 design uses Rosenbrock-Morgan-Hart-Curtarolo-Forcade *J. Exp. Algorithmics* **21**, 1.11 (2016) for the cost-estimator's count. A targeted search for *post-2016* numerical Pólya improvements turned up nothing better. The 2016 paper (DOI 10.1145/2955094) appears to remain best-in-class for the kind of counts the cost estimator needs. Reference Python+Fortran implementation: <https://github.com/rosenbrockc/polya>. Confirmed: no faster algorithm to chase; the Phase 7 §7.2 estimator design stands.
+> I'm guessing making a Julia implementation would be a pretty easy side project. And with two other codes to benchmark against, we could be really sure it is working. Maybe I'll do that in another, separate claude session. Any advice on this idea? What things should I consider? Or is it not worth doing---the other two implementations are fine?
+
+> **Claude:** Worth doing — and probably a 1-week side project, not bigger. The two existing implementations (Wolfram `OrbitInventory`, Sage's `cycle_index`) plus the Rosenbrock Python+Fortran reference give you three independent oracles to validate against, which is genuinely uncommon and makes correctness verification cheap.
+>
+> **Why it's worth doing rather than calling out to one of the existing implementations:**
+>
+> 1. **Dependency control.** Wolfram requires Mathematica (closed-source, expensive). Sage is GPL and a Python+lots-of-other-stuff stack — heavy dep for a Julia tool. Rosenbrock's reference is Python+Fortran, also heavy. A native Julia implementation is the only path to a pure-Julia, MIT-licensed Pólya counter that Enumlib can rely on without making users install a heavyweight transitive dep.
+> 2. **API fit.** All three existing implementations were built for general combinatorics (Pólya counts of necklaces, graphs, isomers). Enumlib's specific use is "given a permutation group $G$ on $n$ supercell sites + $k$ species, count distinct labelings" — a narrow slice. A Julia implementation can be specialized for that slice with cleaner types (cycle structures as `Vector{Int}` with the partition encoding, group elements as `SVector`), avoiding the wrapping overhead that comes with the general libraries.
+> 3. **Performance ceiling.** The Rosenbrock paper reports microsecond-level counts for the cases enumlib cares about. A Julia implementation should match that easily; a wrapped Python or Mathematica call pays per-invocation startup overhead that dwarfs the actual count. For the cost estimator (§7.2) which is called many times per `enumerate(...)`, the call-site overhead matters.
+>
+> **What to consider if you tackle it in a separate session:**
+>
+> 1. **Pick the right cycle-index representation.** The performance-critical step is enumerating cycle structures of group elements. Rosenbrock represents them as multisets of cycle lengths (`Dict{Int,Int}` of length → count). A `Vector{Int}` partition is faster for small $n$ but breaks for $n > 64$. A specialized `CycleStructure` struct that's `SmallVector`-backed for $n \le 64$ and falls back to `Dict` is probably worth the type-stability win.
+> 2. **Two regimes: full-Pólya and fixed-concentration Pólya.** The first is the cycle-index sum over $G$ at uniform variables; the second is the cycle-index evaluated at multiset-variables (HNF 2012 Appendix A.2). Same underlying machinery, different evaluation. Build both — Enumlib needs both per §5.3.
+> 3. **Validation strategy.** Hardcoded test cases from the Rosenbrock 2016 paper's tables (their published examples are ground truth). Plus a fuzz test against the Sage implementation: random small groups, compare counts. The combination catches both algorithm bugs and corner cases the paper may not have hit.
+> 4. **BigInt as the default return type.** Pólya counts blow past `Int64` quickly for the cases the cost estimator cares about. Don't try to be clever with `Int` returns — make `BigInt` the default; users who *know* the count fits can convert. (Same lesson Enumlib itself learned in Phase 7 §7.4.)
+> 5. **Whether to register as `Polya.jl` or as a PR to `Combinatorics.jl`.** See the response on the next comment — short version, I'd lean toward standalone.
+>
+> **Things *not* to worry about:**
+>
+> - Generality beyond Pólya. Don't try to build a "general combinatorial-species library" — that's Sage's scope and it took a decade. A focused Pólya counter is the right scope for a 1-week side project.
+> - Fancy parallelism. The Rosenbrock paper is sequential and gets microsecond counts; we don't need `Threads.@threads` here.
+> - User-facing API design. The function takes a permutation group, $k$, and (optionally) a multiplicity vector and returns a `BigInt`. That's the whole API. Resist the urge to add 15 keyword arguments.
+>
+> **My advice on whether to do it:** yes, take a day or two in a separate session. The benchmark-against-three-oracles validation property is rare and valuable. And you'll know much faster than I will whether the Rosenbrock algorithm has any subtle gotchas that don't show up in the paper.
 
 #### 8.2.4 ML-based "enumeration" alternatives — different problem, not a replacement
 
@@ -3245,6 +3285,17 @@ What's already in the Julia ecosystem that intersects with Enumlib.jl's needs:
 | **Crystalline.jl** | `thchr` (Christensen, MIT) | Heavy-duty symmetry analysis: space groups (3D + magnetic + subperiodic), Wyckoff positions, irreducible representations, band representations. Research-grade, breaking changes possible. | Probably overkill for our needs — we want one specific function (multilattice space group), not the whole machinery. Worth knowing about for *future* features (e.g., Wyckoff-position-aware enumeration). |
 | **SymmetryReduceBZ.jl** | `jerjorg` | Brillouin-zone reduction; primitive-cell tools. | Adjacent, probably not a dep. |
 | **Combinatorics.jl** | community | `multinomial`, basic permutation utilities | Already a dep; provides primitives but not Pólya. |
+> Would a polya counting function be a natural addition to combinatorics.jl? Rather than making a stand-alone package? Does it fit in that family? Or is it somewhat distinct?
+
+> **Claude:** Topically it fits — `Combinatorics.jl` already has `multinomial`, `permutations`, partitions, Catalan numbers, etc.; Pólya enumeration is squarely in that family of "named combinatorial counting routines." Practically, though, I'd lean toward a standalone `Polya.jl` rather than a PR. Three reasons:
+>
+> 1. **`Combinatorics.jl` is conservative about new entry points.** The package has been stable for years and the maintainer has been measured about adding API surface — a Pólya counter is a meaningful new exported symbol, and the maintainer reasonably wants to scrutinize anything that might affect downstream users. A PR will probably go through a review-and-revise cycle on the order of weeks-to-months. That's fine if you're patient, but it gates Enumlib's release on someone else's review timeline.
+> 2. **Pólya pulls in conceptual baggage.** A real implementation needs a `CycleStructure` type, group-element-cycle-decomposition utilities, and the multinomial-evaluation machinery for fixed-concentration Pólya. That's not a one-function PR; it's a small subsystem. Subsystems land more cleanly as their own package, both for review and for documentation.
+> 3. **The "right" home is a standalone package that `Combinatorics.jl` could later depend on.** This is the Julia-ecosystem pattern — many small focused packages that compose. `Polya.jl` is a natural standalone shape; `Combinatorics.jl` could later add a thin re-export if its maintainer wants discoverability without the maintenance burden.
+>
+> **Caveat on this advice:** I haven't talked to the `Combinatorics.jl` maintainer or scanned their recent PR cadence. If you wanted to be a good ecosystem citizen, the polite first step would be to file an issue on `Combinatorics.jl` titled "Pólya enumeration: in scope?" and let the maintainer signal whether they want it. Quick, costs nothing, and tells you whether to pursue path A (PR) or path B (standalone). My above analysis is the prior; their answer is the data.
+>
+> **Recommendation:** standalone `Polya.jl`, but file the discoverability question on `Combinatorics.jl` first as a courtesy. If they want it as a PR, great; if they prefer it standalone, you have explicit ecosystem buy-in for the standalone choice.
 
 #### Notably absent from the Julia ecosystem
 
@@ -3255,11 +3306,40 @@ What's already in the Julia ecosystem that intersects with Enumlib.jl's needs:
 
 Verified the stub status across all installed Spacey versions on the host machine: `spacegroup(c::Crystal)` body in `~/.julia/packages/Spacey/{e3K3Q,Buxr5,bjFht}/src/Spacey.jl` is identical:
 
+I'm confused. I already implemented spacegroup in Spacey just a couple of days ago. Is the github not up to date with the local copy? Can you check the local copy and github and make sure we aren't behind somehow? Or maybe we just need to tag a new release? Something just doesn't add up here.
+
+> **Claude:** Mystery solved. You're right — `spacegroup` *is* implemented; my report was based on stale data. Here's the full picture I just verified:
+>
+> | Source | Version | `spacegroup` body |
+> |---|---|---|
+> | Local dev repo (`~/Drive/Work/codes/Spacey.jl`) | **v0.8.0** (HEAD `dc66b0e`, tag `v0.8.0` exists locally) | **Implemented** (Minkowski-reduces lattice, computes basis-transform matrices, etc.) |
+> | GitHub `glwhart/Spacey.jl` main branch | **v0.8.0** (HEAD `dc66b0e`, matches local — verified via raw fetch of `src/Spacey.jl`) | **Implemented** (same code as local) |
+> | Julia General registry — registered versions | **0.7.1 is the latest** (per `JuliaRegistries/General/.../S/Spacey/Versions.toml`) | n/a — Versions.toml entries: 0.1.0, 0.2.0, 0.3.0, 0.4.0, 0.5.0, 0.7.1 |
+> | Installed packages on this machine (`~/.julia/packages/Spacey/{e3K3Q,Buxr5,bjFht}/`) | 0.5.0, 0.7.1, 0.4.0 (three side-by-side caches) | All three are stubbed (the `return true` placeholder I quoted) |
+>
+> **What happened:** the v0.8.0 implementation lives on GitHub and locally, but it has not been registered in the Julia General registry yet. So when `Pkg` resolves Spacey for any project, it caps at the latest *registered* version (0.7.1), and that version does still have the stub. `Pkg.update()` won't pull v0.8.0 from GitHub — registry-based resolution doesn't know v0.8.0 exists. My earlier report ("`spacegroup` is stubbed across all installed Spacey versions") was true *of the registered/installed versions* but missed that the unregistered v0.8.0 has the real thing.
+>
+> **The fix is simple — register v0.8.0:**
+>
+> 1. Tag `v0.8.0` is already pushed (verified — visible on GitHub's tag list).
+> 2. Open the v0.8.0 release on GitHub and comment `@JuliaRegistrator register` on the release commit (or use the `JuliaRegistrator` GitHub App if it's installed on the repo). Standard registration flow; usually merged into General within a couple of days by the registry bot's CI checks.
+>
+> **For Enumlib's near-term work:** while waiting for the General registry merge, point Enumlib's `Project.toml` at the dev copy via `Pkg.develop(path="../Spacey.jl")`. That's already the workflow we'd use for co-developing related packages anyway. Once v0.8.0 lands in General, switch back to a normal `Spacey = "0.8"` `[compat]` entry.
+>
+> **Updates this triggers in research.md:**
+> - §6.3 / §8.5 prose currently says "the function is stubbed" — that's wrong for the implementation, right only for what's currently in the registry. Updating to reflect the real status: implemented in v0.8.0 on GitHub, awaiting registration. The Phase 8 follow-up task changes from "port the Fortran spacegroup logic" to "register v0.8.0 in General + update Enumlib's compat once available."
+> - The Phase 6 `ParentLattice{D}` outer constructor that calls `spacegroup(crystal)` was already correct — no Enumlib code changes needed; this was a dependency-availability question, not an API one.
+> - §8.7 recommendation 3 ("port `Spacey.spacegroup`") changes from a porting task to a registration-and-cross-check task.
+>
+> Apologies for the confused initial report — I should have checked the local dev clone alongside the installed packages on the first pass instead of assuming the installed packages were the latest.
+
 ```julia
 function spacegroup(c::Crystal)
      return true
 end
 ```
+
+(The above stub is what's in registered v0.7.1. The real implementation is in v0.8.0 on GitHub — see Claude response above.)
 
 So this is a real outstanding task, not a misreading on my part. Three implementation options (recap from §6.3):
 
@@ -3284,6 +3364,8 @@ Searched JuliaHub and the Julia Discourse for Pólya enumeration packages. Confi
 - The closest existing implementations are non-Julia: Wolfram `OrbitInventory[]`, Sage `species`/`cycle_index`, the Rosenbrock Python+Fortran reference (<https://github.com/rosenbrockc/polya>).
 
 **Decision (per §5.3 review):** implement Pólya inside Enumlib as `Enumlib.Polya` submodule for v0.2; extract to a standalone `Polya.jl` in v0.3 once the API has stabilized. The Rosenbrock reference implementation gives us a tested algorithm and a validation oracle (count-by-count comparison against the Python implementation in the test suite).
+
+> **Claude:** Plan stands. Answers to your two questions above (separate-Claude-session port, Combinatorics.jl-vs-standalone) are in the response blocks at §8.2.3 and §8.4 respectively. Short version: yes the side-project is worth doing (1 week, three oracles to validate against, full advice on what to consider in §8.2.3); and yes standalone `Polya.jl` is the better fit than a `Combinatorics.jl` PR but file an issue on `Combinatorics.jl` first as a courtesy (see §8.4).
 
 ### 8.7 Recommendations distilled for the rewrite
 
@@ -3310,9 +3392,50 @@ To be honest about the limits of the heuristic pass:
 ### 8.9 Open follow-ups for the author (Phase 8)
 
 1. **Schedule a deeper citation survey (or not).** This pass found the algorithmically distinct work; deeper digging is best done by someone tracking the materials-science literature continuously. Worth scheduling as a v0.3 milestone (graduate-student task), or call this survey enough?
+> Enough for now, but remind me again later as part of v0.3. Maybe it will still be enough, even then.
+
+> **Claude:** Logged. Phase 12 carries the v0.3 reminder explicitly — when v0.2 ships and we're scoping v0.3, the prompt will surface "deeper enumlib citation survey: still needed?" alongside the SQS/SSOS post-v1 task and the McKay-rigor candidate. By then we may already have user feedback that surfaces the gaps; if not, the survey gets formally scheduled.
+
 2. **Spacey.spacegroup ownership.** I propose porting the Fortran's logic and landing it as a Spacey PR. As Spacey's maintainer you'd self-merge. Sound right, or do you want to consider option 3 (Spglib.jl as the primary backend) instead?
+> See my question above.
+
+> **Claude:** Resolved by the §8.5 finding — your `spacegroup` is already implemented and on the v0.8.0 GitHub branch; we're only blocked on the General-registry registration. Question 2 reduces to a registration task (run `@JuliaRegistrator register` on the v0.8.0 release; switch to `Pkg.develop` for Enumlib in the meantime). The Spglib.jl alternative becomes a v0.3+ optional backend (weakdep) for users who want spglib's full Wyckoff-aware machinery, not the v0.2 default.
+
 3. **Magnetic-moment first-class support.** The pymatgen `MagneticStructureEnumerator` is one of the few enumlib downstream consumers that *adds* a dimension to the labeling (spin direction). Make that first-class in Enumlib.jl (a `Vector{Vector{Int}}` labeling per site), or keep it as a downstream concern (caller post-processes the species labeling)?
+>  I'd like some more details about what it would take to make first-class support for this. Seems like that is a big addition...we could do it later, but does that mean lots of redesign?
+
+> **Claude:** Honest assessment: it's a real addition but probably *not* a big redesign if we're prepared for it now. The "big" part is conceptual; the code-change footprint is moderate. Sketching what changes look like:
+>
+> **What "first-class magnetic moments" actually means.** A magnetic structure has, at each site, a *species* label (Fe, Mn, …) AND a *spin direction* label (↑, ↓, or for non-collinear cases an SO(3) coset). For collinear-Ising-like cases — what `MagneticStructureEnumerator` handles — the spin label is just another small integer (0/1 for collinear up/down, or a finite set of axes for non-collinear). The enumeration problem becomes "label every site with a (species, spin) pair, drawn from the site's allowed (species, spin) set, and quotient by the symmetry group acting on both dimensions."
+>
+> Magnetic symmetry is *bigger* than the structural symmetry: a structural rotation followed by time-reversal is a magnetic-group operation that the structural-only `space_group` doesn't see. This is the conceptual addition — magnetic groups (Shubnikov groups; sometimes called "color groups") have ~1651 in 3D vs the 230 structural space groups, and the dispatcher needs to know which one it's working with.
+>
+> **What changes in the Phase 6 catalog.** Three concrete edits:
+>
+> 1. **`Site.allowed_labels::BitSet`** generalizes to **`Site.allowed_labels::Set{Tuple{Int,Int}}`** (or a parametric `L<:LabelType` if we want to keep `BitSet` for the non-magnetic case). The set holds (species, spin) pairs.
+> 2. **`ParentLattice{D}.space_group`** stays, but the dispatcher *also* consults a **`magnetic_group::Vector{MagneticOp{D}}`** when the caller indicates magnetic structure. `MagneticOp{D}` adds a `time_reversal::Bool` field to `SymmetryOp{D}`.
+> 3. **Labeling representation** — the existing `Vector{Int8}` extends to `Vector{Tuple{Int8,Int8}}` for the (species, spin) pair, or a packed `Int16` if we want to save memory. The `to_labeling(s)` accessor returns the same shape regardless.
+>
+> **What stays the same.** The HNF generation, SNF, supercell symmetry-class reduction, the labeling enumeration loop itself — all of it. The only change is what the labeling vector contains. Most of the Phase 5 dispatch tree, Phase 6 type catalog, and Phase 7 misuse mitigation work without modification.
+>
+> **What's actually hard.** Three things:
+>
+> 1. **Magnetic-group computation.** We don't currently have one. Spglib has it; Spacey doesn't (yet). Adding it to Spacey is its own ~150-line port from the literature, similar to spacegroup.
+> 2. **Wide-spread test cases.** Need a corpus of magnetically-ordered structures with known enumerations to validate against. pymatgen's `MagneticStructureEnumerator` test suite is a starting point.
+> 3. **API documentation.** The user-facing complexity goes up. The naïve caller doesn't want to think about magnetic groups; the magnetic-materials user does. Two-tier documentation.
+>
+> **My recommendation: design Phase 6 to *anticipate* this, but don't implement v0.2.** Concretely:
+> - Keep `Site.allowed_labels::BitSet` for v0.2 — works for the non-magnetic 99% case.
+> - Make the labeling representation parametric on a `LabelType` so v0.3 can extend it without breaking v0.2 users (`Vector{Int8}` → `Vector{LabelType}` where `LabelType<:Union{Int8, Tuple{Int8,Int8}}`).
+> - Document the `space_group` field on `ParentLattice` as "structural space group; magnetic group is a planned v0.3 extension via a separate `magnetic_group` field."
+> - In v0.3: add `MagneticOp{D}`, the magnetic-group computation in Spacey, and the `(species, spin)` extension to the labeling. The pymatgen `EnumlibAdaptor` migration story (Phase 9) still works in v0.2 for the non-magnetic case, and gets a v0.3 follow-up for the magnetic case.
+>
+> **Bottom line:** it's a real feature, but not a redesign. The Phase 6 catalog already has the parametric hooks (`{D}`, `{L}`); adding `{LabelType}` is one more parameter. The v0.2 work doesn't get harder for anticipating this; v0.3 doesn't break v0.2 users when it lands. If you'd prefer not to take on the parametric `LabelType` complexity even as anticipation, that's reasonable too — we can do a clean break at v0.3 and migrate users explicitly. Lean: parametric anticipation, since it's cheap.
+
 4. **Horiyama 2018 priority.** Digest before v0.2 (might inform the canonical-representative choice for the tree algorithm), or after (improvement candidate, not blocker)?
+> Yes, digest before v0.2
+
+> **Claude:** Locked in. Adding §4.7 (Horiyama 2018 digest) to the Phase 4 follow-up queue alongside the Bublikov 2011 placeholder (pending citation pointer). I'll fetch the paper from CCCG 2018 proceedings — Canadian Conference on Computational Geometry, openly available — and produce a digest in the same shape as §4.1–§4.5. Will land before we move from Phase 8 to Phase 9.
 
 ### 8.10 What this enables for Phase 9+
 
