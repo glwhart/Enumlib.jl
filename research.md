@@ -3519,4 +3519,55 @@ Phase 12 (synthesis) inherits the explicit "deferred citation pass" placeholder 
 
 ---
 
+Pre-phase 9 question:
+
+I know this is the plan to wrap up before we start coding, but I'm wondering if we should establish code for the first 8 phases and then come back to the pymatgen integration. That integration will not depend on the code under the hood (will it?). 
+
+We have done a lot of planning and it seems that we could start generating, revising code without some of these later phases. 
+
+Tell my your thoughts.
+
+Even if we start coding now, I don't want to blast through it all at once. I want small chunks, frequent 4-eye checks, discussions about best way to implement, usability questions addressed, etc.
+
+> **Claude:** Agree. Switching to coding now is the right call.
+>
+> **On your "does pymatgen integration depend on the internals" question — mostly no, with one nuance.** The bridge mechanism (juliacall vs subprocess vs HTTP) and the API translation (pymatgen.Structure → ParentLattice + Sites; pymatgen kwargs → our kwargs) are *both* surfaces against the *public* API. They don't care how `:exhaustive` vs `:recursive_stabilizer` is implemented; they only care what `enumerate(...)` accepts and yields. The Phase 6 catalog froze that surface. So Phase 9 can wait without losing fidelity.
+>
+> The one nuance: Phase 9 might surface gaps in our public API (e.g., does pymatgen's `Structure.site_properties` need a home in `Sites`? what about partial-occupancy disordered structures?). Those gaps are *cheaper to find by writing the bridge against real code* than by speculating against a paper-design. So we *want* to defer Phase 9 — the working code is what makes Phase 9 productive, not the other way around.
+>
+> Phase 10 (CI / regression) is genuinely better stitched in alongside coding. Phase 11 (DFT outputs) is independent of internals like Phase 9 — defer. Phase 12 (synthesis) is the v0.2 wrap-up — by definition, it goes at the end.
+>
+> **Proposed coding plan — six small chunks, one per session-or-two:**
+>
+> 1. **Foundation: `ParentLattice{D}` + `SymmetryOp{D}`** (Phase 6 §6.3). Wires `Spacey.spacegroup` into the constructor; smoke-test: simple cubic returns 48 ops; HCP returns 24; perovskite returns 48. ~80 lines of Julia + tests. Ends with: a `ParentLattice` we can `pointGroup()` and `spacegroup()` against trusted hand-calculated cases.
+> 2. **Substrate: `Site{D}` + `Sites{D}` + `equate!`** (Phase 6 §6.4). Site/Sites + Union-Find equivalencies + the dual constructor (incremental and upfront-partition). Test against the perovskite + slab patterns from §6.10. ~50 lines + tests. Ends with: we can describe a substitution problem.
+> 3. **HNF + symmetry reduction: `HNF{D}` + `Supercell{D}` + `getSymInequivHNFs`** (Phase 6 §6.6). Port the Fortran's symmetry-inequivalent-HNF generation to the new types. We have existing tests in `test/runtests.jl` (4-site fcc → [15,15,15,15,15,12,9] structure counts; 8-site fcc → 390; 12-site fcc → 7140) we can re-run against the new types. ~150 lines + tests. Ends with: HNF enumeration on the new surface, validated against existing tests.
+> 4. **`SupercellSelection`: `VolumeRange`, `RadiusBound`, `ExplicitHNFs`** (Phase 6 §6.6 continued). Wires the existing `radiusEnumeration.jl` work into the new abstraction. ~50 lines (mostly thin wrappers + dispatcher). Ends with: the public entry point can take any of three selection types.
+> 5. **Exhaustive (2008) algorithm + `Enumeration{D,L}` + `EnumeratedStructure{D,L}`** (Phase 6 §6.8). Ports the existing `getColorings` + `getUniqueColorings` into the parametric output types. The lazy-iterator `LazyEnumeration` is the user-facing return shape. ~250 lines + tests against the existing 4-site/8-site/12-site fcc cases. Ends with: a working `enumerate(...)` that produces correct counts on the existing test cases — we can call this v0.2-alpha.
+> 6. **`Concentration` + `ConcentrationRange` + multinomial (2012) algorithm** (Phase 6 §6.5). Adds fixed-concentration enumeration. Validated against tables in HF 2012. ~200 lines + tests. Ends with: v0.2-beta — both algorithms working, both algorithms in `:auto` dispatch.
+>
+> Stretch (could come before or after the above six, depending on your interest):
+>
+> 7. **`Enumlib.Polya` submodule + `count_inequivalent` + `estimate_cost`** (Phase 7). The cost-estimator is the gate-keeper for Phases 5/7. ~150 lines, validated against Rosenbrock 2016 Python implementation. Could happen in parallel with chunks 5–6 since it's an independent submodule.
+> 8. **The recursive-stabilizer tree (Morgan 2017)** (Phase 5 §5.3, the `:recursive_stabilizer` mode). Bigger chunk (~400 lines) but well-defined. Probably v0.3 unless we hit a Phase 7 trigger that says we need it for v0.2.
+>
+> **What this means for Phase 9–12:**
+> - **Phase 9 (pymatgen):** picked back up after chunk 5 or 6 (when we have a working `enumerate(...)` to bridge against). Probably becomes its own session.
+> - **Phase 10 (CI / regression):** stitched in alongside each coding chunk — every chunk's tests become CI candidates immediately. No separate "Phase 10 session" needed.
+> - **Phase 11 (DFT outputs):** sometime around chunk 5 or after — POSCAR writing is what we need first, ASE second, pymatgen third (overlaps with Phase 9).
+> - **Phase 12 (synthesis):** end of v0.2 milestone — the user-facing design doc, "Safety and limits" section, etc.
+> - **Pending Phase 4 digests:** Horiyama 2018 (lex-max canonical representative) — might inform chunk 5; I should fetch it before chunk 5 starts. Bublikov 2011 — already digested as §4.7; predicate-filter idea is a v0.3 thing, doesn't affect v0.2 chunks.
+>
+> **On your "small chunks, frequent 4-eye checks" preference:** that maps cleanly onto the chunk structure above. Each chunk is a single PR-sized change with a clear "ends with" milestone. After each chunk: I propose the design, you sanity-check, I write the code with tests, you review the diff, we land it. Chunk 1 alone might take two sessions if we're being careful about the type design. That's fine.
+>
+> **Recommendation:** start with chunk 1 (ParentLattice + SymmetryOp + Spacey wiring) in this session if you have time, or queue it for next session. I'll fetch Horiyama 2018 in the background while we move forward — its v0.2 relevance is "informs the canonical-representative choice in chunk 5" so we have time.
+>
+> Want me to start chunk 1 now? I'd:
+> 1. Open `src/Enumlib.jl` and look at the current state.
+> 2. Sketch the `SymmetryOp{D}` and `ParentLattice{D}` definitions per §6.3 (with the small constructor adjustment for Spacey v0.8.0's `Crystal(A, r, types; coords=:fractional)` signature).
+> 3. Write the constructors + test cases (simple cubic, HCP, fcc — all with known space-group orders).
+> 4. Show you the diff for review before committing.
+>
+> Alternatively, queue chunk 1 for next session and use the rest of this one to fetch Horiyama 2018 + finalize a coding-plan checklist as a follow-up doc (`docs/notes/v0.2-plan.md` or similar). Your call.
+
 *(Sections for Phases 9–12 will be appended below as they're produced.)*
