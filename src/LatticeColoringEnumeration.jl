@@ -28,18 +28,10 @@ struct ColoredTile
     c::Vector{Vector{Int64}} # The list of colorings for this tile
 end
 
-""" Define a parent lattice, its symmetries, etc. """
-struct ParentLattice
-    A::Matrix{Float64} # The parent lattice
-    Ainv::Matrix{Float64} # The inverse of the parent lattice
-    G::Array{Int64,2} # The group of the parent lattice in lattice coordinates
-
-    function ParentLattice(A)
-        Ainv = inv(A)
-        G = pointGroup(A)
-        new(A,Ainv,G)
-    end
-end
+# Old ParentLattice struct removed — replaced by the parametric ParentLattice{D} in
+# src/types/parent_lattice.jl (chunk 1 of v0.2 plan). Confirmed zero in-repo callers
+# constructed the old struct; the `pLat` parameter in functions like
+# getSymInequivHNFs(d, pLat, G) is just a raw 3x3 basis matrix, not the struct.
 
 """ Generate all of the HNF matrices of with determinant n """
 function getAllHNFs(n)

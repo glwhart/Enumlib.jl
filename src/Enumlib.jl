@@ -5,14 +5,22 @@ using LinearAlgebra
 using NormalForms
 using Spacey, MinkowskiReduction
 
+# --- v0.2 type catalog (chunk 1: foundation) ---
+include("types/symmetry_op.jl")
+include("types/parent_lattice.jl")
+
 export
-    # HNF enumeration
+    # v0.2 type catalog (chunk 1)
+    SymmetryOp, ParentLattice,
+    basis, dset, space_group, ndset,
+
+    # HNF enumeration (legacy; ports to new types in chunks 3+)
     getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs,
     getFixingOps, getFixingLatticeOps, checkCartesianPt,
     # Permutation groups
     getPermG, getTransGroup,
     # Coordinates and supercell structures
-    SuperTile, ColoredTile, ParentLattice,
+    SuperTile, ColoredTile,
     gCoordsToOrdinals, ordinalToGcoords,
     getCartesianPts, getOrdinalsFromCartesian, get_nonzero_index,
     coloringsOfHNFList,

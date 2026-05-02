@@ -1426,6 +1426,54 @@ Useful confirmation, too: Bublikov surfaces no pre-2011 algorithmic technique th
 - **§7.9 Phase 7 question list:** add Q7 — "predicate filter as a Phase 8 v0.3+ candidate?" Already implicitly captured in "What's NOT in scope for v0.2"; promoting it to a named candidate.
 - **§8.10 (what enables Phase 9+):** the predicate-filter idea is a Phase 8 → v0.3+ deliverable.
 
+### 4.8 Horiyama, Miyasaka & Sasaki 2018 — *Isomorphism Elimination by Zero-Suppressed Binary Decision Diagrams*
+
+**Citation.** Horiyama, Miyasaka, Sasaki, *Proc. 30th Canadian Conference on Computational Geometry (CCCG 2018)*, Winnipeg, Canada, August 8–10, 2018. PDF: `papers/HoriyamaMiyasakaSasaki_2018_IsomorphismEliminationZDD.pdf`. Open-access at <https://home.cs.umanitoba.ca/~cccg2018/papers/session7B-p2.pdf>.
+
+#### Problem
+
+Given a graph $G$ with labeled edges and a family $\mathcal{F}$ of subgraphs (e.g., spanning trees corresponding to polyhedron unfoldings), extract all automorphisms $\text{Aut}\,G = \{\pi_1, \pi_2, \ldots\}$. For each $\pi_i$, define $\mathcal{F}_{\pi_i}$ = the family of subgraphs of $\mathcal{F}$ that are *lexicographically largest* under $\pi_i$ (i.e., for each isomorphism class on $\pi_i$, keep the lex-max representative). Output $\bigcap_i \mathcal{F}_{\pi_i}$ = subgraphs that are lex-max on *every* automorphism. Each isomorphism class of $\mathcal{F}$ contributes exactly one element to the intersection.
+
+#### Key idea
+
+The "conventional method" (their reference [8]) builds each $\mathcal{F}_{\pi_i}$ as a separate ZDD via repeated apply-operations, then intersects. This is wasteful — the intermediate ZDDs are large.
+
+The new contribution is a **top-down, frontier-based ZDD construction** that builds the *intersection ZDD directly* without first constructing each $\mathcal{F}_{\pi_i}$ in full. Concretely: at each frontier of the variable ordering, the algorithm tracks a state that records "have we seen evidence that the subgraph being constructed is lex-smaller than $\pi_i(x)$ on automorphism $\pi_i$, for any $i$?" If yes for some $i$, prune the branch.
+
+#### Empirical wins
+
+| Polyhedron | Conventional | Proposed | Speedup |
+|---|---|---|---|
+| Dodecahedron (5,184,000 labeled developments) | 9.10 s, 529 MB | 0.54 s, 5 MB | 17× |
+| Cuboctahedron (331,776 labeled) | 0.35 s, 36 MB | 0.06 s, 3 MB | 6× |
+| Truncated dodecahedron (101 M) | 75.6 s, 11 GB | 2.67 s, 23 MB | 28× |
+| Rhombicuboctahedron (300 B) | > 3 hours, > 140 GB | 1914 s, 11 GB | > 5× |
+| 5-d hypercube (32.7 M) | 1167 s, 36 GB | 3.96 s, 10 MB | 295× |
+
+**The headline "300× faster, 3000× less memory in best case" claim from §8.2.1 is comparing the proposed ZDD construction against the *conventional ZDD construction*, not against enumlib.** That's important context I had missed in the abstract.
+
+#### Honest assessment of relevance to enumlib
+
+I had earlier (§8.2.1) marked Horiyama 2018 as "highest priority follow-up — applicable to *any* enumeration algorithm including the Hart-Forcade tree, not just BDD." Reading the actual paper revises that:
+
+- **The lex-max canonical-representative *idea*** is general (same idea McKay 1998 and the SAT lex-leader literature use). It can in principle apply to any enumeration algorithm where you want a canonical representative per isomorphism class.
+- **The *implementation* in this paper is ZDD-specific.** The 300× wins come from the top-down ZDD construction trick, not from lex-max per se. Without ZDDs, the lex-max idea is just one alternative canonical-representative choice among many.
+- **For enumlib's recursive-stabilizer tree (Morgan 2017),** the current "first-reached in tree traversal" canonical-representative convention works fine in practice. Switching to lex-max would require reorganizing the tree algorithm. The empirical case for switching isn't here — the paper compares "ZDD with old construction" vs "ZDD with new construction," not "tree with first-reached" vs "tree with lex-max."
+
+**Revised priority:** Horiyama 2018 is **background reading for v0.3 ZDD work**, not a v0.2 blocker. The valuable conceptual content (lex-max canonical representative) is also covered in McKay 1998 and the SAT literature; if we ever reach for canonical-augmentation rigor, McKay is the rigorous reference and Horiyama is one application of the family.
+
+For chunk 5 (the exhaustive 2008 algorithm + `EnumeratedStructure`), this means **no design change needed** — keep the existing Hart-Forcade canonical-representative convention.
+
+#### What carries into the rewrite
+
+- **§4.8 added** so the digest is in the doc.
+- **§8.2.1 priority reassessment:** downgrading Horiyama 2018 from "highest priority follow-up" to "background reading for v0.3 ZDD work." The algorithmic improvement is real but ZDD-specific; the conceptual content (lex-max as canonical representative) is one of several theoretical alternatives, not a clear v0.2 win.
+- **Phase 12 v0.3 candidate:** "Canonical-representative redesign for the recursive-stabilizer tree, informed by McKay 1998 + Horiyama 2018 + Itzhakov-Codish 2025" — bundle these together as a single v0.3+ exploration thread.
+
+#### Synthesis
+
+Useful negative result on the priority question: when an abstract says "applicable to any enumeration algorithm," verify by reading the paper. The Horiyama paper's contribution is technically *applicable* to non-ZDD algorithms (the lex-max idea is general), but the empirical wins are ZDD-specific. Lesson learned for future Phase 8 surveys: when a conference paper claims orthogonal applicability, read the implementation section before promoting priority. (Filed as a §8.8 limitation: "abstract-level priority claims should be verified by reading the implementation section.")
+
 ---
 
 
