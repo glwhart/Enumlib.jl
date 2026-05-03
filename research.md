@@ -2150,7 +2150,7 @@ ParentLattice(A::AbstractMatrix) = ParentLattice(A, [SVector{size(A,1),Float64}(
 **Notes:**
 - `space_group` is computed once at construction and cached for ergonomics — call sites read `parent.space_group` without re-invoking `spacegroup(...)`. Not a perf claim; `gen_multilattice_derivatives`-style entry points are called once or a handful of times in typical workflows.
 - We store the *integer* lattice-coord rotations (in `SymmetryOp.R`), not the Cartesian ones. Conversions to Cartesian happen on demand inside the geometric routines (`map_to_real_space`, etc.).
-- `dset` does not have to contain the origin. Single Bravais lattices have one element; HCP has 2; perovskite has 5. The math doesn't require origin-in-dset; e.g., for diamond, anchoring the origin at the inversion center between the two atoms makes the DFT Hamiltonian real, which is the natural choice.
+- `dset` does not have to contain the origin. Single Bravais lattices have one element; HCP has 2; perovskite has 5. The math doesn't require origin-in-dset; e.g., for diamond, placing the origin at the inversion center between the two atoms makes the DFT Hamiltonian real, which is the natural choice.
 - **Phase 8 dependency:** `Spacey.spacegroup(c::Crystal)` is currently a stub upstream (`Spacey/src/Spacey.jl:233` returns `true`). We need to port the Fortran's space-group / dset-translation logic and propose it upstream — vendoring a temporary copy inside `Enumlib.Internal.spacegroup` if the upstream PR is slow. See Phase 8 to-do.
 
 ### 6.4 `Site` and `Sites`

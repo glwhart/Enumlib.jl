@@ -12,7 +12,7 @@ include("types/parent_lattice.jl")
 export
     # v0.2 type catalog (chunk 1)
     SymmetryOp, ParentLattice,
-    basis, dset, space_group, ndset,
+    basis, dset, space_group, ndset, n_nonzero_translations,
 
     # HNF enumeration (legacy; ports to new types in chunks 3+)
     getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs,
