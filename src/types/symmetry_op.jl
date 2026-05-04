@@ -26,5 +26,23 @@ SymmetryOp{D}(op::Spacey.SpacegroupOp) where D = SymmetryOp{D}(op.R, op.τ)
 # `where D` constraint forces both arguments to have matching dimension; cross-D
 # comparisons fall through to Base's default (returns false). See v0.2-plan.md
 # glossary for "pairing rule" and "where D".
+#
+# On the D parameter (re-explained for clarity, since this is a common point of
+# confusion): D is an integer (3 for 3D crystals, 2 for 2D). It does NOT take the
+# value true/false. The function BODY (`a.R == b.R && a.t == b.t`) returns a
+# boolean — that's the *result* of the equality check. But D itself, the type
+# parameter, is always an integer dimension. So "D" and "the function's return
+# value" are two unrelated things on the same line.
+#
+# A walkthrough: when you call `op_a == op_b` where both have type
+# `SymmetryOp{3}`, Julia's dispatcher resolves `D = 3` (because both arguments
+# are `SymmetryOp{3}`) and runs the body, returning `true` or `false` based on
+# whether their R's and t's match. The `D = 3` binding is invisible at the call
+# site; you never see it. If the user later builds a `SymmetryOp{2}` (in some
+# v0.3 2D extension), `D` resolves to `2` for that call. D never sees true/false.
 Base.:(==)(a::SymmetryOp{D}, b::SymmetryOp{D}) where D = a.R == b.R && a.t == b.t
-Base.hash(op::SymmetryOp, h::UInt) = hash(op.R, hash(op.t, h))
+# IMPORTANT: must qualify `Base.hash` inside the body. There is a local `hash(mul, c)`
+# defined later in `Enumlib.jl` that would shadow the unqualified name and break
+# the hash chain. Tracked as a v0.2 landmine — that function should be renamed
+# during chunk 5 cleanup (it's only used in `getUniqueColorings`).
+Base.hash(op::SymmetryOp, h::UInt) = Base.hash(op.R, Base.hash(op.t, h))

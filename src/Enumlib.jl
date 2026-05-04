@@ -4,15 +4,23 @@ using Combinatorics
 using LinearAlgebra
 using NormalForms
 using Spacey, MinkowskiReduction
+using DataStructures: IntDisjointSets, find_root!, union!
 
-# --- v0.2 type catalog (chunk 1: foundation) ---
-include("types/symmetry_op.jl")
-include("types/parent_lattice.jl")
+# --- v0.2 type catalog ---
+include("types/symmetry_op.jl")    # chunk 1
+include("types/parent_lattice.jl") # chunk 1
+include("types/site.jl")           # chunk 2
+include("types/sites.jl")          # chunk 2
 
 export
     # v0.2 type catalog (chunk 1)
     SymmetryOp, ParentLattice,
     basis, dset, space_group, ndset, n_nonzero_translations,
+    # v0.2 type catalog (chunk 2)
+    Site, Sites,
+    is_active, is_inactive,
+    equate!, canonical, active_canonical_sites,
+    n_active, n_canonical, n_effective,
 
     # HNF enumeration (legacy; ports to new types in chunks 3+)
     getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs,
