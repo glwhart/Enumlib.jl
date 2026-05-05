@@ -21,10 +21,16 @@ export
     is_active, is_inactive,
     equate!, canonical, active_canonical_sites,
     n_active, n_canonical, n_effective,
+    # v0.2 type catalog (chunk 3)
+    HNF, Supercell,
+    volume,
+    # (Supercell fields are accessed directly: s.hnf, s.snf,
+    # s.space_group_order, s.permutation_group — no accessor functions needed.)
 
-    # HNF enumeration (legacy; ports to new types in chunks 3+)
+    # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
+    # methods alongside)
     getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs,
-    getFixingOps, getFixingLatticeOps, checkCartesianPt,
+    getFixingOps, checkCartesianPt,
     # Permutation groups
     getPermG, getTransGroup,
     # Coordinates and supercell structures
@@ -252,38 +258,13 @@ include("clusterequvi.jl")
 # --- permutation groups (depend on getTransGroup from LatticeColoringEnumeration) ---
 
 """
-    getPermG(h, fixingOps, pLat, G::Vector{Matrix{Float64}})
-
-Permutation group for the supercell `h` of parent lattice `pLat`, given the
-ordinal vector `fixingOps` selecting the stabilizer subgroup of the
-Cartesian point group `G`. Eq. 3 of the original enumlib paper, in
-Cartesian coordinates.
-"""
-function getPermG(h, fixingOps, pLat, G::Vector{Matrix{Float64}})
-    S, L, R = snf(h)
-    LAinv = L * inv(pLat)
-    invLAinv = inv(LAinv)
-    z1, z2, z3 = diag(S)
-    GspcSites = [[i,j,k] for i ∈ 0:z1-1 for j ∈ 0:z2-1 for k ∈ 0:z3-1]
-    GSitesRot = [[mod.(round.(Int, LAinv * iR * invLAinv * i), [z1; z2; z3]) for i ∈ GspcSites] for iR ∈ G[fixingOps]]
-    factor = [z2*z3, z3, 1]
-    rotGrp = [[sum(i .* factor) + 1 for i in j] for j in GSitesRot] |> unique
-    sort!(rotGrp)
-    tGrp = getTransGroup([z1, z2, z3])
-    perm = Vector{Vector{Int}}()
-    for iR ∈ rotGrp
-        for iT ∈ tGrp
-            push!(perm, iR[iT])
-        end
-    end
-    return perm
-end
-
-"""
     getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
 
-Lattice-coordinate variant of [`getPermG`](@ref): same construction but
-with the lattice-coordinate point group `LG` directly.
+Permutation group for the supercell `h` of parent lattice (point group `LG` in
+lattice coordinates), given the ordinal mask `fixingOps` selecting the stabilizer
+subgroup. Eq. 3 of the original enumlib paper, all in pure-integer arithmetic.
+(The Cartesian-coord variant was dropped in chunk 3 to keep the implementation
+in integers; see chunk 3 design.)
 """
 function getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
     S, L, _ = snf(h)
@@ -335,5 +316,10 @@ end
 #     getFixingLatticeOps, getPermG, getAllHNFs, basesAreEquiv) ---
 
 include("radiusEnumeration.jl")
+
+# --- chunk 3 type catalog (depends on getFixingOps, getPermG, getSymInequivHNFs,
+#     and snf — all defined above) ---
+include("types/hnf.jl")
+include("types/supercell.jl")
 
 end # module Enumlib

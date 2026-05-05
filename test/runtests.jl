@@ -6,6 +6,12 @@ using Combinatorics
 using LinearAlgebra
 using Spacey
 
+# v0.2 chunk-by-chunk test files. Each one is a standalone @testset; running
+# Pkg.test() exercises everything (chunk 1 → 6 plus the legacy corpus below).
+include("test_parent_lattice.jl")
+include("test_sites.jl")
+include("test_hnf.jl")
+
 @testset "Colorings and HNF enumeration" begin
     # Plain enumeration of colorings
     k = 3; n = 3
@@ -25,34 +31,35 @@ using Spacey
     G5 = generateGroup([2 3 5 1 4; 1 5 2 3 4])
     @test getSymEqvColorings_slow(3,5,G5) == [[0, 0, 0, 0, 0], [0, 0, 0, 0, 1], [0, 0, 0, 0, 2], [0, 0, 0, 1, 1], [0, 0, 0, 1, 2], [0, 0, 0, 2, 2], [0, 0, 1, 1, 1], [0, 0, 1, 1, 2], [0, 0, 1, 2, 1], [0, 0, 1, 2, 2], [0, 0, 2, 2, 1], [0, 0, 2, 2, 2], [0, 1, 1, 1, 1], [0, 1, 1, 1, 2], [0, 1, 1, 2, 2], [0, 1, 2, 1, 2], [0, 1, 2, 2, 2], [0, 2, 2, 2, 2], [1, 1, 1, 1, 1], [1, 1, 1, 1, 2], [1, 1, 1, 2, 2], [1, 1, 2, 2, 2], [1, 2, 2, 2, 2], [2, 2, 2, 2, 2]]
 
-    # Symmetry-inequivalent colorings via HNF + permutation group, 4-site fcc
+    # Symmetry-inequivalent colorings via HNF + permutation group, 4-site fcc.
+    # Uses the lattice-coordinate API throughout (Cartesian variants dropped in
+    # chunk 3 — see docs/notes/chunk3-design.md).
     pLat = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]
     LG = pointGroup(pLat)
-    G = toCartesian(LG, pLat)
-    hnf = getSymInequivHNFs(4, pLat, G)
-    fixingOps = [getFixingOps(hnf[i], pLat, G) for i in axes(hnf,1)]
+    hnf = getSymInequivHNFs(4, LG)
+    fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
     @test map(1:7) do i
-        pG = getPermG(hnf[i], fixingOps[i], pLat, G)
+        pG = getPermG(hnf[i], fixingOps[i], LG)
         return getUniqueColorings(3, pG) |> length
     end == [15, 15, 15, 15, 15, 12, 9]
     @test map(1:7) do i
-        pG = getPermG(hnf[i], fixingOps[i], pLat, G)
+        pG = getPermG(hnf[i], fixingOps[i], LG)
         return getUniqueColorings(2, pG) |> length
     end == [3, 3, 3, 3, 3, 2, 2]
 
     # 8-site fcc supercell — same count enumlib reports
-    hnf = getSymInequivHNFs(8, pLat, G)
-    fixingOps = [getFixingOps(hnf[i], pLat, G) for i in axes(hnf,1)]
+    hnf = getSymInequivHNFs(8, LG)
+    fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
     @test map(1:length(hnf)) do i
-        pG = getPermG(hnf[i], fixingOps[i], pLat, G)
+        pG = getPermG(hnf[i], fixingOps[i], LG)
         return getUniqueColorings(2, pG) |> length
     end |> sum == 390
 
     # 12-site fcc supercell — same count enumlib reports
-    hnf = getSymInequivHNFs(12, pLat, G)
-    fixingOps = [getFixingOps(hnf[i], pLat, G) for i in axes(hnf,1)]
+    hnf = getSymInequivHNFs(12, LG)
+    fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
     @test map(1:length(hnf)) do i
-        pG = getPermG(hnf[i], fixingOps[i], pLat, G)
+        pG = getPermG(hnf[i], fixingOps[i], LG)
         return getUniqueColorings(2, pG) |> length
     end |> sum == 7140
 end

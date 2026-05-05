@@ -74,28 +74,7 @@ function tripletList(n)
     return triples
 end
 
-""" Check if two bases are equivalent under the action a group 
-
-    Two equivalent superlattices are related by a unimodular transformation. 
-    This function checks, for every allowed g ∈ G, if two bases are 
-    equivalent by checking if the transformation matrix is unimodular. 
-
-        *** Finite precision issues could be avoided by doing this all in integers using HNFer ***
 """
-function basesAreEquiv(HNF1,HNF2,pLat,G::Vector{Matrix{Float64}})
-    # This routine assumes det(HNF1) == det(HNF2)
-    invB2 = inv(pLat*HNF2)
-    for g ∈ G
-        T = invB2*inv(g)*(pLat*HNF1)
-        # The epsilon should be smaller than 1/det(B1) for numerical stability.
-        if norm(T - round.(Int,T)) < 1e-6 # Check if T is an integer matrix
-            return true
-        end 
-    end  
-    return false
-end
-
-""" 
     basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
 
 Check if two bases are equivalent under the action a group 
@@ -118,27 +97,7 @@ function basesAreEquiv(HNF1,HNF2,LG::Vector{Matrix{Int64}})
 end
 
 
-""" Get symmetry-inequivalent HNFs under the parent lattice group 
-
-getSymInequivHNFs(n,pLat,G) returns the symmetry-inequivalent HNFs, of size d, under the action of the group G, the symmetries of the parent lattice.
-"""
-function getSymInequivHNFs(d,pLat,G::Vector{Matrix{Float64}})
-HNFList = getAllHNFs(d)
-n = length(HNFList)
-mask = trues(n)
-    for i ∈ 1:n-1
-        if !mask[i] continue end
-        for j ∈ i+1:n
-            if !mask[j] continue end
-            if basesAreEquiv(HNFList[i],HNFList[j],pLat,G)
-                mask[j] = false
-            end
-        end
-    end
-    return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
-end
-
-""" Get symmetry-inequivalent HNFs under the parent lattice group 
+""" Get symmetry-inequivalent HNFs under the parent lattice group
 
 getSymInequivHNFs(n,LG) returns the symmetry-inequivalent HNFs, of size n, under the action of the group LG, the symmetries of the parent lattice in lattice coordinates.
 """
@@ -157,36 +116,22 @@ function getSymInequivHNFs(d,LG::Vector{Matrix{Int}})
     return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
 end
 
-""" getFixingOps(hnf,pLat,G::Vector{Matrix{Float64}})
-
-Return a mask marking the symmetries in G that fix the superlattice of given HNF
-
-    getFixingOps(hnf,pLat,G): Given an HNF, a parent lattice, and the symmetries of the parent lattice, return a mask of the symmetries under which the superlattice is invariant. In other words, it returns the stabilizer subgroup of G.
 """
-function getFixingOps(hnf,pLat,G::Vector{Matrix{Float64}})
-    mask = falses(length(G))
-    B = pLat*hnf
-    for (i,g) ∈ enumerate(G)
-        T = inv(B)*g*B 
-        # For n≤24, an epsilon of 1e-2 would have been small enough
-        norm(T - round.(Int,T)) < 1e-8 ? mask[i] = true : nothing 
-    end
-    return mask
-end  
+    getFixingOps(hnf, LG::Vector{Matrix{Int}})
 
+Return a mask identifying the elements of the symmetry group (expressed in lattice
+coordinates) that fix the superlattice defined by the HNF — i.e., the stabilizer
+subgroup of `LG`. (The legacy Cartesian-coord variant was dropped in chunk 3 to
+keep the implementation in pure-integer arithmetic; see chunk 3 design.)
 """
-    getFixingLatticeOps(hnf,LG)
-
-    Return a mask identifying the elements of the symmetry group (expressed in lattice coordinates) that fix the superlattice defined by the HNF. (Compare to getFixingOps, which uses Cartesian coords.)
-"""    
-function getFixingLatticeOps(hnf,LG)
+function getFixingOps(hnf, LG::Vector{Matrix{Int}})
     mask = falses(length(LG))
     B = hnfc(hnf).H
     for (i,g) ∈ enumerate(LG)
         hnfc(g*B).H == B ? mask[i] = true : nothing
     end
     return mask
-end 
+end
 
 """ Make the composite cyclic group that represents the translation group of the superlattice
    
