@@ -47,6 +47,10 @@ export
     radiusEnumHNFs, getHNFColorings, radEnumByXcellRadius,
     getSymInequivHNFsByCellRadius, estimatedTime
 
+# TODO(chunk 4): switch to avg distance from center to corners (decided in chunk 2
+# review, item 2). Avg gives finer tie-breaking and a more descriptive
+# lengthscale for elongated cells. Will break downstream tests that depend on
+# the current max-distance values; fix those tests at the same time.
 """
     cellRadius(B)
 
@@ -74,8 +78,9 @@ end
 """
     isTransEquiv(c1, c2)
 
-Returns true if `c1` and `c2` are translates of each other.
+Returns true if cluster 1 `c1` and  cluster `c2` are translates of each other.
 """
+# The difference between the first vertex of c1 and c2 is the same as the difference between all the other vertices of c1 and c2
 function isTransEquiv(c1, c2)
     return any([all([(c1.-c2)[:,1]] .≈ eachslice(c1.-c2, dims=2)[2:end])])
 end
@@ -126,6 +131,7 @@ end
 Check whether the rows of `G` are closed under composition (i.e., form a
 permutation group).
 """
+# Is G a vector of matrices? Or a 3D array? Let's document this a bit better. 
 function isaGroup(G)
     isagroup = true
     for iG in eachrow(G)
@@ -161,24 +167,25 @@ function generateGroup(generators)
 end
 
 """
-    hash(mul, c)
+    coloring_hash(mul, c)
 
-Hash a coloring `c` of a tile into its base-10 integer using the place
-values in `mul`.
+Hash a coloring `c` of a tile into its base-`k` integer using the place values in
+`mul`. (Renamed from the original `hash` in chunk 2.1 to avoid shadowing `Base.hash`
+inside the Enumlib module — see `docs/notes/v0.2-plan.md`.)
 """
-function hash(mul, c)
+function coloring_hash(mul, c)
     return sum(mul .* c)
 end
 
 """
-    hash2coloring(hash, k, n)
+    coloring_unhash(idx, k, n)
 
-Inverse of [`hash`](@ref): convert a base-10 hash back into a coloring of
-length `n` with `k` colors.
+Inverse of [`coloring_hash`](@ref): convert a base-`k` integer `idx` back into a
+coloring of length `n` with `k` colors. (Renamed from `hash2coloring` in chunk 2.1.)
 """
-function hash2coloring(hash, k, n)
+function coloring_unhash(idx, k, n)
     coloring = zeros(Int64, n)
-    r = hash - 1
+    r = idx - 1
     for i in n-1:-1:0
         d, r = divrem(r, k^i)
         coloring[n-i] = d
@@ -211,7 +218,7 @@ function reduceColorings(colorings, k, G)
     for (i, ic) in enumerate(colorings)
         if !hashTbl[i] continue end
         for g ∈ eachrow(G)
-            test = hash(mul, ic[g]) + 1
+            test = coloring_hash(mul, ic[g]) + 1
             if test > i
                 hashTbl[test] = false
             end
@@ -297,7 +304,7 @@ function getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
     return perm
 end
 
-# --- colorings via permutation group (depends on hash/hash2coloring above) ---
+# --- colorings via permutation group (depends on coloring_hash / coloring_unhash above) ---
 
 """
     getUniqueColorings(k, pG)
@@ -315,13 +322,13 @@ function getUniqueColorings(k, pG)
         c = reverse(Tuple(ic))
         if !hashTbl[i] continue end
         for (ig, g) ∈ enumerate(pG[2:end])
-            test = Enumlib.hash(mul, c[g]) + 1
+            test = coloring_hash(mul, c[g]) + 1
             if test > i || test == i && ig < n
                 hashTbl[test] = false
             end
         end
     end
-    return [hash2coloring(i, k, n) for i ∈ findall(hashTbl)]
+    return [coloring_unhash(i, k, n) for i ∈ findall(hashTbl)]
 end
 
 # --- radius-based HNF enumeration (uses cellRadius, getSymInequivHNFs,

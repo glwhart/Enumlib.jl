@@ -3,7 +3,7 @@
 
 A single position in the parent cell where atomic substitution can happen. Carries the position itself plus the set of species labels allowed at this position.
 
-The position is in fractional coordinates of the parent lattice (`ParentLattice{D}.A`), matching the convention used by `ParentLattice{D}.dset`. Allowed labels are stored as a `BitSet` of integers from `0:k-1`, where `k` is the number of species in the problem.
+The position is in fractional coordinates of the parent lattice (`ParentLattice{D}.A`), matching the convention used by `ParentLattice{D}.dset`. Allowed labels are stored as a `BitSet` of integers from `0:k-1`, where `k` is the number of species in the problem. (D is typically 3, for 3D crystals.)
 
 A site is **inactive** if `length(allowed_labels) == 1` — only one species can occupy it, so it has no configurational freedom and gets stripped from the labeling space during enumeration. A site is **active** otherwise.
 
@@ -53,12 +53,9 @@ is_active(s::Site) = !is_inactive(s)
 # D. Same pairing-rule pattern as `SymmetryOp`. See v0.2-plan.md glossary.
 Base.:(==)(a::Site{D}, b::Site{D}) where D =
     a.position == b.position && a.allowed_labels == b.allowed_labels
-# Same landmine as SymmetryOp: must qualify `Base.hash` inside the body because of the
-# local `hash(mul, c)` function in `Enumlib.jl` that shadows the bare name within the
-# Enumlib module. v0.2-plan.md tracks the rename during chunk 5 cleanup.
 function Base.hash(s::Site, h::UInt)
-    h = Base.hash(s.allowed_labels, h)
-    h = Base.hash(s.position, h)
+    h = hash(s.allowed_labels, h)
+    h = hash(s.position, h)
     return h
 end
 

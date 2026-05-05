@@ -41,8 +41,4 @@ SymmetryOp{D}(op::Spacey.SpacegroupOp) where D = SymmetryOp{D}(op.R, op.τ)
 # site; you never see it. If the user later builds a `SymmetryOp{2}` (in some
 # v0.3 2D extension), `D` resolves to `2` for that call. D never sees true/false.
 Base.:(==)(a::SymmetryOp{D}, b::SymmetryOp{D}) where D = a.R == b.R && a.t == b.t
-# IMPORTANT: must qualify `Base.hash` inside the body. There is a local `hash(mul, c)`
-# defined later in `Enumlib.jl` that would shadow the unqualified name and break
-# the hash chain. Tracked as a v0.2 landmine — that function should be renamed
-# during chunk 5 cleanup (it's only used in `getUniqueColorings`).
-Base.hash(op::SymmetryOp, h::UInt) = Base.hash(op.R, Base.hash(op.t, h))
+Base.hash(op::SymmetryOp, h::UInt) = hash(op.R, hash(op.t, h))
