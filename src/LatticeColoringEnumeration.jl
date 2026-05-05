@@ -2,7 +2,7 @@
 #using LinearAlgebra
 #export getAllHNFs, tripletList, basesAreEquiv, equivHNFs
 # Might be convenient to have fixing ops and/or group in one of these structs
-export checkCartesianPt, getFixingLatticeOps
+export checkCartesianPt, getFixingOps
 
 """ Define a type for a supercell of a parent lattice, its HNF, SNF, gpoints, etc. 
 
@@ -217,7 +217,7 @@ end
 function coloringsOfHNFList(hnfs,k,LG::Vector{Matrix{Int}})
    colorings = Vector{Vector{Vector{Int64}}}()
    for iH ∈ eachindex(hnfs) # few milliseconds
-        fixingOps = getFixingLatticeOps(hnfs[iH],LG)
+        fixingOps = getFixingOps(hnfs[iH],LG)
         permG = getPermG(hnfs[iH],fixingOps,LG)
         push!(colorings,getUniqueColorings(k,permG))
     end

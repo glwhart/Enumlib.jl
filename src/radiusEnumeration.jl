@@ -1,6 +1,6 @@
 # Radius-based HNF enumeration. Included from clusterExpansion.jl after the
-# module's own cellRadius is defined and after LatticeColoringEnumeration.jl
-# has provided getSymInequivHNFs / getAllHNFs / basesAreEquiv / getFixingLatticeOps
+# module's own avg_cell_radius is defined and after LatticeColoringEnumeration.jl
+# has provided getSymInequivHNFs / getAllHNFs / basesAreEquiv / getFixingOps
 # / getPermG / getUniqueColorings.
 #
 # These functions are pure enumeration: they don't reference any CE-specific
@@ -22,7 +22,7 @@ function radiusEnumHNFs(A; maxVol=15)
         append!(hnfs, getSymInequivHNFs(i, LG))
     end
     hnfs = [round.(Int, inv(A) * minkReduce(A * h)) for h in hnfs]
-    radii = [cellRadius(A * h) for h in hnfs]
+    radii = [avg_cell_radius(A * h) for h in hnfs]
     volumes = [abs.(round(Int, det(h))) for h in hnfs]
     idx = sortperm(radii)
     return hnfs[idx], radii[idx], volumes[idx]
@@ -36,13 +36,13 @@ of its interior points under the lattice point group `LG`. Returns a vector
 of colorings, where each coloring is a vector of integers in `0:k-1`.
 """
 function getHNFColorings(h, k, LG::Vector{Matrix{Int64}})
-    fixingOps = getFixingLatticeOps(h, LG)
+    fixingOps = getFixingOps(h, LG)
     permG = getPermG(h, fixingOps, LG)
     return getUniqueColorings(k, permG)
 end
 
 """
-    radEnumByXcellRadius(A, x)
+    radEnumByXavg_cell_radius(A, x)
 
 Return HNFs of `A` grouped by radius, keeping only those whose
 Minkowski-reduced cell radius is at most `x` times the parent cell's
@@ -53,14 +53,14 @@ This variant enumerates every HNF up to volume 80 without symmetry
 reduction; use [`getSymInequivHNFsByCellRadius`](@ref) for the
 symmetry-reduced version.
 """
-function radEnumByXcellRadius(A, x)
-    rCell = cellRadius(A)
+function radEnumByXavg_cell_radius(A, x)
+    rCell = avg_cell_radius(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:80
         append!(hnfs, getAllHNFs(i))
     end
     hnfs = [round.(Int, inv(A) * minkReduce(A * h)) for h in hnfs]
-    radii = [cellRadius(A * h) for h in hnfs]
+    radii = [avg_cell_radius(A * h) for h in hnfs]
     rhnfs = Vector{Matrix{Int64}}()
     for r in radii
         if r ≤ x * rCell
@@ -83,14 +83,14 @@ radius-first enumeration but bulletproof — guaranteed not to miss any
 symmetry-inequivalent cell within the radius bound.
 """
 function getSymInequivHNFsByCellRadius(A, x; maxVol=20)
-    rCell = cellRadius(A)
+    rCell = avg_cell_radius(A)
     LG = pointGroup(A)
     hnfs = Vector{Matrix{Int64}}()
     for i ∈ 1:maxVol
         append!(hnfs, getAllHNFs(i))
     end
     hnfs = [round.(Int, inv(A) * minkReduce(A * h)) for h in hnfs]
-    radii = round.([cellRadius(A * h) for h in hnfs], digits=10) # collapse FP-only differences
+    radii = round.([avg_cell_radius(A * h) for h in hnfs], digits=10) # collapse FP-only differences
     volumes = abs.(round.(Int, det.(hnfs)))
     idx = findall(radii .≤ x * rCell)
     radii = radii[idx]

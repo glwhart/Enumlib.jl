@@ -26,7 +26,10 @@ export
     HNF, Supercell,
     volume,
     # (Supercell fields are accessed directly: s.hnf, s.snf,
-    # s.space_group_order, s.permutation_group — no accessor functions needed.)
+    # s.n_stabilizer_ops, s.permutation_group — no accessor functions needed.)
+    # v0.2 type catalog (chunk 4)
+    SupercellSelection, VolumeRange, RadiusBound, ExplicitHNFs,
+    enumerate_hnfs,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -47,28 +50,36 @@ export
     isRotTransEquiv, isTransEquiv, canonClustOrder!, deleteTransDuplicates!,
     shiftToOrigin, isEquivClusters,
     # Cell utilities
-    cellRadius,
+    avg_cell_radius,
     # Structure I/O
     enumStr, readStructenumout, readEnergies, readStrIn,
     # Radius-based enumeration
     radiusEnumHNFs, getHNFColorings, radEnumByXcellRadius,
     getSymInequivHNFsByCellRadius, estimatedTime
 
-# TODO(chunk 4): switch to avg distance from center to corners (decided in chunk 2
-# review, item 2). Avg gives finer tie-breaking and a more descriptive
-# lengthscale for elongated cells. Will break downstream tests that depend on
-# the current max-distance values; fix those tests at the same time.
 """
-    cellRadius(B)
+    avg_cell_radius(B)
 
-Get the radius of the unit cell `B`. Radius is the max distance from the
-center of the cell to any corner.
+Get the average distance from the center of the unit cell `B` to its 8 corners.
+Used as a unit-cell size measure for the radius-based supercell selection
+(`RadiusBound`). Minkowski-reduces the basis first so the measure is independent
+of the user's cell representation (e.g., a skewed basis and its Minkowski-reduced
+equivalent get the same value).
+
+Renamed from `cellRadius` in chunk 4 — the original used max distance, but per
+chunk 2 review item 2 we switched to avg. Avg gives finer tie-breaking
+(8 corner distances rarely all match pairwise) and is more descriptive for
+elongated cells (max gets dominated by the longest direction; avg weights all
+axes smoothly). For a cube `avg ≈ max ≈ side·√3/2` so the difference only
+shows up for non-cubic cells.
 """
-function cellRadius(B)
+function avg_cell_radius(B)
     A = minkReduce(B)
     center = (A[:,1] + A[:,2] + A[:,3]) ./ 2
-    corners = [[0., 0., 0.], A[:,1], A[:,2], A[:,3], A[:,1]+A[:,2], A[:,1]+A[:,3], A[:,2]+A[:,3], A[:,1]+A[:,2]+A[:,3]]
-    return max(norm.([center - i for i in corners])...)
+    corners = [[0., 0., 0.], A[:,1], A[:,2], A[:,3],
+               A[:,1]+A[:,2], A[:,1]+A[:,3], A[:,2]+A[:,3], A[:,1]+A[:,2]+A[:,3]]
+    distances = [norm(center - c) for c in corners]
+    return sum(distances) / length(distances)
 end
 
 # --- cluster equivalence (no enum-file deps) ---
@@ -313,8 +324,8 @@ function getUniqueColorings(k, pG)
     return [coloring_unhash(i, k, n) for i ∈ findall(hashTbl)]
 end
 
-# --- radius-based HNF enumeration (uses cellRadius, getSymInequivHNFs,
-#     getFixingLatticeOps, getPermG, getAllHNFs, basesAreEquiv) ---
+# --- radius-based HNF enumeration (uses avg_cell_radius, getSymInequivHNFs,
+#     getFixingOps, getPermG, getAllHNFs, basesAreEquiv) ---
 
 include("radiusEnumeration.jl")
 
@@ -322,5 +333,9 @@ include("radiusEnumeration.jl")
 #     and snf — all defined above) ---
 include("types/hnf.jl")
 include("types/supercell.jl")
+
+# --- chunk 4 type catalog (depends on chunk 3 types + avg_cell_radius +
+#     getAllHNFs + basesAreEquiv) ---
+include("types/supercell_selection.jl")
 
 end # module Enumlib
