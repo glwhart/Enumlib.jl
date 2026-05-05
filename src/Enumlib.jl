@@ -16,6 +16,7 @@ export
     # v0.2 type catalog (chunk 1)
     SymmetryOp, ParentLattice,
     basis, dset, space_group, ndset, n_nonzero_translations,
+    lattice_rotations,    # added in chunk 3.1
     # v0.2 type catalog (chunk 2)
     Site, Sites,
     is_active, is_inactive,

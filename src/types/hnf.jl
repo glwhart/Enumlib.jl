@@ -85,7 +85,7 @@ Return the symmetry-inequivalent HNFs of supercell volume `n` under the action o
 This is the chunk-3 wrapper around the pure-integer legacy `getSymInequivHNFs(d, LG)`. Extracts the rotation parts of `parent.space_group` (fractional translations don't affect HNF equivalence) and returns `Vector{HNF{D}}`.
 """
 function getSymInequivHNFs(n::Int, parent::ParentLattice{D}) where D
-    LG = [op.R for op in parent.space_group]
+    LG = lattice_rotations(parent)
     legacy_hnfs = getSymInequivHNFs(n, LG)   # legacy lattice-coord; returns Vector{Matrix{Int}}
     return [HNF{D}(m) for m in legacy_hnfs]
 end

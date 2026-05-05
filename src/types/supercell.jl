@@ -7,7 +7,7 @@ A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SN
 
 - `hnf` — the supercell-defining HNF.
 - `snf` — diagonal of the Smith Normal Form decomposition of `hnf.matrix`. Length `D`, with `s_1 | s_2 | ... | s_D`. Used by the labeling enumeration to index supercell sites.
-- `space_group_order` — number of `parent.space_group` operations whose action fixes the superlattice (the order of the stabilizer subgroup).
+- `n_stabilizer_ops` — number of `parent.space_group` operations whose action fixes the superlattice (the order of the stabilizer subgroup).
 - `permutation_group` — permutations of the `n × n_D` supercell sites induced by the stabilizer's rotations composed with the supercell's translation group. This is what the labeling enumeration consults when crossing out symmetry-equivalent labelings.
 
 ## Construction
@@ -17,12 +17,16 @@ A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SN
 struct Supercell{D}
     hnf::HNF{D}
     snf::Vector{Int}
-    space_group_order::Int
+    n_stabilizer_ops::Int # is this the number of symmetries of the supercell? 
     permutation_group::Vector{Vector{Int}}
 
     function Supercell{D}(hnf::HNF{D}, parent::ParentLattice{D}) where D
         # Stabilizer subgroup: which parent ops fix the superlattice?
-        LG = [op.R for op in parent.space_group]
+        # `lattice_rotations` projects out just the rotation parts of
+        # parent.space_group. HNF symmetry equivalence is rotation-only; the
+        # fractional translations (chunk 1's multilattice space-group machinery)
+        # don't enter here — they affect the labeling enumeration in chunk 5+.
+        LG = lattice_rotations(parent)
         fixingOps = getFixingOps(hnf.matrix, LG)
         n_stabilizer = count(fixingOps)
 
@@ -47,7 +51,7 @@ Supercell(hnf::HNF{D}, parent::ParentLattice{D}) where D = Supercell{D}(hnf, par
 # Field access is the public API for `Supercell`. Use:
 #   `s.hnf`               — the HNF{D} matrix
 #   `s.snf`               — the SNF diagonal (Vector{Int}, length D)
-#   `s.space_group_order` — number of stabilizer ops
+#   `s.n_stabilizer_ops` — number of stabilizer ops
 #   `s.permutation_group` — Vector{Vector{Int}} of supercell-site permutations
 # We deliberately don't define `snf(s::Supercell)` etc. as accessor functions —
 # `snf` would shadow `NormalForms.snf` inside the Enumlib namespace (same
@@ -61,12 +65,12 @@ Supercell(hnf::HNF{D}, parent::ParentLattice{D}) where D = Supercell{D}(hnf, par
 # Dict{Supercell, ...}) work.
 Base.:(==)(a::Supercell{D}, b::Supercell{D}) where D =
     a.hnf == b.hnf && a.snf == b.snf &&
-    a.space_group_order == b.space_group_order &&
+    a.n_stabilizer_ops == b.n_stabilizer_ops &&
     a.permutation_group == b.permutation_group
 function Base.hash(s::Supercell, h::UInt)
     h = hash(s.hnf, h)
     h = hash(s.snf, h)
-    h = hash(s.space_group_order, h)
+    h = hash(s.n_stabilizer_ops, h)
     h = hash(s.permutation_group, h)
     return h
 end
@@ -75,7 +79,7 @@ end
 function Base.show(io::IO, s::Supercell{D}) where D
     n = volume(s.hnf)
     rows = [join(s.hnf.matrix[i, :], " ") for i in 1:D]
-    print(io, "Supercell{$D} (n = $n, |stabilizer| = $(s.space_group_order), ",
+    print(io, "Supercell{$D} (n = $n, |stabilizer| = $(s.n_stabilizer_ops), ",
               "|perm group| = $(length(s.permutation_group)))\n")
     print(io, "  HNF: ", join(rows, " / "), "\n")
     print(io, "  SNF diag: ", s.snf)

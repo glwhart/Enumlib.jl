@@ -67,15 +67,15 @@ using LinearAlgebra: det
         for h in hnfs
             sc = Supercell(h, parent)
             @test prod(sc.snf) == volume(h)
-            @test sc.space_group_order > 0
-            @test sc.space_group_order <= 48                     # ≤ |parent space group|
+            @test sc.n_stabilizer_ops > 0
+            @test sc.n_stabilizer_ops <= 48                     # ≤ |parent space group|
             # Perm group size is (#unique rotation-actions on supercell sites) ×
             # (#translations). Translations contribute n; rotation-actions are at
-            # most `space_group_order` but can be fewer (different rotations can
+            # most `n_stabilizer_ops` but can be fewer (different rotations can
             # induce the same permutation on the supercell). So the perm group
-            # size is a multiple of n, bounded above by space_group_order × n.
+            # size is a multiple of n, bounded above by n_stabilizer_ops × n.
             @test length(sc.permutation_group) % volume(h) == 0
-            @test length(sc.permutation_group) <= sc.space_group_order * volume(h)
+            @test length(sc.permutation_group) <= sc.n_stabilizer_ops * volume(h)
             @test length(sc.permutation_group) >= volume(h)      # at least the translations
         end
     end
@@ -92,8 +92,8 @@ using LinearAlgebra: det
         for h in hnfs
             sc = Supercell(h, parent)
             @test prod(sc.snf) == volume(h)
-            @test sc.space_group_order > 0
-            @test sc.space_group_order <= 24                     # ≤ |HCP space group| = 24
+            @test sc.n_stabilizer_ops > 0
+            @test sc.n_stabilizer_ops <= 24                     # ≤ |HCP space group| = 24
         end
     end
 

@@ -94,6 +94,20 @@ ndset(p::ParentLattice) = length(p.dset)
 n_nonzero_translations(p::ParentLattice; tol::Real = 1e-9) =
     count(op -> any(abs(t) > tol for t in op.t), p.space_group)
 
+"""
+    lattice_rotations(p::ParentLattice{D}) :: Vector{Matrix{Int}}
+
+Project out just the rotation parts of `p.space_group`, dropping the fractional
+translations. This is what callers like `getSymInequivHNFs` and `Supercell`'s
+constructor want — the HNF symmetry equivalence and the supercell stabilizer
+detection are pure-rotation tests; fractional translations don't enter.
+
+Returns a fresh `Vector{Matrix{Int}}` (one allocation per call). Cheap enough for
+typical use; if profiling motivates it, we can later cache this on `ParentLattice`
+itself.
+"""
+lattice_rotations(p::ParentLattice) = [op.R for op in p.space_group]
+
 # Pretty printing — three-line summary (basis is bulky; show it on its own line).
 function Base.show(io::IO, p::ParentLattice{D}) where D
     println(io, "ParentLattice{$D}")
