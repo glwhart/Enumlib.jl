@@ -12,6 +12,7 @@ include("test_parent_lattice.jl")
 include("test_sites.jl")
 include("test_hnf.jl")
 include("test_supercell_selection.jl")
+include("test_enumerate.jl")
 
 @testset "Colorings and HNF enumeration" begin
     # Plain enumeration of colorings

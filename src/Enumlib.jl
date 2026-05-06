@@ -30,6 +30,9 @@ export
     # v0.2 type catalog (chunk 4)
     SupercellSelection, VolumeRange, RadiusBound, ExplicitHNFs,
     enumerate_hnfs,
+    # v0.2 type catalog (chunk 5) — Base.enumerate is extended, not exported separately
+    Enumeration, EnumeratedStructure,
+    to_labeling, default_memory_budget,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -37,11 +40,11 @@ export
     getFixingOps, checkCartesianPt,
     # Permutation groups
     getPermG, getTransGroup,
-    # Coordinates and supercell structures
-    SuperTile, ColoredTile,
+    # Coordinates and supercell structures (chunk 5: SuperTile, ColoredTile,
+    # coloringsOfHNFList removed; replaced by Enumeration / EnumeratedStructure /
+    # enumerate(...))
     gCoordsToOrdinals, ordinalToGcoords,
     getCartesianPts, getOrdinalsFromCartesian, get_nonzero_index,
-    coloringsOfHNFList,
     # Group theory
     isaGroup, generateGroup,
     # Colorings
@@ -337,5 +340,10 @@ include("types/supercell.jl")
 # --- chunk 4 type catalog (depends on chunk 3 types + avg_cell_radius +
 #     getAllHNFs + basesAreEquiv) ---
 include("types/supercell_selection.jl")
+
+# --- chunk 5: output types + the public `enumerate(...)` entry point.
+#     Depends on chunk 1–4 types and the legacy getUniqueColorings (above). ---
+include("types/enumeration.jl")
+include("enumerate.jl")
 
 end # module Enumlib

@@ -1,32 +1,13 @@
-#module LatticeColoringEnumeration
-#using LinearAlgebra
-#export getAllHNFs, tripletList, basesAreEquiv, equivHNFs
-# Might be convenient to have fixing ops and/or group in one of these structs
 export checkCartesianPt, getFixingOps
 
-""" Define a type for a supercell of a parent lattice, its HNF, SNF, gpoints, etc. 
+# Chunk 5 deletions (closes chunk-3-review item 3):
+# - struct SuperTile (3D variant; flagged "not yet used" in original) — removed.
+# - struct ColoredTile (depended on SuperTile) — removed.
+# - function coloringsOfHNFList(hnfs, k, LG) — supplanted by `enumerate(parent,
+#   sites; supercells=ExplicitHNFs(hnfs))` against the new public API.
+# The 2D analog SuperTile (in LatticeEnumeration2D.jl) is a separate orphaned
+# subsystem and is not affected by this cleanup.
 
-(not yet used)
-"""
-struct SuperTile # A supercell of a parent lattice and some of its group properties
-    n::Int64 # size of tile; number of parent lattice tiles in supertile
-    HNF::Matrix{Int64} # HNF of the supercell
-    L::Array{Int64,2} # Left transformation for SNF, maps lattice coordinates to gspace coordinates
-    SNF::Vector{Int64} # Smith normal form of the supercell
-    gPts::Array{Int64,2} # columns are supercell sites in group coordinates
-    function SuperTile(n,HNF)
-        L = snf(HNF).U # inverse because 'smith' package defines the transformation differently than enumlib
-        SNF = daig((HNF).S)
-        gPts = hcat([[i,j,k] for i ∈ 0:SNF[1]-1 for j ∈ 0:SNF[2]-1 for k ∈ 0:SNF[3]-1]...)
-        new(n,HNF,L,SNF,gPts)
-    end
-end
-
-""" Supertile + colorings, an enumeration restricted to one tile (not yet used) """
-struct ColoredTile
-    t::SuperTile # The supercell
-    c::Vector{Vector{Int64}} # The list of colorings for this tile
-end
 
 # Old ParentLattice struct removed — replaced by the parametric ParentLattice{D} in
 # src/types/parent_lattice.jl (chunk 1 of v0.2 plan). Confirmed zero in-repo callers
@@ -214,12 +195,7 @@ function get_nonzero_index(m; reps=1e-13)
     return mask
 end
 
-function coloringsOfHNFList(hnfs,k,LG::Vector{Matrix{Int}})
-   colorings = Vector{Vector{Vector{Int64}}}()
-   for iH ∈ eachindex(hnfs) # few milliseconds
-        fixingOps = getFixingOps(hnfs[iH],LG)
-        permG = getPermG(hnfs[iH],fixingOps,LG)
-        push!(colorings,getUniqueColorings(k,permG))
-    end
-    return colorings
-end
+# `coloringsOfHNFList(hnfs, k, LG)` was deleted in chunk 5. Use the new public
+# entry `enumerate(parent, sites; supercells=ExplicitHNFs(hnfs))` instead — it
+# returns an Enumeration{D, Vector{Int8}} which carries the same labelings (and
+# more: per-structure metadata, supercell back-references).
