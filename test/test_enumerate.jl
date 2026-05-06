@@ -117,7 +117,7 @@ using Enumlib
         @test_nowarn enumerate(parent, sites; supercells = sel, algorithm = :exhaustive)
         # :auto resolves to :exhaustive in chunk 5
         @test_nowarn enumerate(parent, sites; supercells = sel, algorithm = :auto)
-        # :multinomial defers to chunk 6
+        # :multinomial requires a concentration kwarg (chunk 6+).
         @test_throws ArgumentError enumerate(parent, sites; supercells = sel, algorithm = :multinomial)
         # :recursive_stabilizer defers to chunk 8
         @test_throws ArgumentError enumerate(parent, sites; supercells = sel, algorithm = :recursive_stabilizer)

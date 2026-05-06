@@ -3020,7 +3020,7 @@ function enumerate(parent, sites; supercells, concentration = nothing,
                    algorithm = :auto,
                    memory_budget = default_memory_budget(),
                    on_overflow = :error,
-                   partition_threshold = 10_000,
+                   partition_threshold = 100,
                    on_partition_overflow = :error,
                    skip_preflight = false,
                    kwargs...)
@@ -3053,7 +3053,7 @@ end
 
 - **`memory_budget = default_memory_budget()`** — 25% of `Sys.total_memory()`, with a 2 GiB floor. Adapts on the fly to the host: 16 GB laptop → 4 GiB budget; 256 GB workstation → 64 GiB; 4 GB CI runner → 2 GiB floor. **Caveat:** `Sys.total_memory()` reports the *machine's* RAM, not the cgroup/Slurm/Kubernetes allocation in containerized environments. HPC users on a shared cluster need to pass `memory_budget = $SLURM_MEM_PER_NODE` (or similar) explicitly.
 - **`on_overflow = :error`.** Safe default. Forces the caller to either narrow the search or explicitly raise the budget. Saying "yes, I really do mean it" is one kwarg flip away (`on_overflow = :ignore`).
-- **`partition_threshold = 10_000`** + **`on_partition_overflow = :error`.** Paternalistic by design — the naïve caller asking for a wide concentration range with $k \ge 6$ almost certainly didn't mean to enumerate 10⁵+ distinct multiplicity vectors. Power users override (`on_partition_overflow = :ignore`) for literature-validation runs.
+- **`partition_threshold = 100`** + **`on_partition_overflow = :error`.** Paternalistic by design — the naïve caller asking for a wide concentration range with $k \ge 3$ almost certainly didn't mean to enumerate 100+ distinct multiplicity vectors. Power users override (`on_partition_overflow = :ignore`) for literature-validation runs. (Originally 10,000 in the Phase 7 design; reduced to 100 during chunk 6 review.)
 - **`skip_preflight = false`.** Default runs the gate. Power users who already called `estimate_cost` themselves can pass `skip_preflight = true` to skip the redundant Pólya count. Distinct from `on_overflow = :ignore`, which *runs* the estimator and ignores the result.
 
 #### The error type
@@ -3164,9 +3164,9 @@ end
 
 The check is *independent* of the memory-budget gate — the caller can be under budget *per partition* but still trip this gate *across* partitions. Both gates fire upfront in pre-flight; either one can fail the request before any enumeration starts.
 
-Default threshold = 10,000 distinct multiplicity vectors. Above that, the naïve caller almost certainly has the range too wide. The `:warn` and `:ignore` escape hatches are there for the rare expert case that genuinely wants every partition.
+Default threshold = 100 distinct multiplicity vectors (revised down from 10,000 during chunk 6 review). Above that, the naïve caller almost certainly has the range too wide. The `:warn` and `:ignore` escape hatches are there for the rare expert case that genuinely wants every partition.
 
-The 10,000 figure is admittedly arbitrary — picked as a starting point that's "something rather than nothing," not from data. The constant carries a `TODO(v0.3): revisit threshold based on usage telemetry` comment in code, and `EnumerationCostEstimate.partition_count` is always populated (even when under threshold) so users see the magnitudes their workflows naturally produce. Re-tuned in v0.3 once real usage gives us a basis.
+The 100 figure is a starting point — picked from materials-science use-case experience that 100+ distinct multiplicity vectors usually means a sweep was unintended. The constant carries a `TODO(v0.3): revisit threshold based on usage telemetry` comment in code, and `EnumerationCostEstimate.partition_count` is always populated (even when under threshold) so users see the magnitudes their workflows naturally produce. Re-tuned in v0.3 once real usage gives us a basis.
 
 ### 7.7 The Fortran `max_binomial` lineage — what it became
 
@@ -3178,7 +3178,7 @@ For migration / context: the Fortran's `max_binomial = 1E10` (`derivative_struct
 | Trial-and-error tuning (1.0.6: `2.63E14` → `1E10`) | Principled cost model (`EnumerationCostEstimate`) tracking `peak_memory_bytes`, not a guess |
 | No caller override | `on_overflow = :ignore` and `skip_preflight = true` are explicit escape hatches |
 | No diagnostic | `EnumerationTooLargeError` carries the estimate + binary-searched concrete mitigation |
-| No partition awareness | `partition_threshold = 10_000` + `PartitionExplosionError` for high-$k$ ranges |
+| No partition awareness | `partition_threshold = 100` + `PartitionExplosionError` for high-$k$ ranges |
 
 The Julia version is *more* protective by default (machine-aware budget; partition gate; clear errors) but *less* paternalistic (multiple explicit escape hatches). The Fortran's threshold was both arbitrary *and* unoverridable — the worst combination.
 
@@ -3236,7 +3236,7 @@ Three classes of user protection I considered and explicitly defer:
 > **Claude:** Locked — paternalistic default with explicit "revisit me" hook. v0.2 ships:
 >
 > ```julia
-> partition_threshold::Int = 10_000        # default: error above this
+> partition_threshold::Int = 100        # default: error above this (revised down from 10_000 in chunk 6 review)
 > on_partition_overflow::Symbol = :error   # :error, :warn, :ignore — same policy as on_overflow
 > ```
 >

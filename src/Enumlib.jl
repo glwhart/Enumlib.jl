@@ -33,6 +33,12 @@ export
     # v0.2 type catalog (chunk 5) — Base.enumerate is extended, not exported separately
     Enumeration, EnumeratedStructure,
     to_labeling, default_memory_budget,
+    # v0.2 type catalog (chunk 6)
+    Concentration, Concentration_ratio, Concentration_count,
+    ConcentrationRange, n_species,
+    multiplicities, concentrations_in_range,
+    multinomial_count, multinomial_hash, multinomial_unhash,
+    EmptyEnumerationError, PartitionExplosionError,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -344,6 +350,11 @@ include("types/supercell_selection.jl")
 # --- chunk 5: output types + the public `enumerate(...)` entry point.
 #     Depends on chunk 1–4 types and the legacy getUniqueColorings (above). ---
 include("types/enumeration.jl")
+# --- chunk 6: Concentration + multinomial algorithm + Phase-7 error types ---
+include("types/concentration.jl")
+include("types/errors.jl")
+include("algorithms/multinomial.jl")
+# --- public entry; depends on all of the above ---
 include("enumerate.jl")
 
 end # module Enumlib
