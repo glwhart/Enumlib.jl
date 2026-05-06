@@ -17,13 +17,22 @@
 """
     multinomial_count(multiplicities::AbstractVector{<:Integer}) :: BigInt
 
-Compute the multinomial coefficient `multinomial(n; a_1, ..., a_k)` exactly using `BigInt` arithmetic. `Combinatorics.multinomial` returns an `Int` and silently overflows for moderate cases (binary at n=70 already overflows `Int64`); we use `BigInt` here so the cost-estimator gate has trustworthy numbers.
+Compute the multinomial coefficient `multinomial(n; a_1, ..., a_k)` exactly using the iterative-binomial identity:
 
-Called once per (supercell, concentration) pair during pre-flight; not in any inner loop.
+    multinomial(a_1, ..., a_k) = ∏_{i=1..k} binomial(a_1 + ... + a_i, a_i)
+
+Mathematically equivalent to `n! / ∏ a_i!`, but evaluates one binomial at a time so factors cancel as we go — no wasteful `n!` intermediate. Returns `BigInt` so the result is exact for arbitrary input (binary at n=70 already overflows `Int64`); the BigInt cost is ~µs per call, negligible since `multinomial_count` runs once per (supercell, concentration) pair during pre-flight, never in an inner loop.
+
+See `docs/notes/chunk6-review.md` for the full tradeoff analysis (why not `Combinatorics.multinomial` + try/catch, why not the factorial form, inner-loop overflow safety proof).
 """
-function multinomial_count(multiplicities::AbstractVector{<:Integer})
-    n = sum(multiplicities)
-    return factorial(big(n)) ÷ prod(factorial(big(a)) for a in multiplicities)
+function multinomial_count(multiplicities::AbstractVector{<:Integer})::BigInt
+    s = BigInt(0)
+    result = BigInt(1)
+    for k in multiplicities
+        s += k
+        result *= binomial(s, BigInt(k))
+    end
+    return result
 end
 
 """
