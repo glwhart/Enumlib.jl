@@ -84,46 +84,7 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
             "For unrestricted enumeration use :exhaustive (or :auto with concentration=nothing)."))
     end
 
-    # ---- Multilattice gate (chunk 5 single-lattice only) ----
-    if ndset(parent) > 1
-        throw(ArgumentError(
-            "single-lattice parents only (`length(parent.dset) == 1`). Got dset of " *
-            "length $(ndset(parent)). Multilattice support (HCP, perovskite, slab) " *
-            "requires extending getPermG to handle n × n_D sites; deferred to v0.3."))
-    end
-
-    # ---- Sites validation: single-site only (chunk 5) ----
-    if length(sites.list) != 1
-        throw(ArgumentError(
-            "single-site Sites only. Got $(length(sites.list)) sites. " *
-            "Multi-site Sites (per-site `allowed_labels`, perovskite-style site " *
-            "restrictions) requires the multinomial-restricted algorithm; chunk 6.5."))
-    end
-
-    site = sites.list[1]
-    is_active(site) || throw(ArgumentError(
-        "the only site is inactive (`length(allowed_labels) == 1`); nothing to enumerate."))
-
-    allowed = sort(collect(site.allowed_labels))
-    k = length(allowed)
-    if allowed != collect(0:k-1)
-        throw(ArgumentError(
-            "zero-indexed dense allowed_labels required (`{0, 1, ..., k-1}`). " *
-            "Got `$(site.allowed_labels)`. Sparse / non-zero-indexed labels — chunk 6.5."))
-    end
-
-    # Validate concentration consistency with k.
-    if concentration isa Concentration
-        n_species(concentration) == k ||
-            throw(ArgumentError(
-                "concentration has $(n_species(concentration)) species but " *
-                "allowed_labels has k=$k species."))
-    elseif concentration isa ConcentrationRange
-        n_species(concentration) == k ||
-            throw(ArgumentError(
-                "concentration range has $(n_species(concentration)) species but " *
-                "allowed_labels has k=$k species."))
-    end
+    k = _validate_enumerate_inputs(parent, sites, concentration)
 
     # ---- Resolve supercells ----
     hnfs = enumerate_hnfs(supercells, parent)
@@ -230,3 +191,147 @@ The default `memory_budget` for `enumerate(...)` — adapts to the host machine.
 **Caveat:** `Sys.total_memory()` reports the *machine's* RAM, not the cgroup / Slurm / Kubernetes allocation in containerized environments. HPC users on a shared cluster need to pass `memory_budget = \$SLURM_MEM_PER_NODE` (or similar) explicitly.
 """
 default_memory_budget() = max(2 * 2^30, Int(Sys.total_memory() ÷ 4))
+
+# ------------------------------------------------------------------------------
+# Shared input-validation helper used by both enumerate(...) and count_inequivalent(...).
+# Chunk 5/6 single-lattice / single-site / dense-zero-indexed gates plus
+# concentration-consistency-with-k. Returns `k` (the species count).
+# ------------------------------------------------------------------------------
+
+function _validate_enumerate_inputs(parent::ParentLattice{D}, sites::Sites{D},
+                                    concentration) where D
+    if ndset(parent) > 1
+        throw(ArgumentError(
+            "single-lattice parents only (`length(parent.dset) == 1`). Got dset of " *
+            "length $(ndset(parent)). Multilattice support (HCP, perovskite, slab) " *
+            "requires extending getPermG to handle n × n_D sites; deferred to v0.3."))
+    end
+
+    if length(sites.list) != 1
+        throw(ArgumentError(
+            "single-site Sites only. Got $(length(sites.list)) sites. " *
+            "Multi-site Sites (per-site `allowed_labels`, perovskite-style site " *
+            "restrictions) requires the multinomial-restricted algorithm; chunk 6.5."))
+    end
+
+    site = sites.list[1]
+    is_active(site) || throw(ArgumentError(
+        "the only site is inactive (`length(allowed_labels) == 1`); nothing to enumerate."))
+
+    allowed = sort(collect(site.allowed_labels))
+    k = length(allowed)
+    if allowed != collect(0:k-1)
+        throw(ArgumentError(
+            "zero-indexed dense allowed_labels required (`{0, 1, ..., k-1}`). " *
+            "Got `$(site.allowed_labels)`. Sparse / non-zero-indexed labels — chunk 6.5."))
+    end
+
+    if concentration isa Concentration
+        n_species(concentration) == k ||
+            throw(ArgumentError(
+                "concentration has $(n_species(concentration)) species but " *
+                "allowed_labels has k=$k species."))
+    elseif concentration isa ConcentrationRange
+        n_species(concentration) == k ||
+            throw(ArgumentError(
+                "concentration range has $(n_species(concentration)) species but " *
+                "allowed_labels has k=$k species."))
+    end
+
+    return k
+end
+
+# ------------------------------------------------------------------------------
+# count_inequivalent — chunk 7 public top-level, Pólya / Burnside counting.
+# ------------------------------------------------------------------------------
+
+"""
+    count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
+                       supercells::SupercellSelection,
+                       concentration = nothing,
+                       include_superperiodic::Bool = false,
+                       breakdown::Bool = false) -> BigInt or InequivalentCount{D}
+
+Count symmetry-inequivalent derivative structures *without enumerating them*. Pólya / Burnside-averaged orbit count.
+
+- `include_superperiodic = false` (default): primitive (aperiodic) count via Möbius inversion. Matches `length(enumerate(parent, sites; ..., include_superperiodic = false))`.
+- `include_superperiodic = true`: full Burnside orbit count, super-periodic included. Matches `length(enumerate(parent, sites; ..., include_superperiodic = true))`.
+- `breakdown = false` (default) returns the `BigInt` total.
+- `breakdown = true` returns `InequivalentCount{D}` with per-volume / per-concentration / per-HNF breakdowns.
+
+Cost: O(|G| · n) per supercell for the unrestricted case; with Möbius correction add subgroup-enumeration of `T` (cheap for our v0.2 sizes). Sub-second across the chunk-6 corpus.
+
+See `research.md` §5.2.1 for the super-periodicity policy and `research.md` §4.6 / §7.2 for the underlying Pólya machinery.
+"""
+function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
+                            supercells::SupercellSelection,
+                            concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
+                            include_superperiodic::Bool = false,
+                            breakdown::Bool = false) where D
+    k = _validate_enumerate_inputs(parent, sites, concentration)
+
+    hnfs = enumerate_hnfs(supercells, parent)
+
+    total = BigInt(0)
+    by_volume_dict = Dict{Int, BigInt}()
+    by_concentration_dict = Dict{Concentration, BigInt}()
+    by_hnf = Tuple{HNF{D}, BigInt}[]
+
+    for hnf in hnfs
+        sc = Supercell(hnf, parent)
+        n = volume(hnf)
+        snf_diag = (Int(sc.snf[1]), Int(sc.snf[2]), Int(sc.snf[3]))
+
+        # Resolve concentration(s) to enumerate at this supercell volume.
+        concs_here = if concentration === nothing
+            Union{Concentration, Nothing}[nothing]
+        elseif concentration isa Concentration
+            try
+                multiplicities(concentration, n)  # validates divisibility
+                Union{Concentration, Nothing}[concentration]
+            catch e
+                e isa EmptyEnumerationError || rethrow()
+                Union{Concentration, Nothing}[]
+            end
+        else  # ConcentrationRange
+            Union{Concentration, Nothing}[c for c in concentrations_in_range(concentration, n)]
+        end
+
+        hnf_count = BigInt(0)
+        for c in concs_here
+            count_here = if c === nothing
+                # Unrestricted (no concentration).
+                if include_superperiodic
+                    Polya.polya_count(sc.permutation_group, k)
+                else
+                    Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, k)
+                end
+            else
+                mults = multiplicities(c, n)
+                if include_superperiodic
+                    Polya.polya_count(sc.permutation_group, mults)
+                else
+                    Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, mults)
+                end
+            end
+
+            total += count_here
+            hnf_count += count_here
+            by_volume_dict[n] = get(by_volume_dict, n, BigInt(0)) + count_here
+            if c isa Concentration && concentration isa ConcentrationRange
+                by_concentration_dict[c] = get(by_concentration_dict, c, BigInt(0)) + count_here
+            end
+        end
+
+        if breakdown
+            push!(by_hnf, (hnf, hnf_count))
+        end
+    end
+
+    breakdown || return total
+
+    by_volume = sort([(n, c) for (n, c) in by_volume_dict]; by = first)
+    by_concentration = sort([(c, ct) for (c, ct) in by_concentration_dict];
+                            by = x -> x[1].fractions)
+    return InequivalentCount{D}(total, by_volume, by_concentration, by_hnf)
+end

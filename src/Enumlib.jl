@@ -39,6 +39,9 @@ export
     multiplicities, concentrations_in_range,
     multinomial_count, multinomial_hash, multinomial_unhash,
     EmptyEnumerationError, PartitionExplosionError,
+    # v0.2 type catalog (chunk 7) — Polya + counting
+    InequivalentCount, count_inequivalent,
+    polya_count, cycle_structure, aperiodic_orbit_count,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -362,6 +365,10 @@ include("types/enumeration.jl")
 include("types/concentration.jl")
 include("types/errors.jl")
 include("algorithms/multinomial.jl")
+# --- chunk 7: Polya submodule + InequivalentCount type ---
+include("algorithms/polya.jl")
+include("types/inequivalent_count.jl")
+using .Polya: polya_count, cycle_structure, aperiodic_orbit_count
 # --- public entry; depends on all of the above ---
 include("enumerate.jl")
 
