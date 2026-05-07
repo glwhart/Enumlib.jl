@@ -15,6 +15,7 @@ include("test_supercell_selection.jl")
 include("test_enumerate.jl")
 include("test_concentration.jl")
 include("test_polya.jl")
+include("test_cost_estimate.jl")
 
 @testset "Colorings and HNF enumeration" begin
     # Plain enumeration of colorings

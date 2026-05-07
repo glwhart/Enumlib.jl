@@ -86,6 +86,20 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     k = _validate_enumerate_inputs(parent, sites, concentration)
 
+    # ---- Pre-flight cost gate (chunk 7.5) ----
+    if !skip_preflight
+        estimate = estimate_cost(parent, sites; supercells, concentration,
+                                 algorithm, include_superperiodic)
+        if estimate.peak_memory_bytes > memory_budget
+            if on_overflow === :error
+                throw(EnumerationTooLargeError(estimate, memory_budget))
+            elseif on_overflow === :warn
+                @warn "Predicted peak memory exceeds memory_budget" estimate memory_budget
+            end
+            # :ignore falls through.
+        end
+    end
+
     # ---- Resolve supercells ----
     hnfs = enumerate_hnfs(supercells, parent)
     isempty(hnfs) && return Enumeration{D, Vector{Int8}}(
@@ -334,4 +348,153 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
     by_concentration = sort([(c, ct) for (c, ct) in by_concentration_dict];
                             by = x -> x[1].fractions)
     return InequivalentCount{D}(total, by_volume, by_concentration, by_hnf)
+end
+
+# ------------------------------------------------------------------------------
+# estimate_cost — chunk 7.5 public top-level. Returns EnumerationCostEstimate
+# without enumerating. Internally consulted by enumerate(...)'s pre-flight gate.
+# ------------------------------------------------------------------------------
+
+"""
+    estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
+                  supercells::SupercellSelection,
+                  concentration = nothing,
+                  algorithm::Symbol = :auto,
+                  include_superperiodic::Bool = false) -> EnumerationCostEstimate
+
+Predict the cost of `enumerate(...)` *before* running it. Useful as a pre-flight check (sized by humans) and as the engine behind `enumerate(...)`'s memory-budget gate (sized by the gate).
+
+Returns an [`EnumerationCostEstimate`](@ref) with the predicted structure count, peak-memory prediction, chosen algorithm, selection kind, partition count, and any advisory notes. See `research.md` §7.2.
+
+Cost: same as `count_inequivalent(...)` — milliseconds even for hundreds of supercells. The Pólya count is the dominant term; per-algorithm memory is closed-form.
+"""
+function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
+                       supercells::SupercellSelection,
+                       concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
+                       algorithm::Symbol = :auto,
+                       include_superperiodic::Bool = false) where D
+    k = _validate_enumerate_inputs(parent, sites, concentration)
+
+    # Resolve algorithm (same logic as enumerate's :auto dispatch).
+    chosen = if algorithm == :auto
+        concentration === nothing ? :exhaustive : :multinomial
+    else
+        algorithm
+    end
+
+    # Reject algorithms that aren't implemented yet (matches enumerate's gate).
+    if chosen == :multinomial_restricted
+        throw(ArgumentError(
+            "algorithm = :multinomial_restricted is reserved for chunk 6.5."))
+    elseif chosen == :recursive_stabilizer
+        throw(ArgumentError(
+            "algorithm = :recursive_stabilizer is reserved for chunk 8."))
+    elseif chosen == :bdd
+        throw(ArgumentError("algorithm = :bdd is reserved for v0.3+."))
+    elseif chosen != :exhaustive && chosen != :multinomial
+        throw(ArgumentError(
+            "unknown algorithm `:$chosen`. Supported: :exhaustive, :multinomial, :auto."))
+    end
+
+    if chosen == :multinomial && concentration === nothing
+        throw(ArgumentError(
+            "algorithm = :multinomial requires a `concentration` kwarg."))
+    end
+
+    notes = String[]
+    if algorithm == :auto
+        push!(notes, "Auto-dispatch chose :$chosen " *
+                     "(concentration $(concentration === nothing ? "nothing" : "supplied"))")
+    end
+
+    # Resolve the HNF list (deferred work — same call enumerate makes).
+    hnfs = enumerate_hnfs(supercells, parent)
+
+    # Total count via the chunk-7 machinery.
+    total_count = count_inequivalent(parent, sites; supercells, concentration,
+                                     include_superperiodic)
+
+    # Peak memory.
+    peak_memory = _predict_peak_memory(hnfs, parent, k, concentration, chosen, total_count)
+
+    # Selection kind.
+    selection_kind = supercells isa VolumeRange ? :volume_range :
+                     supercells isa RadiusBound ? :radius_bound : :explicit_hnfs
+
+    # Partition count (chunk 6 already exposes the partition machinery).
+    partition_count = if concentration isa ConcentrationRange
+        sum(length(concentrations_in_range(concentration, volume(h))) for h in hnfs;
+            init = 0)
+    else
+        1
+    end
+
+    return EnumerationCostEstimate(total_count, peak_memory, chosen,
+                                   selection_kind, partition_count, notes)
+end
+
+# ------------------------------------------------------------------------------
+# Memory prediction.
+# ------------------------------------------------------------------------------
+
+# Peak memory prediction for the given algorithm, in bytes.
+#
+# - Bitmap: BitVector(C) costs ceil(C / 8) bytes per HNF (or per (HNF, conc)
+#   for :multinomial). The peak across the run is the max of these per-HNF
+#   bitmaps.
+# - Output: Vector{EnumeratedStructure{D, Vector{Int8}}} of length total_count.
+#   Each EnumeratedStructure carries a Vector{Int8} labeling of length n
+#   (worst-case at the largest HNF), plus a few Ints. We approximate with a
+#   per-structure size of ~64 bytes plus the labeling vector.
+#
+# Total peak ≈ max_per_HNF_bitmap + final_output_size. (Upper bound: at
+# end-of-run, output holds all structures and the last bitmap is still alive.)
+function _predict_peak_memory(hnfs, parent, k::Int, concentration, algorithm::Symbol,
+                              total_count::BigInt)::Int
+    isempty(hnfs) && return 0
+
+    n_max = maximum(volume(h) for h in hnfs)
+    output_per_struct = 64 + n_max * sizeof(Int8)   # struct overhead + labeling
+    output_total = clamp(Int(min(total_count, typemax(Int) ÷ max(1, output_per_struct))),
+                         0, typemax(Int)) * output_per_struct
+
+    bitmap_peak = 0
+    for hnf in hnfs
+        n = volume(hnf)
+        if algorithm == :exhaustive
+            # BitVector(k^n) bytes.
+            C = BigInt(k)^n
+            bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
+        else  # :multinomial
+            # Per (HNF, concentration) bitmap. Take max across concentrations
+            # at this volume.
+            concs_here = if concentration isa Concentration
+                try
+                    multiplicities(concentration, n)
+                    [concentration]
+                catch e
+                    e isa EmptyEnumerationError || rethrow()
+                    Concentration[]
+                end
+            elseif concentration isa ConcentrationRange
+                concentrations_in_range(concentration, n)
+            else
+                Concentration[]   # shouldn't happen for :multinomial, but safe
+            end
+            for c in concs_here
+                mults = multiplicities(c, n)
+                C = multinomial_count(mults)
+                bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
+            end
+        end
+    end
+
+    return clamp(bitmap_peak + output_total, 0, typemax(Int))
+end
+
+# BitVector(C) costs ceil(C / 8) bytes (rounded up) plus a small Vector header.
+# Clamp to typemax(Int) so absurd inputs don't overflow the field type.
+function _bitmap_bytes(C::BigInt)::Int
+    bytes = (C + BigInt(7)) ÷ BigInt(8)
+    return Int(min(bytes, BigInt(typemax(Int))))
 end

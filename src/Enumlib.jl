@@ -3,6 +3,7 @@ module Enumlib
 using Combinatorics
 using LinearAlgebra
 using NormalForms
+using Printf
 using Spacey, MinkowskiReduction
 using DataStructures: IntDisjointSets, find_root!, union!
 
@@ -42,6 +43,9 @@ export
     # v0.2 type catalog (chunk 7) — Polya + counting
     InequivalentCount, count_inequivalent,
     polya_count, cycle_structure, aperiodic_orbit_count,
+    # v0.2 type catalog (chunk 7.5) — cost estimator + memory-budget gate
+    EnumerationCostEstimate, EnumerationTooLargeError,
+    estimate_cost, format_bytes,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -362,7 +366,10 @@ include("types/supercell_selection.jl")
 #     Depends on chunk 1–4 types and the legacy getUniqueColorings (above). ---
 include("types/enumeration.jl")
 # --- chunk 6: Concentration + multinomial algorithm + Phase-7 error types ---
+# Note: cost_estimate.jl must precede errors.jl because EnumerationTooLargeError
+# (chunk 7.5) carries an EnumerationCostEstimate as a struct field.
 include("types/concentration.jl")
+include("types/cost_estimate.jl")
 include("types/errors.jl")
 include("algorithms/multinomial.jl")
 # --- chunk 7: Polya submodule + InequivalentCount type ---

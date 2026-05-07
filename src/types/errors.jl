@@ -61,3 +61,31 @@ function Base.showerror(io::IO, e::PartitionExplosionError)
           "\n  • Override the gate: pass `on_partition_overflow = :ignore` (you accept the risk).",
           "\n  • Raise the threshold: pass `partition_threshold = $(2 * e.threshold)`.")
 end
+
+"""
+    EnumerationTooLargeError(estimate::EnumerationCostEstimate, budget_bytes::Int)
+
+Thrown by `enumerate(...)` when the pre-flight `EnumerationCostEstimate`'s `peak_memory_bytes` exceeds the configured `memory_budget`. Carries the full estimate so the user can see exactly what would have been allocated, plus the budget that was tripped.
+
+Per Phase 7 §7.3, the gate is `on_overflow = :error` by default; expert users can pass `:warn` (warns but proceeds) or `:ignore` (silent pass-through), or set `skip_preflight = true` to bypass the estimator entirely.
+"""
+struct EnumerationTooLargeError <: Exception
+    estimate::EnumerationCostEstimate
+    budget_bytes::Int
+end
+
+function Base.showerror(io::IO, e::EnumerationTooLargeError)
+    pred = format_bytes(e.estimate.peak_memory_bytes)
+    bdgt = format_bytes(e.budget_bytes)
+    print(io, "EnumerationTooLargeError: predicted peak memory ", pred,
+              " exceeds memory_budget ", bdgt, ".",
+          "\n  Predicted structure count : ", e.estimate.total_count,
+          "\n  Chosen algorithm          : :", e.estimate.chosen_algorithm,
+          "\n  Selection                 : :", e.estimate.selection_kind,
+          "\n\nMitigations to consider:",
+          "\n  • Narrow the supercells (smaller VolumeRange / tighter RadiusBound).",
+          "\n  • Add a `concentration` to switch from :exhaustive to :multinomial.",
+          "\n  • Pass `on_overflow = :warn` or `:ignore` to bypass the gate.",
+          "\n  • Pass `memory_budget = <bigger>` if you have the RAM.",
+          "\n  • Pass `skip_preflight = true` to skip estimation entirely.")
+end
