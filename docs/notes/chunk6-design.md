@@ -1,5 +1,8 @@
 # Chunk 6 — `Concentration` + `ConcentrationRange` + multinomial (2012) algorithm (design)
 
+> **Correction notice (post-chunk 7, 2026-05-07).** Test plan item 9 below proposes "Ag–Pt at 15:17 in 32-atom supercell, known reference: 1003 inequivalent structures (HNF 2012 Table 1)." **The 1003 number is wrong — it was a Claude misremembering; no source in the HF 2012 paper matches it.** `count_inequivalent` at this concentration / volume returns ~1.2 billion when summed across all 102 inequivalent HNFs (which is what the `enumerate(...)` API would also return). The chunk-7 validation strategy was redirected to a 44-test cross-check of `count_inequivalent` against `length(enumerate(...))` at every chunk-5/6/6.2 locked reference value, which is strictly stronger than a single literature number. See `chunk7-design.md` correction notice + `v0.2-plan.md` chunk-7 entry. The body below is preserved as historical record.
+
+
 Pre-implementation design doc per the working agreement. Sign off (or revise) before I write code.
 
 **Design references:** `research.md` §4.3 (Hart-Nelson-Forcade 2012 algorithm digest), §6.5 (`Concentration` and `ConcentrationRange` types), §5.4 (dispatch decision tree). Plus chunk-2-review item 5 (`Concentration_ratio` / `Concentration_count` named-constructor decision). Plus `docs/notes/v0.2-plan.md` Chunk 6.

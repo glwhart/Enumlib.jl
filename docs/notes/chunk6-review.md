@@ -1,5 +1,8 @@
 # Chunk 6 — review and revise round
 
+> **Correction notice (post-chunk 7, 2026-05-07).** Item B below ("Ag–Pt 1003 deferred") refers to "1003 inequivalent structures" as the canonical HF 2012 §4 reference. **The 1003 number is wrong — it was a Claude misremembering with no verifiable source in the paper.** `count_inequivalent` at 15:17 in n=32 sums ~1.2 billion across all 102 inequivalent HNFs. The "Ag-Pt 1003" regression test was dropped in chunk 7 in favor of cross-validating `count_inequivalent` against `length(enumerate(...))` at every chunk-5/6/6.2 locked reference value (44 tests, all green). See `chunk7-design.md` correction notice + `v0.2-plan.md` chunk-7 entry. The body below is preserved as historical record.
+
+
 This file collects review items on chunk 6 (`Concentration` + `ConcentrationRange` types, the multinomial-hash 2012 algorithm port, the `enumerate(...)` extension with `concentration` kwarg + `:auto` dispatch + partition-explosion gate, and the `EmptyEnumerationError` / `PartitionExplosionError` introductions).
 
 Workflow:

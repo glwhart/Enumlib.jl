@@ -1,5 +1,7 @@
 # Chunk 7 — `Enumlib.Polya` submodule + `count_inequivalent` (design)
 
+> **Correction notice (post-implementation, 2026-05-07).** This document contains many references to "Ag–Pt 15:17 → 1003 inequivalent structures (HF 2012 Table 1)" as a planned reference test. **That 1003 number was a Claude misremembering with no verifiable source in the HF 2012 paper.** Our `count_inequivalent(...; supercells = VolumeRange(32:32))` at 15:17 returns ~1.2 billion when summed across all 102 inequivalent HNFs at volume 32, which agrees with what `enumerate(...)` would return. The "1003" target is wrong in this doc wherever it appears below; please ignore those specific references. The actual chunk-7 validation in `test/test_polya.jl` cross-checks `count_inequivalent` against `length(enumerate(...))` at every chunk-5/6/6.2 locked reference value (44 tests), which is strictly stronger validation than any single literature number would be. Genuine HF-2012 reference counts (per-HNF or at the canonical 2×2×2 supercell) are queued for v0.2.0 polish. The body below is preserved as historical record of the design discussion.
+
 Pre-implementation design doc per the working agreement. Sign off (or revise) before I write code.
 
 **Design references:** `research.md` §4.6 (Rosenbrock 2016 numerical Pólya), §5.2 (`count_inequivalent` API), §6.9 (`InequivalentCount` type), §7.2 (cost estimator), `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`. Plus `docs/notes/v0.2-plan.md` "Chunks 7–8" section.
