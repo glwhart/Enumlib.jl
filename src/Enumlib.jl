@@ -46,6 +46,8 @@ export
     # v0.2 type catalog (chunk 7.5) — cost estimator + memory-budget gate
     EnumerationCostEstimate, EnumerationTooLargeError,
     estimate_cost, format_bytes,
+    # v0.2 type catalog (chunk 8) — Morgan 2017 recursive-stabilizer tree
+    getUniqueColorings_recursive_stabilizer,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -372,6 +374,8 @@ include("types/concentration.jl")
 include("types/cost_estimate.jl")
 include("types/errors.jl")
 include("algorithms/multinomial.jl")
+# --- chunk 8: Morgan 2017 recursive-stabilizer tree (uses chunk-6 hash) ---
+include("algorithms/recursive_stabilizer.jl")
 # --- chunk 7: Polya submodule + InequivalentCount type ---
 include("algorithms/polya.jl")
 include("types/inequivalent_count.jl")

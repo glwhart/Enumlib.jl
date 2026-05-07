@@ -16,6 +16,7 @@ include("test_enumerate.jl")
 include("test_concentration.jl")
 include("test_polya.jl")
 include("test_cost_estimate.jl")
+include("test_recursive_stabilizer.jl")
 
 @testset "Colorings and HNF enumeration" begin
     # Plain enumeration of colorings

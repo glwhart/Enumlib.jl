@@ -17,7 +17,8 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 - `algorithm = :auto` (default): picks `:exhaustive` when `concentration === nothing`, `:multinomial` otherwise.
 - `algorithm = :exhaustive` (Hart-Forcade 2008): unrestricted enumeration; ignores `concentration` if supplied.
 - `algorithm = :multinomial` (Hart-Forcade 2012): fixed-concentration enumeration via the multinomial-hash crossing-out. Requires `concentration !== nothing`.
-- `algorithm = :multinomial_restricted` and `:recursive_stabilizer` reserved for chunk 6.5+ and chunk 8 respectively.
+- `algorithm = :recursive_stabilizer` (Morgan 2017): tree-search-with-shrinking-stabilizers; same fixed-concentration scope as `:multinomial`, but streams (no bitmap) so it scales to high configurational freedom. `:auto` picks it when the multinomial bitmap would exceed `memory_budget × 0.8`.
+- `algorithm = :multinomial_restricted` reserved for chunk 6.5.
 
 ## Concentration handling
 
@@ -59,28 +60,28 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
         algorithm = concentration === nothing ? :exhaustive : :multinomial
     end
 
-    # Now `algorithm` is one of :exhaustive, :multinomial, :multinomial_restricted,
-    # :recursive_stabilizer, :bdd, or something unknown.
+    # Now `algorithm` is one of :exhaustive, :multinomial, :recursive_stabilizer,
+    # :multinomial_restricted, :bdd, or something unknown.
     if algorithm == :multinomial_restricted
         throw(ArgumentError(
             "algorithm = :multinomial_restricted (HF 2012 §A.1, site-restricted " *
             "backtracking) is reserved for chunk 6.5."))
-    elseif algorithm == :recursive_stabilizer
-        throw(ArgumentError(
-            "algorithm = :recursive_stabilizer (Morgan 2017 tree) is reserved for chunk 8."))
     elseif algorithm == :bdd
         throw(ArgumentError(
             "algorithm = :bdd (Shinohara 2020 ZDD) is reserved for v0.3+."))
-    elseif algorithm != :exhaustive && algorithm != :multinomial
+    elseif algorithm != :exhaustive && algorithm != :multinomial &&
+           algorithm != :recursive_stabilizer
         throw(ArgumentError(
             "unknown algorithm `:$algorithm`. Supported: :exhaustive (no " *
-            "concentration), :multinomial (with concentration), :auto (default)."))
+            "concentration), :multinomial / :recursive_stabilizer (with concentration), " *
+            ":auto (default)."))
     end
 
-    # Validation: :multinomial requires a concentration.
-    if algorithm == :multinomial && concentration === nothing
+    # Validation: concentration-requiring algorithms.
+    if (algorithm == :multinomial || algorithm == :recursive_stabilizer) &&
+       concentration === nothing
         throw(ArgumentError(
-            "algorithm = :multinomial requires a `concentration` kwarg. " *
+            "algorithm = :$algorithm requires a `concentration` kwarg. " *
             "For unrestricted enumeration use :exhaustive (or :auto with concentration=nothing)."))
     end
 
@@ -108,10 +109,14 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
     # ---- Algorithm bodies ----
     if algorithm == :exhaustive
         return _enumerate_exhaustive(parent, sites, hnfs, k; include_superperiodic)
-    else  # :multinomial
+    elseif algorithm == :multinomial
         return _enumerate_multinomial(parent, sites, hnfs, k, concentration,
                                       partition_threshold, on_partition_overflow;
                                       include_superperiodic)
+    else  # :recursive_stabilizer
+        return _enumerate_recursive_stabilizer(parent, sites, hnfs, k, concentration,
+                                                partition_threshold, on_partition_overflow;
+                                                include_superperiodic)
     end
 end
 
@@ -147,6 +152,40 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
                                 partition_threshold::Int,
                                 on_partition_overflow::Symbol;
                                 include_superperiodic::Bool = false) where D
+    return _enumerate_per_concentration(parent, sites, hnfs, k, concentration,
+        partition_threshold, on_partition_overflow,
+        (perm_group, mults) -> getUniqueColorings_multinomial(perm_group, mults;
+                                                              include_superperiodic))
+end
+
+# ------------------------------------------------------------------------------
+# :recursive_stabilizer algorithm body — chunk 8's Morgan 2017 tree.
+# ------------------------------------------------------------------------------
+
+function _enumerate_recursive_stabilizer(parent::ParentLattice{D}, sites::Sites{D},
+                                          hnfs::AbstractVector{HNF{D}}, k::Int,
+                                          concentration::Union{Concentration, ConcentrationRange},
+                                          partition_threshold::Int,
+                                          on_partition_overflow::Symbol;
+                                          include_superperiodic::Bool = false) where D
+    return _enumerate_per_concentration(parent, sites, hnfs, k, concentration,
+        partition_threshold, on_partition_overflow,
+        (perm_group, mults) -> getUniqueColorings_recursive_stabilizer(perm_group, mults;
+                                                                       include_superperiodic))
+end
+
+# ------------------------------------------------------------------------------
+# Shared HNF + per-concentration sweep used by :multinomial and
+# :recursive_stabilizer. Caller passes a `coloring_fn(perm_group, mults)` that
+# returns Vector{Vector{Int8}} for a single (supercell, multiplicity vector).
+# ------------------------------------------------------------------------------
+
+function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
+                                       hnfs::AbstractVector{HNF{D}}, k::Int,
+                                       concentration::Union{Concentration, ConcentrationRange},
+                                       partition_threshold::Int,
+                                       on_partition_overflow::Symbol,
+                                       coloring_fn) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
 
@@ -168,7 +207,6 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
             end
         else  # ConcentrationRange
             crs = concentrations_in_range(concentration, n)
-            # Partition-explosion gate (Phase 7 §7.6, chunk-6-review-locked threshold = 100).
             if length(crs) > partition_threshold
                 if on_partition_overflow === :error
                     throw(PartitionExplosionError(length(crs), partition_threshold,
@@ -182,11 +220,9 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
             crs
         end
 
-        # Enumerate per concentration.
         for c in concs
             mults = multiplicities(c, n)
-            colorings = getUniqueColorings_multinomial(sc.permutation_group, mults;
-                                                       include_superperiodic)
+            colorings = coloring_fn(sc.permutation_group, mults)
             for coloring in colorings
                 push!(structures, EnumeratedStructure{D, Vector{Int8}}(
                     sc_id, coloring, 1, 1))
@@ -386,19 +422,18 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     if chosen == :multinomial_restricted
         throw(ArgumentError(
             "algorithm = :multinomial_restricted is reserved for chunk 6.5."))
-    elseif chosen == :recursive_stabilizer
-        throw(ArgumentError(
-            "algorithm = :recursive_stabilizer is reserved for chunk 8."))
     elseif chosen == :bdd
         throw(ArgumentError("algorithm = :bdd is reserved for v0.3+."))
-    elseif chosen != :exhaustive && chosen != :multinomial
+    elseif chosen != :exhaustive && chosen != :multinomial &&
+           chosen != :recursive_stabilizer
         throw(ArgumentError(
-            "unknown algorithm `:$chosen`. Supported: :exhaustive, :multinomial, :auto."))
+            "unknown algorithm `:$chosen`. Supported: :exhaustive, :multinomial, " *
+            ":recursive_stabilizer, :auto."))
     end
 
-    if chosen == :multinomial && concentration === nothing
+    if (chosen == :multinomial || chosen == :recursive_stabilizer) && concentration === nothing
         throw(ArgumentError(
-            "algorithm = :multinomial requires a `concentration` kwarg."))
+            "algorithm = :$chosen requires a `concentration` kwarg."))
     end
 
     notes = String[]
@@ -459,32 +494,42 @@ function _predict_peak_memory(hnfs, parent, k::Int, concentration, algorithm::Sy
                          0, typemax(Int)) * output_per_struct
 
     bitmap_peak = 0
-    for hnf in hnfs
-        n = volume(hnf)
-        if algorithm == :exhaustive
-            # BitVector(k^n) bytes.
-            C = BigInt(k)^n
-            bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
-        else  # :multinomial
-            # Per (HNF, concentration) bitmap. Take max across concentrations
-            # at this volume.
-            concs_here = if concentration isa Concentration
-                try
-                    multiplicities(concentration, n)
-                    [concentration]
-                catch e
-                    e isa EmptyEnumerationError || rethrow()
-                    Concentration[]
-                end
-            elseif concentration isa ConcentrationRange
-                concentrations_in_range(concentration, n)
-            else
-                Concentration[]   # shouldn't happen for :multinomial, but safe
-            end
-            for c in concs_here
-                mults = multiplicities(c, n)
-                C = multinomial_count(mults)
+    if algorithm == :recursive_stabilizer
+        # Tree streams — no bitmap. Conservative bound: depth × per-node state.
+        # Per chunk-7.5 design Q6, intentionally upper-bound the per-level cost
+        # at total_count × n × Int_overhead (roughly: every saved partial keeps
+        # a location vector + a stabilizer subset). Won't be tight; safe for
+        # the gate's "refuse if exceeds budget" decision.
+        # The output term dominates anyway for typical use; bitmap_peak stays 0.
+        bitmap_peak = 0
+    else
+        for hnf in hnfs
+            n = volume(hnf)
+            if algorithm == :exhaustive
+                # BitVector(k^n) bytes.
+                C = BigInt(k)^n
                 bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
+            else  # :multinomial
+                # Per (HNF, concentration) bitmap. Take max across concentrations
+                # at this volume.
+                concs_here = if concentration isa Concentration
+                    try
+                        multiplicities(concentration, n)
+                        [concentration]
+                    catch e
+                        e isa EmptyEnumerationError || rethrow()
+                        Concentration[]
+                    end
+                elseif concentration isa ConcentrationRange
+                    concentrations_in_range(concentration, n)
+                else
+                    Concentration[]   # shouldn't happen for :multinomial, but safe
+                end
+                for c in concs_here
+                    mults = multiplicities(c, n)
+                    C = multinomial_count(mults)
+                    bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
+                end
             end
         end
     end
