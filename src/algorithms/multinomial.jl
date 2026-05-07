@@ -161,15 +161,19 @@ end
 
 """
     getUniqueColorings_multinomial(perm_group::AbstractVector,
-                                   multiplicities::AbstractVector{<:Integer}) :: Vector{Vector{Int8}}
+                                   multiplicities::AbstractVector{<:Integer};
+                                   include_superperiodic = false) :: Vector{Vector{Int8}}
 
 Symmetry-inequivalent colorings at fixed concentration. Crossing-out algorithm over the multinomial-hash space — the chunk-6 analog of `getUniqueColorings(k, perm_group)` from chunk 5.
 
 Iterates over all `C = multinomial(n; multiplicities)` valid colorings (each at its hash index), maintains a `BitVector(C)` "visited" mask, and when a coloring is the lex-smallest representative of its orbit under `perm_group`, keeps it and crosses out its orbit-mates.
 
+By default (`include_superperiodic = false`), drops super-periodic colorings — those fixed by some non-identity pure translation. Pass `true` to keep them and return the full Burnside orbit space (research.md §5.2.1). Note: at asymmetric concentrations (e.g., 15:17 in n=32), super-periodic structures are number-theoretically empty, so the kwarg is a no-op there.
+
 For chunk-6 sizes (Ag-Pt at 15:17 in n=32 → C ≈ 5.7E8 → 71 MB bitmap), this fits in memory comfortably. For larger cases the bitmap won't fit in `typemax(Int)` and `enumerate(...)` redirects to the recursive-stabilizer tree (chunk 8). The pre-flight cost gate (chunk 7) catches the overflow before allocation.
 """
-function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVector{<:Integer})
+function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVector{<:Integer};
+                                        include_superperiodic::Bool = false)
     C = multinomial_count(multiplicities)
     C <= typemax(Int) ||
         throw(ArgumentError(
@@ -183,28 +187,31 @@ function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVect
     # (per `getPermG`'s construction in src/Enumlib.jl). A coloring fixed by any
     # non-identity translation is super-periodic — its true period is shorter than
     # the supercell, so it's already enumerated as a smaller-supercell derivative
-    # structure and we must drop it (Hart-Forcade 2008 step 5d).
+    # structure and we must drop it (Hart-Forcade 2008 step 5d). Skipped when
+    # include_superperiodic = true.
     visited = trues(C_int)
     survivors = Vector{Int8}[]
     for idx in 0:C_int-1
         visited[idx + 1] || continue
         coloring = multinomial_unhash(idx, multiplicities)
 
-        # Super-periodicity check: if any non-identity translation fixes this
-        # coloring, drop it. The non-identity translations are perm_group[2:n].
-        is_super_periodic = false
-        for ig in 2:n
-            ig <= length(perm_group) || break
-            permuted = coloring[perm_group[ig]]
-            if permuted == coloring
-                is_super_periodic = true
-                break
+        if !include_superperiodic
+            # Super-periodicity check: if any non-identity translation fixes this
+            # coloring, drop it. The non-identity translations are perm_group[2:n].
+            is_super_periodic = false
+            for ig in 2:n
+                ig <= length(perm_group) || break
+                permuted = coloring[perm_group[ig]]
+                if permuted == coloring
+                    is_super_periodic = true
+                    break
+                end
             end
-        end
 
-        if is_super_periodic
-            visited[idx + 1] = false
-            continue
+            if is_super_periodic
+                visited[idx + 1] = false
+                continue
+            end
         end
 
         push!(survivors, coloring)

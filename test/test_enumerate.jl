@@ -186,4 +186,55 @@ using Enumlib
         @test b <= Int(Sys.total_memory())
     end
 
+    # ---- include_superperiodic kwarg (chunk 6.2) ----
+    # Default `false` (existing behavior throughout chunks 5–6) returns
+    # primitive (aperiodic) structures — the across-volume-sweep contract.
+    # `true` returns the full Burnside orbit space. See research.md §5.2.1.
+    @testset "include_superperiodic on synthetic cyclic n=4 binary" begin
+        # 4-element cyclic group — pG[1] is identity; pG[2..4] are the three
+        # non-identity translations. Hand-verifiable via Möbius / Burnside:
+        # aperiodic = (1/4)(2^4 − 2^2) = 3; full Burnside = (1/4)(2^4+2^2+2^1+2^2) = 6.
+        pg = [[1,2,3,4], [2,3,4,1], [3,4,1,2], [4,1,2,3]]
+        @test length(Enumlib.getUniqueColorings(2, pg)) == 3
+        @test length(Enumlib.getUniqueColorings(2, pg; include_superperiodic = false)) == 3
+        @test length(Enumlib.getUniqueColorings(2, pg; include_superperiodic = true)) == 6
+    end
+
+    @testset "include_superperiodic on FCC binary unrestricted (locked counts)" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        # Default and explicit `=false` agree with the chunk-5 reference.
+        @test length(enumerate(parent, sites; supercells = VolumeRange(4:4))) == 19
+        @test length(enumerate(parent, sites; supercells = VolumeRange(4:4),
+                                              include_superperiodic = false)) == 19
+
+        # Locked `=true` reference values, captured at chunk-6.2 implementation.
+        @test length(enumerate(parent, sites; supercells = VolumeRange(4:4),
+                                              include_superperiodic = true)) == 41
+        @test length(enumerate(parent, sites; supercells = VolumeRange(8:8),
+                                              include_superperiodic = true)) == 544
+        @test length(enumerate(parent, sites; supercells = VolumeRange(12:12),
+                                              include_superperiodic = true)) == 7885
+
+        # `=true` ≥ `=false` (full orbit count includes super-periodic).
+        for n in [4, 8, 12]
+            aper = length(enumerate(parent, sites; supercells = VolumeRange(n:n)))
+            full = length(enumerate(parent, sites; supercells = VolumeRange(n:n),
+                                                   include_superperiodic = true))
+            @test full >= aper
+        end
+    end
+
+    @testset "include_superperiodic default matches missing kwarg" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        e_default = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e_explicit = enumerate(parent, sites; supercells = VolumeRange(4:4),
+                                              include_superperiodic = false)
+        @test length(e_default) == length(e_explicit)
+        # Same coloring multiset (identical Enumeration content).
+        @test sort(to_labeling.(e_default)) == sort(to_labeling.(e_explicit))
+    end
+
 end

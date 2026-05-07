@@ -247,4 +247,40 @@ using Enumlib
                                                 on_partition_overflow = :ignore)
     end
 
+    # ---- include_superperiodic at fixed concentration (chunk 6.2) ----
+    # At asymmetric concentrations (3:5 in n=8), super-periodic structures are
+    # number-theoretically empty: no period d|n with d<n admits a 3:5 split
+    # (3 and 5 share no nontrivial factor with 8). So the kwarg is a no-op —
+    # `=true` and `=false` must give the same count. Trip-wire for §5.2.1.
+    @testset "include_superperiodic at asymmetric concentration is a no-op (trip-wire)" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        c = Concentration_count([3, 5]; n_total = 8)
+        e_aper = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c)
+        e_full = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c,
+                                          include_superperiodic = true)
+        @test length(e_aper) == length(e_full) == 86
+    end
+
+    # At symmetric concentrations (2:2 in n=4, 4:4 in n=8, 6:6 in n=12),
+    # super-periodic structures exist: e.g., a period-4 4:4 cell tiled into
+    # n=8 produces a 4:4 super-periodic structure at n=8. `=true` > `=false`.
+    @testset "include_superperiodic at symmetric concentration (locked counts)" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        # Aperiodic (chunk-6 locked): 5, 94, 1552.
+        # Full Burnside captured at chunk-6.2 implementation: 13, 146, 1739.
+        for (n, a, b, aper_ref, full_ref) in [(4, 2, 2, 5, 13),
+                                              (8, 4, 4, 94, 146),
+                                              (12, 6, 6, 1552, 1739)]
+            c = Concentration_count([a, b]; n_total = n)
+            @test length(enumerate(parent, sites; supercells = VolumeRange(n:n),
+                                                  concentration = c)) == aper_ref
+            @test length(enumerate(parent, sites; supercells = VolumeRange(n:n),
+                                                  concentration = c,
+                                                  include_superperiodic = true)) == full_ref
+        end
+    end
+
 end

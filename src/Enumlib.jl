@@ -309,13 +309,18 @@ end
 # --- colorings via permutation group (depends on coloring_hash / coloring_unhash above) ---
 
 """
-    getUniqueColorings(k, pG)
+    getUniqueColorings(k, pG; include_superperiodic = false)
 
 Given the permutation group `pG` of a supercell (from
 [`getPermG`](@ref)), return the symmetrically inequivalent `k`-ary
-colorings. Eliminates superperiodic colorings.
+colorings.
+
+By default (`include_superperiodic = false`), drops super-periodic colorings —
+those fixed by some non-identity pure translation, which would be duplicates
+of smaller-supercell derivatives across a volume sweep. Pass `true` to keep
+them and return the full Burnside orbit space (research.md §5.2.1).
 """
-function getUniqueColorings(k, pG)
+function getUniqueColorings(k, pG; include_superperiodic::Bool = false)
     n = length(pG[1])
     idx = ntuple(i->0:k-1, n)
     mul = [k^(i-1) for i ∈ reverse(1:n)]
@@ -325,7 +330,10 @@ function getUniqueColorings(k, pG)
         if !hashTbl[i] continue end
         for (ig, g) ∈ enumerate(pG[2:end])
             test = coloring_hash(mul, c[g]) + 1
-            if test > i || test == i && ig < n
+            # `ig < n` selects pG[2..n] — the n-1 non-identity pure translations
+            # (see getPermG: perm[1..n] = identity rotation × translation subgroup).
+            # A coloring fixed by one of those is super-periodic.
+            if test > i || (!include_superperiodic && test == i && ig < n)
                 hashTbl[test] = false
             end
         end

@@ -7,6 +7,7 @@
               on_overflow::Symbol = :error,
               partition_threshold::Int = 100,
               on_partition_overflow::Symbol = :error,
+              include_superperiodic::Bool = false,
               skip_preflight::Bool = false) -> Enumeration{D, Vector{Int8}}
 
 Enumerate symmetry-inequivalent derivative structures of `parent` decorated by labelings drawn from `sites.allowed_labels`, over the supercells specified by `supercells`, optionally constrained to a fixed `concentration` or `ConcentrationRange`.
@@ -28,6 +29,10 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 
 Chunk 6 wires only the partition-explosion gate; the memory-budget gate is still a stub (chunk 7 lands the real estimator with the Polya counter). Reserved kwargs (`memory_budget`, `on_overflow`, `skip_preflight`) are accepted and largely ignored for now.
 
+## Super-periodicity policy (chunk 6.2)
+
+`include_superperiodic = false` (default) drops colorings whose true period strictly divides the supercell — these are duplicates of smaller-supercell derivatives across a volume sweep (HF 2008 step 5d). `include_superperiodic = true` keeps them and returns the full Burnside orbit space; useful for theoretical comparisons or single-volume queries where the user wants every orbit. See `research.md` §5.2.1.
+
 ## Returns
 
 `Enumeration{D, Vector{Int8}}` containing the parent, sites, list of distinct supercells encountered, and the enumerated structures. Iterable + indexable.
@@ -46,6 +51,7 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
                         on_overflow::Symbol = :error,
                         partition_threshold::Int = 100,
                         on_partition_overflow::Symbol = :error,
+                        include_superperiodic::Bool = false,
                         skip_preflight::Bool = false) where D
 
     # ---- Algorithm dispatch ----
@@ -126,10 +132,11 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     # ---- Algorithm bodies ----
     if algorithm == :exhaustive
-        return _enumerate_exhaustive(parent, sites, hnfs, k)
+        return _enumerate_exhaustive(parent, sites, hnfs, k; include_superperiodic)
     else  # :multinomial
         return _enumerate_multinomial(parent, sites, hnfs, k, concentration,
-                                      partition_threshold, on_partition_overflow)
+                                      partition_threshold, on_partition_overflow;
+                                      include_superperiodic)
     end
 end
 
@@ -138,14 +145,15 @@ end
 # ------------------------------------------------------------------------------
 
 function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
-                               hnfs::AbstractVector{HNF{D}}, k::Int) where D
+                               hnfs::AbstractVector{HNF{D}}, k::Int;
+                               include_superperiodic::Bool = false) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
     for hnf in hnfs
         sc = Supercell(hnf, parent)
         push!(supercells_list, sc)
         sc_id = length(supercells_list)
-        colorings = getUniqueColorings(k, sc.permutation_group)
+        colorings = getUniqueColorings(k, sc.permutation_group; include_superperiodic)
         for c in colorings
             push!(structures, EnumeratedStructure{D, Vector{Int8}}(
                 sc_id, Int8.(c), 1, 1))
@@ -162,7 +170,8 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
                                 hnfs::AbstractVector{HNF{D}}, k::Int,
                                 concentration::Union{Concentration, ConcentrationRange},
                                 partition_threshold::Int,
-                                on_partition_overflow::Symbol) where D
+                                on_partition_overflow::Symbol;
+                                include_superperiodic::Bool = false) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
 
@@ -201,7 +210,8 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
         # Enumerate per concentration.
         for c in concs
             mults = multiplicities(c, n)
-            colorings = getUniqueColorings_multinomial(sc.permutation_group, mults)
+            colorings = getUniqueColorings_multinomial(sc.permutation_group, mults;
+                                                       include_superperiodic)
             for coloring in colorings
                 push!(structures, EnumeratedStructure{D, Vector{Int8}}(
                     sc_id, coloring, 1, 1))

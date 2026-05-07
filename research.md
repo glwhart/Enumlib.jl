@@ -1578,6 +1578,66 @@ Actualy I understood this from the beginning except I misread that these argumen
 > Same idiom for `fixed_cells = nothing`: omit it (default), and HNFs are enumerated freshly per the algorithm; pass `fixed_cells = my_hnf_list`, and only those HNFs are considered.
 
 
+### 5.2.1 Super-periodicity policy
+
+Added during chunk 7 design — the issue was originally invisible because the Fortran enumlib handled super-periodicity implicitly, with the policy varying across the four algorithmic drivers. The variation wasn't a bug; it tracked what each driver's typical user wanted. But the *principle* underlying those choices was never spelled out as a v0.2 spec item, so we capture it here.
+
+**The underlying principle: enumerate symmetrically distinct configurations only — i.e., no duplicates.**
+
+The Fortran enumlib's drivers implemented this principle in different ways depending on context:
+
+- **Across-volume sweep (the most common usage).** A *super-periodic* labeling on a supercell of volume $n$ is one fixed by some non-identity translation of that supercell — equivalently, its true period $p$ divides $n$ strictly ($p < n$). Such a labeling is a *realization* of a smaller-supercell derivative. If a user is sweeping volumes $n = 2, 3, \ldots, 10$, the same physical structure appears at every multiple of its true period — so dropping super-periodic at the larger volumes is exactly what "no duplicates" demands.
+- **Single-concentration query at a fixed volume.** Whether super-periodic structures even *exist* at a fixed concentration depends on number-theoretic compatibility. For multiplicities $a_1, \ldots, a_k$ in a supercell of size $n$, super-periodic realizations of period $d$ require each $a_i$ to be divisible by $n/d$. Asymmetric stoichiometries (e.g., 15:17 in $n=32$ — the only $d \mid 32$ admitting integer rescaling is $d=32$ itself) admit no super-periodic structures at all, so the policy is a no-op. Symmetric stoichiometries (16:16 in $n=32$) admit them and the question is genuine.
+
+So the "drop / keep" question maps to two well-defined queries that can both be valid depending on what the user is asking:
+
+1. **"Configurations *intrinsic* to volume $n$"** — those that don't reduce to a smaller supercell. This is what HF 2008 step 5d, HF 2012 Appendix A.2, and the original Fortran main driver compute. It's the right answer for the across-volume sweep (no duplicates with smaller volumes) and also the right answer for "give me the literature-canonical count" (HF 2012 Table 1 references are intrinsic counts).
+2. **"All orbits of the labeling action at volume $n$"** — the full Burnside orbit space, super-periodic included. The right answer when the user wants the complete orbit picture and is *not* sweeping volumes (so duplicates aren't a concern within their result set).
+
+Both are well-defined; both have use cases.
+
+**The v0.2 resolution: a kwarg, default to the more common case.** Both `enumerate(...)` and `count_inequivalent(...)` accept
+
+```julia
+include_superperiodic::Bool = false
+```
+
+- **`false` (default).** Query 1 — intrinsic-to-$n$ structures only. Matches HF 2008 step 5d, HF 2012 Table 1, and what chunks 5–6 already do. No existing test breaks. Across-volume sweeps don't generate duplicates.
+- **`true`.** Query 2 — full orbit space. Equivalent to "every orbit of the labeling action," whether or not the orbit reps are intrinsic to this supercell. Useful for theoretical comparisons (raw Burnside count) and for single-volume single-concentration queries where the user explicitly wants every orbit.
+
+Same kwarg name, same semantics, on both functions — the user picks once and the count and the enumeration agree.
+
+**Why a kwarg rather than a smarter context-aware default.** A "smart default" could inspect the query (multi-volume sweep → drop; single-volume → keep) and pick automatically. Tempting, but two reasons we leave it as an explicit user choice for v0.2:
+
+1. **The principle "no duplicates" is about across-call consistency, not within-call.** A user might call `enumerate(...; supercells = VolumeRange(32:32))` once and then `enumerate(...; supercells = VolumeRange(16:16))` later, expecting the union to be the full set without overlap. A within-call smart default can't predict cross-call usage. Defaulting to drop everywhere makes the across-call composition correct.
+2. **Smart defaults hide behavior.** When two equivalent queries can produce different counts depending on context, debugging is harder. An explicit kwarg keeps the policy visible at the call site.
+
+The user's question of "should this even be a user-facing knob?" is open for v0.3 reevaluation. Possible smart-default refinements (left as future work):
+- Inspect the query: if the request is single-volume + asymmetric concentration, super-periodic is provably empty, so the kwarg is moot — could log a one-time `@info` if `include_superperiodic = true` was passed but is a no-op.
+- If the request is single-volume + symmetric concentration, the kwarg is genuinely meaningful; current behavior (default drop, opt-in keep) is the safe choice.
+- If the request is multi-volume sweep, default drop is structurally correct; we could *warn* if the user passes `include_superperiodic = true` because it almost certainly produces duplicates across volumes.
+
+For now: kwarg default `false`, opt-in `true`, no smart inspection. We revisit if usage patterns demand it.
+
+**What the kwarg flips on the count side.** `count_inequivalent`'s implementation:
+- `include_superperiodic = true` → raw Burnside orbit count: $(1/|G|) \sum_{\rho \in G} \text{fix}(\rho)$.
+- `include_superperiodic = false` → Möbius inversion over the supercell's translation subgroup. For SNF diagonal $(d_1, d_2, d_3)$, the translation subgroup is $T = \mathbb{Z}/d_1 \times \mathbb{Z}/d_2 \times \mathbb{Z}/d_3$; subgroups of $T$ form a divisor lattice; the aperiodic count is
+
+$$N_{\text{aperiodic}} = \sum_{(e_1, e_2, e_3) | (d_1, d_2, d_3)} \mu(d_1/e_1) \mu(d_2/e_2) \mu(d_3/e_3) \cdot N_{\text{orbit}}(\text{labelings of period dividing } (e_1, e_2, e_3))$$
+
+with $\mu$ the number-theoretic Möbius function. The "labelings of period dividing $e$" are equivalent to colorings of a smaller supercell of size $e_1 e_2 e_3$, so each term is itself a Pólya orbit count on a reduced perm-group action.
+
+**What the kwarg flips on the enumeration side.** `enumerate(...)`'s `getUniqueColorings` (chunk 5) and `getUniqueColorings_multinomial` (chunk 6) currently always run the super-periodicity drop. Under chunk 6.2 they take an `include_superperiodic` parameter; when `true`, they skip the per-coloring "is this fixed by any non-identity translation?" check.
+
+**Cross-references.**
+- §4.1 (HF 2008 step 5d) — the original "drop super-periodic" rule in the unrestricted enumeration algorithm.
+- §4.3 (HF 2012 Appendix A.2) — the fixed-concentration version of the rule, also drops super-periodic.
+- §6.2 (chunk 6 implementation note) — chunks 5 and 6 implement the `false` (drop) path; chunk 6.2 retrofits the kwarg for the `true` path.
+- §7.2 (cost estimator) — `EnumerationCostEstimate.total_count` honors the same kwarg the user passed; the cost gate counts whichever orbit set the user is actually about to enumerate.
+
+**Implementation chunk.** Lands as **chunk 6.2** (the kwarg + plumbing through the two algorithm bodies + tests) before chunk 7 (which uses the same kwarg on `count_inequivalent`).
+
+
 ### 5.3 The algorithm modes
 
 Five live modes plus the future BDD slot:
