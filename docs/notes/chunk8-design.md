@@ -290,4 +290,39 @@ If A on every Q (my leans):
 
 **Sign off below or annotate Q1–Q8 inline:**
 
-Your response:
+Your response: signed off (Q1–Q8 all A; Q7 = C with "back off if necessary"). Implementation followed.
+
+---
+
+## Implementation log (post-sign-off)
+
+### Chunk 8a — landed as commit `8cbcd10`
+
+Tree mechanics + cross-validation. Followed the design exactly. ~250 source lines (`src/algorithms/recursive_stabilizer.jl`) + 42 tests cross-validating against `:multinomial` at every chunk-6/6.2 reference value, both `include_superperiodic` branches.
+
+**Internal refactor not in the design:** the chunk-6 `_enumerate_multinomial` and chunk-8a `_enumerate_recursive_stabilizer` bodies are nearly identical (HNF + concentration sweep with partition gate; only the per-(supercell, mults) coloring call differs). Factored both into a shared `_enumerate_per_concentration(parent, sites, hnfs, k, concentration, partition_threshold, on_partition_overflow, coloring_fn)` helper. Cleaner; would have been the right thing to do at chunk 6.2 but wasn't load-bearing then.
+
+### Chunk 8b — landed as commit `5338894`
+
+`:auto` dispatch upgrade (Q5-A: simple `bitmap > memory_budget × 0.8` rule). ~50 source lines + 12 tests.
+
+**Q7-C reality check.** Tried it during implementation. Ag-Pt 15:17 in n=32:
+- Full sweep across 102 inequivalent HNFs: ~1.2 billion structures (per chunk-7 `count_inequivalent`).  At any plausible per-structure cost, this is tens of hours to days.
+> I'm confused. There is only one HNF for this example, a 2x2x2 fcc supercell, 32 atoms, fixed concentration. I think you're still tripping over this previous misunderstanding.
+- Single most-symmetric HNF (idx 14, |G| = 128, SNF (1,1,32)): ~4.4 million structures (per `count_inequivalent` at that single HNF). Still minutes; too slow for `Pkg.test()`.
+> This isn't the most symmetric supercell. It's not cubic. the 2x2x2 supercell is cubic
+
+- **Fallback to Q7-B** (single most-symmetric HNF) — but at n=16 7:9 instead of n=32 15:17. multinomial(16; 7, 9) = 11440; sub-second per HNF; meaningful "asymmetric concentration at a real materials-science volume" demonstration. Single-HNF cross-validation: `count_inequivalent == :recursive_stabilizer count == :multinomial count`.
+> This is probably a good test for regression catching and timing, but you don't have previous answers (do you?) from the original fortran code? How do you know the answers are right for this.
+
+The full Ag-Pt benchmark (n=32 15:17 sweep, or single-HNF 4.4M case) moves to v0.2-polish under the existing "Real-test gate-firing scenario" item — see `v0.2-plan.md`.
+> Again, there is no "sweep" here.
+
+### v0.2 status at chunk-8 close
+
+569/569 tests pass. **v0.2 algorithmic milestones closed.** All four algorithms (`:exhaustive`, `:multinomial`, `:recursive_stabilizer`, `:auto`) wired; cost-gate functional; super-periodicity policy a first-class kwarg. Remaining v0.2 work: Phase 9 (pymatgen), Phase 11 (POSCAR / ASE), Phase 12 (synthesis + release).
+
+Three v0.2-polish items captured from chunk 8 design follow-ups:
+- **Q1 follow-up:** test whether `:recursive_stabilizer` beats `:exhaustive` for unrestricted at high $n / k$; if so, add a v0.3 chunk to extend the tree to no-concentration.
+- **Q5/Q6 follow-up:** tune the `memory_budget × 0.8` threshold and the conservative output-buffer bound based on real usage.
+- **Q7 follow-up:** the actual full Ag-Pt sweep benchmark (overnight tier).
