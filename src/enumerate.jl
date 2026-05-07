@@ -57,7 +57,16 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     # ---- Algorithm dispatch ----
     if algorithm == :auto
-        algorithm = concentration === nothing ? :exhaustive : :multinomial
+        if concentration === nothing
+            algorithm = :exhaustive
+        else
+            # Pick :multinomial vs :recursive_stabilizer by predicted bitmap.
+            # Tree streams (no bitmap) so it's the right choice when the
+            # multinomial bitmap would exceed memory_budget × 0.8.
+            algorithm = _multinomial_bitmap_fits(parent, supercells, concentration,
+                                                  memory_budget) ?
+                        :multinomial : :recursive_stabilizer
+        end
     end
 
     # Now `algorithm` is one of :exhaustive, :multinomial, :recursive_stabilizer,
@@ -412,8 +421,16 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     k = _validate_enumerate_inputs(parent, sites, concentration)
 
     # Resolve algorithm (same logic as enumerate's :auto dispatch).
+    # Note: estimate_cost doesn't have memory_budget context, so :auto here
+    # uses default_memory_budget() for the multinomial-vs-tree pivot.
     chosen = if algorithm == :auto
-        concentration === nothing ? :exhaustive : :multinomial
+        if concentration === nothing
+            :exhaustive
+        else
+            _multinomial_bitmap_fits(parent, supercells, concentration,
+                                     default_memory_budget()) ?
+                :multinomial : :recursive_stabilizer
+        end
     else
         algorithm
     end
@@ -542,4 +559,41 @@ end
 function _bitmap_bytes(C::BigInt)::Int
     bytes = (C + BigInt(7)) ÷ BigInt(8)
     return Int(min(bytes, BigInt(typemax(Int))))
+end
+
+# :auto dispatch helper. Returns `true` if the worst-case multinomial bitmap
+# across all (HNF, concentration) pairs in the request fits comfortably
+# (≤ 80% of memory_budget). Used to pick :multinomial vs :recursive_stabilizer.
+#
+# We're conservative — return `false` if any single (HNF, concentration)
+# bitmap would exceed the threshold. The tree never needs the bitmap.
+function _multinomial_bitmap_fits(parent::ParentLattice{D},
+                                   supercells::SupercellSelection,
+                                   concentration::Union{Concentration, ConcentrationRange},
+                                   memory_budget::Int) where D
+    threshold = (memory_budget * 8) ÷ 10        # 80% of budget
+
+    hnfs = enumerate_hnfs(supercells, parent)
+    isempty(hnfs) && return true                 # nothing to enumerate; either is fine
+
+    for hnf in hnfs
+        n = volume(hnf)
+        concs_here = if concentration isa Concentration
+            try
+                multiplicities(concentration, n)
+                [concentration]
+            catch e
+                e isa EmptyEnumerationError || rethrow()
+                Concentration[]
+            end
+        else  # ConcentrationRange
+            concentrations_in_range(concentration, n)
+        end
+        for c in concs_here
+            mults = multiplicities(c, n)
+            C = multinomial_count(mults)
+            _bitmap_bytes(C) > threshold && return false
+        end
+    end
+    return true
 end
