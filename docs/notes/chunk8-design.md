@@ -318,6 +318,24 @@ Tree mechanics + cross-validation. Followed the design exactly. ~250 source line
 The full Ag-Pt benchmark (n=32 15:17 sweep, or single-HNF 4.4M case) moves to v0.2-polish under the existing "Real-test gate-firing scenario" item — see `v0.2-plan.md`.
 > Again, there is no "sweep" here.
 
+### Correction (post-review, 2026-05-07): I was tripping on Ag-Pt again
+
+Both substantive corrections from the review pass:
+
+1. **"Ag-Pt 15:17 in n=32" = ONE specific HNF, not a sweep.** It's the 2×2×2 cubic conventional FCC supercell (basis = 2 × conventional FCC vectors; in primitive-FCC HNF terms, the specific HNF whose `A_p · H` produces a cubic basis). My chunk-7 "1.2 billion across the sweep" number was an answer to a question nobody asked; my chunk-8 "4.4 million single-HNF" picked the wrong HNF (idx 14, |G|=128, not cubic). Same misunderstanding as I had at chunk-6 time (when I dismissed "1003" as a misremembering on the basis of the same wrong-sweep number). Lesson logged: when a paper says "in a 32-atom supercell," verify which specific cell — usually it's the cubic conventional, not a primitive-FCC HNF sweep.
+
+2. **The cubic 2×2×2 has full FCC cubic symmetry: |G| = 48 × 32 = 1536.** Order of magnitude estimate: at 15:17, multinomial(32; 15, 17) = 565,722,720; orbit count ≈ 565,722,720 / 1536 ≈ **368,000**. The HNF 2012 paper §4 (per research.md line 1067 phase-4 digest) reports "~400,000 distinct" — same order of magnitude, modulo Pólya correction subtleties (super-periodicity, label-exchange, full Möbius).
+
+**Re: chunk-7's "1003 was a misremembering" correction.** Itself was based on my wrong-sweep number (1.2B). With the corrected understanding (~368k–400k for the cubic HNF), 1003 is *also* wrong as a literature reference — it's neither the orbit count (~368k) nor the paper's reported count (~400k). So the chunk-7 correction's *conclusion* (the number 1003 wasn't a verifiable reference) stays right; the *reasoning path* I used to get there was flawed. Going to leave the chunk-7 correction in place but link it to this newer understanding.
+
+**Re: "you don't have previous answers" (Q7 review comment 3).** Honest. I had no Fortran reference. The chunk-8b cross-validation (`count_inequivalent ≡ :recursive_stabilizer ≡ :multinomial` at chunk-6 references) is internal-consistency only. The HNF 2012 paper's "~400,000" gives us an order-of-magnitude check but not an exact number. **Real external validation** (matching against actual Fortran enumlib output for a specific case) is a v0.2-polish task, requires running the original Fortran tool. That's added to the polish list explicitly.
+
+### Followup actions (logged for v0.2-polish)
+
+- ~~Find the cubic 2×2×2 HNF programmatically — script search for the HNF at volume 32 whose primitive-coord basis × A_p has Gram matrix = 4·I (i.e., produces cubic Cartesian basis with edge length 2). Run `count_inequivalent` at that HNF, 15:17. Check it's in the ~368k–400k range.~~ **Done in this round.** Cubic HNF is index 177 in the `enumerate_hnfs(VolumeRange(32:32), parent)` list — found by Minkowski-reducing each candidate's Cartesian basis and checking for Gram = 4·I. HNF matrix `[2 0 0; 2 4 0; 2 0 4]`, SNF (2, 4, 4), |G| = 48 × 32 = **1536** (full cubic symmetry as expected). Pólya count at 15:17: **`count_inequivalent` = 379,926** on both kwarg branches (asymmetric-concentration trip-wire confirmed). Paper's "~400,000" stated value is a rounded approximation; **379,926 is the precise number**, within paper-reported precision. **Locked as a v0.2 regression test in `test/test_recursive_stabilizer.jl`.** Test cost ~30s (dominated by the per-HNF Minkowski-reduction search + the cubic HNF's Spacey symmetry analysis); acceptable for the regular test suite.
+- **Get a Fortran-enumlib reference number for at least one canonical case** (still v0.2-polish work — confirms our Pólya math against an authoritative external implementation, not just paper-reported approximate numbers).
+- **Run the actual enumeration at the cubic HNF** (379,926 structures) — minutes-scale, slow tier; verifies `:recursive_stabilizer` produces exactly 379,926 enumerated structures, matching the Pólya count.
+
 ### v0.2 status at chunk-8 close
 
 569/569 tests pass. **v0.2 algorithmic milestones closed.** All four algorithms (`:exhaustive`, `:multinomial`, `:recursive_stabilizer`, `:auto`) wired; cost-gate functional; super-periodicity policy a first-class kwarg. Remaining v0.2 work: Phase 9 (pymatgen), Phase 11 (POSCAR / ASE), Phase 12 (synthesis + release).

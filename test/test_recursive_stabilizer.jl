@@ -149,4 +149,49 @@ using Enumlib
         end
     end
 
+    # ---- Ag-Pt 15:17 in the cubic 2×2×2 FCC supercell (HNF 2012 §4 reference case) ----
+    # The canonical literature reference: 32-atom 2×2×2 conventional FCC cubic
+    # supercell at concentration 15:17. The paper (research.md line 1067) reports
+    # "~400,000 distinct" structures from 48 × 32 = 1536 group operations on the
+    # 5.66×10⁸ multinomial. Our Pólya count at the cubic 2×2×2 HNF is 379,926 —
+    # within paper-reported precision.
+    #
+    # This test runs the Pólya count only (sub-second after warm-up). The actual
+    # enumeration at this HNF (379,926 structures, minutes-scale) is a v0.2-polish
+    # slow-tier candidate.
+    @testset "Ag-Pt 15:17 in cubic 2×2×2 FCC supercell — Polya count locked" begin
+        using LinearAlgebra
+        using MinkowskiReduction
+
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        # Find the cubic 2×2×2 HNF: the unique HNF at n=32 whose Minkowski-
+        # reduced Cartesian basis has Gram matrix = 4·I (cubic edge 2).
+        hnfs = enumerate_hnfs(VolumeRange(32:32), parent)
+        target_G = 4.0 * Matrix{Float64}(I, 3, 3)
+        cubic_idx = findfirst(h -> begin
+            A_red = minkReduce(parent.A * h.matrix)
+            isapprox(transpose(A_red) * A_red, target_G; atol = 1e-6)
+        end, hnfs)
+        @test cubic_idx !== nothing
+        h_cubic = hnfs[cubic_idx]
+
+        # Sanity: the cubic 2×2×2 has the full FCC cubic symmetry → |G| = 48 × 32.
+        sc = Supercell(h_cubic, parent)
+        @test length(sc.permutation_group) == 1536
+
+        # The HNF 2012 §4 reference: ~400,000 distinct (paper-reported); our
+        # exact Pólya number is 379,926.
+        c = Concentration_count([15, 17]; n_total = 32)
+        @test count_inequivalent(parent, sites; supercells = ExplicitHNFs([h_cubic]),
+                                                concentration = c) == 379926
+        # Asymmetric-concentration trip-wire: at 15:17, super-periodic structures
+        # are number-theoretically empty (no proper divisor of 32 admits 15:17),
+        # so the kwarg is a no-op.
+        @test count_inequivalent(parent, sites; supercells = ExplicitHNFs([h_cubic]),
+                                                concentration = c,
+                                                include_superperiodic = true) == 379926
+    end
+
 end
