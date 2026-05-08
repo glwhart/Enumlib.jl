@@ -86,8 +86,26 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     coloring = to_labeling(structure)
     n = length(coloring)
 
-    # Infer k from the maximum color used (chunk-5/6 colorings are 0..k-1).
-    k = isempty(coloring) ? 0 : Int(maximum(coloring)) + 1
+    # k inference. If species_symbols is supplied, it implicitly defines the
+    # full species set and k = length(species_symbols). Otherwise we infer
+    # from the highest color seen in the labeling — caveat: a monochromatic
+    # all-color-0 labeling would inferr k=1 even if the parent's allowed
+    # labels were {0, 1}, leaving the second species unrepresented in the
+    # POSCAR. Bulk callers (chunk 11b's write_enumeration_archive) will
+    # always pass species_symbols of the correct length, so the inference
+    # fallback only matters for ad-hoc single-call users.
+    k = if isempty(species_symbols)
+        isempty(coloring) ? 0 : Int(maximum(coloring)) + 1
+    else
+        length(species_symbols)
+    end
+
+    # Validate per-color labelings are in 0..k-1 (catches misuse where a
+    # supplied species_symbols is too short).
+    isempty(coloring) || maximum(coloring) < k ||
+        throw(ArgumentError(
+            "species_symbols has length $(length(species_symbols)) but the labeling " *
+            "uses color $(maximum(coloring)); supply at least $(Int(maximum(coloring))+1) symbols."))
 
     # Default species symbols are ASCII letters: ["A", "B", ...]. The calling
     # user can override with real chemistry; the calculator can also override
@@ -96,10 +114,6 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     species = isempty(species_symbols) ?
         [string(Char(Int('A') + (i - 1))) for i in 1:k] :
         species_symbols
-    length(species) >= k ||
-        throw(ArgumentError(
-            "species_symbols has length $(length(species)) but the labeling " *
-            "uses k = $k species (colors 0..$(k-1)); supply at least $k symbols."))
 
     # Per-color counts; this IS the concentration.
     counts = zeros(Int, k)
@@ -134,23 +148,27 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
         println(io)
     end
 
-    # ---- Line 3+D: species symbols (only those present in this structure) ----
-    # ---- Line 4+D: per-species counts in the same order ----
-    # We only emit species with counts > 0 (a structure with only color 0 has
-    # one species line + one count line; a binary 1:1 has two of each).
-    present = [i for i in 1:k if counts[i] > 0]
-    println(io, join((species[i] for i in present), " "))
-    println(io, join((string(counts[i]) for i in present), " "))
+    # ---- Line 3+D: species symbols (all k, including zero-count species) ----
+    # ---- Line 4+D: per-species counts in the same order (zeros included) ----
+    # Per chunk 11a review item D: list every species the labeling could use,
+    # including those with zero count in this specific structure. The
+    # calculator's POTCAR file sequence must match the POSCAR's species line;
+    # dropping zero-count species would force the calculator to also edit the
+    # POTCAR by hand, which is inconvenient. Modern VASP handles zero counts
+    # cleanly. (Earlier draft dropped them; reverted.)
+    println(io, join(species[1:k], " "))
+    println(io, join((string(counts[i]) for i in 1:k), " "))
 
     # ---- Line 5+D: coordinate mode ----
     println(io, "Direct")
 
     # ---- Lines 6+D onwards: atomic positions, grouped by species ----
     # Order matches lines (3+D) and (4+D): all color-0 atoms, then all color-1, etc.
-    # Within each color group, atoms are in supercell-site-index order
-    # (`getPermG`'s convention).
+    # Zero-count colors emit no position lines (the inner loop naturally
+    # skips them). Within each color group, atoms are in supercell-site-index
+    # order (`getPermG`'s convention).
     fractional_positions = supercell_fractional_positions(hnf)
-    for color_one_indexed in present
+    for color_one_indexed in 1:k
         target_color = color_one_indexed - 1
         for site in 1:n
             if Int(coloring[site]) == target_color

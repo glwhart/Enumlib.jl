@@ -141,9 +141,12 @@ using Enumlib
 
     # ---- Species + counts + grouping ----
 
-    @testset "species line and counts: only species present, in canonical order" begin
-        # Build a structure where only color 0 is used (a monochromatic
-        # all-color-0 labeling, in the include_superperiodic=true case).
+    @testset "species line and counts: all k species listed, zeros included" begin
+        # Per chunk 11a review item D: zero-count species ARE included in
+        # the species/counts lines so POTCAR ordering on the calculator side
+        # stays stable. A monochromatic all-color-0 structure (achievable via
+        # include_superperiodic=true) writes "A B\n2 0\n" — both species,
+        # second count is zero.
         e_full = enumerate(parent, sites; supercells = VolumeRange(2:2),
                                           include_superperiodic = true)
         # Find a monochromatic structure (labeling all 0s or all 1s).
@@ -151,17 +154,22 @@ using Enumlib
                           e_full.structures)
         @test mono !== nothing
         structure = e_full.structures[mono]
+        labeling = to_labeling(structure)
         hnf = e_full.supercells[structure.supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, structure, parent, hnf;
                    super_periodic = true,
                    species_symbols = ["A", "B"])
         lines = split(String(take!(io)), '\n')
-        species_line = lines[6]
-        counts_line = lines[7]
-        # Only one species present (whichever color).
-        @test length(split(strip(species_line))) == 1
-        @test length(split(strip(counts_line))) == 1
+        species_tokens = split(strip(lines[6]))
+        counts_tokens = split(strip(lines[7]))
+        # Both species listed, both counts listed (one of which is zero).
+        @test species_tokens == ["A", "B"]
+        @test length(counts_tokens) == 2
+        counts = parse.(Int, counts_tokens)
+        @test sum(counts) == length(labeling)
+        # Exactly one count is zero (the other holds all atoms).
+        @test count(==(0), counts) == 1
     end
 
     @testset "default species_symbols = letters [A, B, C, ...]" begin
