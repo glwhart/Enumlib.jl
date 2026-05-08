@@ -48,6 +48,8 @@ export
     estimate_cost, format_bytes,
     # v0.2 type catalog (chunk 8) — Morgan 2017 recursive-stabilizer tree
     getUniqueColorings_recursive_stabilizer,
+    # v0.2 type catalog (chunk 11a) — POSCAR writer
+    to_poscar,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
@@ -382,5 +384,7 @@ include("types/inequivalent_count.jl")
 using .Polya: polya_count, cycle_structure, aperiodic_orbit_count
 # --- public entry; depends on all of the above ---
 include("enumerate.jl")
+# --- chunk 11a: POSCAR writer (must come after all types) ---
+include("io/poscar.jl")
 
 end # module Enumlib
