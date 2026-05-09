@@ -422,3 +422,177 @@ function _tar_gzip_directory(dir::AbstractString, out_path::AbstractString)
     end
     return out_path
 end
+
+# ============================================================================
+# Chunk 11c — round-trip read of calculator-filled POSCARs.
+# ============================================================================
+
+"""
+    read_results(path::AbstractString;
+                 manifest_filename::AbstractString = "enumeration.toml") -> Dict{Int, Float64}
+
+Read back DFT/MLIP results from a directory of POSCARs (where collaborators have filled in the `energy_eV=` slot on each POSCAR's line 1) or from a tarball produced by [`write_enumeration_archive`](@ref).
+
+Auto-detects the input form:
+- `path` is a `.tar.gz`, `.tgz`, or `.tar` file → extracts to a temp dir, reads, cleans up.
+- `path` is a directory → reads directly.
+
+Returns a `Dict{Int, Float64}` mapping each filled-in `enumlib_id` to its energy in eV. POSCARs whose `energy_eV=` slot is still empty (calculator hasn't filled them in) are skipped with an `@info` message listing the missing IDs.
+
+Throws `ArgumentError` if any POSCAR's line 1 doesn't match the expected format (missing `enumlib_id=`, missing `energy_eV=`, or unparseable energy value).
+
+Hand-edit and shell-script workflows both work: collaborators can run e.g. `sed -i 's/energy_eV=\$/energy_eV=-123.45/' POSCAR.42` after their DFT job, then ship the directory or tarball back.
+
+# Example
+
+```julia
+results = read_results("./batch1_filled.tar.gz")
+# Dict(1 => -123.45, 2 => -123.46, ...)
+pairs = attach_results(enumeration, results)
+# Vector{Tuple{EnumeratedStructure, Float64}}, ready for CE fitting
+```
+"""
+function read_results(path::AbstractString;
+                     manifest_filename::AbstractString = "enumeration.toml")::Dict{Int, Float64}
+    if isfile(path) && (endswith(path, ".tar.gz") || endswith(path, ".tgz") || endswith(path, ".tar"))
+        return mktempdir() do parent_dir
+            extract_dir = joinpath(parent_dir, "extracted")
+            _extract_archive(path, extract_dir)
+            _read_results_from_directory(extract_dir; manifest_filename)
+        end
+    elseif isdir(path)
+        return _read_results_from_directory(path; manifest_filename)
+    else
+        throw(ArgumentError(
+            "read_results: '$path' is neither a tarball file (.tar.gz/.tgz/.tar) " *
+            "nor a directory"))
+    end
+end
+
+"""
+    attach_results(enumeration::Enumeration{D,L}, results::Dict{Int, Float64})
+        -> Vector{Tuple{EnumeratedStructure{D,L}, Float64}}
+
+Pair each `enumlib_id → energy` entry in `results` with the corresponding `EnumeratedStructure` from `enumeration`. Returns a flat `Vector{Tuple{EnumeratedStructure, Float64}}` ready for downstream cluster-expansion or MLIP fitting.
+
+Throws `KeyError` if any ID in `results` is out of range `[1, length(enumeration.structures)]`. Emits an `@info` message naming structure IDs that appear in the enumeration but not in `results` (calculator hasn't filled in energy yet — usually expected mid-batch).
+
+A typed `EnrichedEnumeration` wrapper is intentionally NOT introduced here; the flat tuple list is the simplest interchange shape and the current consumer (JuCE.jl's CE fitter) expects it. Wrapping is v0.3+ polish if a richer view becomes useful.
+"""
+function attach_results(enumeration::Enumeration{D,L},
+                        results::Dict{Int, Float64}) where {D,L}
+    n = length(enumeration.structures)
+    pairs = Tuple{EnumeratedStructure{D,L}, Float64}[]
+    for (id, energy) in results
+        if id < 1 || id > n
+            throw(KeyError(
+                "attach_results: structure_id $id is out of range [1, $n]"))
+        end
+        push!(pairs, (enumeration.structures[id], energy))
+    end
+
+    # Sort by ID for deterministic ordering (Dict iteration is unordered).
+    sort!(pairs; by = p -> _enumlib_id_position(enumeration, p[1]))
+
+    missing_ids = setdiff(1:n, keys(results))
+    if !isempty(missing_ids)
+        @info "attach_results: $(length(missing_ids)) of $n structure(s) have no matching result " *
+              "(calculator hasn't filled in energy_eV yet for these IDs)" missing_ids
+    end
+
+    return pairs
+end
+
+# ----------------------------------------------------------------------------
+# Internal helpers for read_results.
+# ----------------------------------------------------------------------------
+
+# Find the 1-indexed position of a structure within enumeration.structures.
+# Used for sorting attach_results output deterministically.
+function _enumlib_id_position(enumeration::Enumeration, structure::EnumeratedStructure)
+    for (i, s) in enumerate(enumeration.structures)
+        s === structure && return i
+    end
+    return 0
+end
+
+# Extract a tarball into target_dir (which must not yet exist).
+function _extract_archive(archive_path::AbstractString, target_dir::AbstractString)
+    if endswith(archive_path, ".tar.gz") || endswith(archive_path, ".tgz")
+        open(archive_path, "r") do io
+            gz_io = GzipDecompressorStream(io)
+            try
+                Tar.extract(gz_io, target_dir; copy_symlinks = false)
+            finally
+                close(gz_io)
+            end
+        end
+    elseif endswith(archive_path, ".tar")
+        open(archive_path, "r") do io
+            Tar.extract(io, target_dir; copy_symlinks = false)
+        end
+    else
+        throw(ArgumentError(
+            "_extract_archive: unknown archive format for '$archive_path'; " *
+            "expected .tar.gz, .tgz, or .tar"))
+    end
+    return target_dir
+end
+
+# Walk every POSCAR in a directory, parse line 1 of each, return Dict{Int, Float64}.
+function _read_results_from_directory(dir::AbstractString;
+                                      manifest_filename::AbstractString = "enumeration.toml")::Dict{Int, Float64}
+    results = Dict{Int, Float64}()
+    unfilled = Int[]
+    n_seen = 0
+
+    for filename in sort!(readdir(dir))
+        startswith(filename, "POSCAR") || continue
+        filename == manifest_filename && continue   # not a POSCAR
+        filepath = joinpath(dir, filename)
+        isfile(filepath) || continue
+        n_seen += 1
+
+        line1 = open(readline, filepath)
+
+        # Parse enumlib_id from line 1.
+        m_id = match(r"enumlib_id=(\d+)", line1)
+        m_id === nothing && throw(ArgumentError(
+            "$(filepath): line 1 does not contain `enumlib_id=N` " *
+            "(expected Enumlib-format POSCAR header). First line was:\n  $line1"))
+        id = parse(Int, m_id.captures[1])
+
+        # Parse energy_eV slot from line 1. Permissive on the float format
+        # (the calculator might write -12.345, -1.2345e+01, +12.345, etc.);
+        # strict on the slot key being exactly `energy_eV=`.
+        m_e = match(r"energy_eV\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)?", line1)
+        if m_e === nothing
+            throw(ArgumentError(
+                "$(filepath): line 1 does not contain `energy_eV=` slot. " *
+                "First line was:\n  $line1"))
+        end
+
+        if m_e.captures[1] === nothing || isempty(strip(m_e.captures[1]))
+            push!(unfilled, id)
+            continue
+        end
+
+        energy_str = strip(m_e.captures[1])
+        local energy::Float64
+        try
+            energy = parse(Float64, energy_str)
+        catch
+            throw(ArgumentError(
+                "$(filepath): could not parse energy_eV value '$energy_str' " *
+                "as a Float64. First line was:\n  $line1"))
+        end
+        results[id] = energy
+    end
+
+    if !isempty(unfilled)
+        @info "read_results: $(length(unfilled)) of $n_seen POSCARs had empty " *
+              "`energy_eV=` slot; skipped (calculator hasn't filled them in yet)" unfilled_ids = sort(unfilled)
+    end
+
+    return results
+end

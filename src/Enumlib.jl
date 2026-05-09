@@ -52,8 +52,9 @@ export
     estimate_cost, format_bytes,
     # v0.2 type catalog (chunk 8) — Morgan 2017 recursive-stabilizer tree
     getUniqueColorings_recursive_stabilizer,
-    # v0.2 type catalog (chunk 11a/b) — POSCAR I/O
+    # v0.2 type catalog (chunk 11a/b/c) — POSCAR I/O
     to_poscar, write_enumeration_archive,
+    read_results, attach_results,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)
