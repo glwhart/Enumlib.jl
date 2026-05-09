@@ -43,7 +43,7 @@ using Enumlib
 parent = ParentLattice([0.5 0.5 0.0;
                         0.5 0.0 0.5;
                         0.0 0.5 0.5])             # FCC primitive
-sites  = Sites([Site([0.0, 0.0, 0.0], [0, 1])])   # binary on one site
+sites  = Sites([Site([0.0, 0.0, 0.0], [0, 1])])   # binary case, one site
 
 enum = enumerate(parent, sites; supercells = VolumeRange(1:4))
 length(enum)
