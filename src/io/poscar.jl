@@ -140,7 +140,19 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     # Julia stores basis with columns = lattice vectors (A_super[:, j] is the
     # j-th lattice vector). VASP reads each row of POSCAR as one lattice
     # vector. So we transpose: row j of the POSCAR is column j of A_super.
+    #
+    # Right-handedness: VASP refuses to process POSCARs with a left-handed
+    # basis (det < 0). Enumlib's parent lattice can be left-handed (chunk 1.1
+    # relaxed the right-handedness check to non-singularity). When that's the
+    # case, swap columns 1 and 2 of the supercell basis to flip the sign of
+    # det while preserving Cartesian positions; the matching position fix
+    # below swaps the first two components of every fractional coordinate.
+    # The Cartesian geometry VASP reads is identical to what Enumlib enumerated.
     A_super = parent.A * hnf.matrix
+    chirality_swap = LinearAlgebra.det(A_super) < 0
+    if chirality_swap
+        A_super = A_super[:, [2, 1, 3]]
+    end
     for j in 1:D
         for i in 1:D
             print(io, @sprintf("%22.12f", A_super[i, j]))
@@ -167,7 +179,14 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     # Zero-count colors emit no position lines (the inner loop naturally
     # skips them). Within each color group, atoms are in supercell-site-index
     # order (`getPermG`'s convention).
+    #
+    # If we swapped columns 1↔2 of A_super to fix chirality (above), the
+    # corresponding fractional positions must also have their first two
+    # coordinates swapped so the Cartesian positions stay invariant.
     fractional_positions = supercell_fractional_positions(hnf)
+    if chirality_swap
+        fractional_positions = [(p[2], p[1], p[3]) for p in fractional_positions]
+    end
     for color_one_indexed in 1:k
         target_color = color_one_indexed - 1
         for site in 1:n

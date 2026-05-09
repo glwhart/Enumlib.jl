@@ -124,20 +124,28 @@ using Enumlib
 
     # ---- Lattice basis (VASP rows convention) ----
 
-    @testset "lattice vectors written as VASP rows (transpose from Julia columns)" begin
+    @testset "lattice vectors written as VASP rows; basis is right-handed; Cartesian preserved" begin
+        # Note: the default parent here is FCC primitive [0.5 0.5 0; 0.5 0 0.5; 0 0.5 0.5]
+        # which is *left-handed* (det = -0.25; chunk 1.1 relaxed the right-handedness
+        # check, so this is allowed at the parent layer). VASP requires a right-handed
+        # basis, so to_poscar swaps columns 1↔2 of A_super (and the corresponding
+        # fractional-position components) to fix chirality. We check the invariant:
+        # written basis is right-handed, AND Cartesian positions match the original.
+        using LinearAlgebra
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, e.structures[1], parent, hnf; super_periodic = false)
         lines = split(String(take!(io)), '\n')
-        # Lines 3, 4, 5 are the lattice vectors (1-indexed: lines[3], lines[4], lines[5]).
-        # Each row of the POSCAR = one lattice vector = one column of A_super.
-        A_super = parent.A * hnf.matrix
+
+        # Read back the written basis.
+        A_back = zeros(3, 3)
         for j in 1:3
             row_vals = parse.(Float64, split(strip(lines[2 + j])))
             @test length(row_vals) == 3
-            @test row_vals ≈ A_super[:, j]
+            A_back[:, j] = row_vals
         end
+        @test det(A_back) > 0  # always right-handed when written
     end
 
     # ---- Species + counts + grouping ----
@@ -237,9 +245,108 @@ using Enumlib
 
     # ---- Value-equality round-trip via parse-back ----
 
-    @testset "parse-back round-trip on FCC binary n=4" begin
-        # Read back the POSCAR's numerical content and verify each piece
-        # matches the input. (Per Q8: value-equality, not byte-for-byte.)
+    # ---- Right-handedness fix (chunk 11b.1) ----
+    #
+    # VASP refuses left-handed bases (det < 0). The default Enumlib FCC
+    # primitive used in these tests IS left-handed (det([0.5 0.5 0; 0.5 0 0.5;
+    # 0 0.5 0.5]) = -0.25; chunk 1.1 relaxed the right-handedness check at
+    # the parent layer). to_poscar detects this and swaps columns 1↔2 of
+    # A_super (and the matching fractional-coordinate components) so the
+    # written basis is right-handed and Cartesian positions are preserved.
+    #
+    # The right-invariant for testing this is: Cartesian positions implied
+    # by the *written* basis × *written* fractional coordinates equal the
+    # Cartesian positions implied by the *original* basis × *original*
+    # fractional coordinates. We check that explicitly here.
+
+    function _cart_positions_from_poscar(poscar_str::String, n::Int)
+        lines = split(poscar_str, '\n')
+        A_back = zeros(3, 3)
+        for j in 1:3
+            A_back[:, j] = parse.(Float64, split(strip(lines[2 + j])))
+        end
+        position_lines = [strip(l) for l in lines[9:end] if !isempty(strip(l))]
+        @assert length(position_lines) == n
+        cart = [A_back * parse.(Float64, split(l)) for l in position_lines]
+        return A_back, cart
+    end
+
+    function _orig_cart_positions(structure, parent, hnf)
+        # Cartesian positions implied by the original (un-swapped) geometry,
+        # in the same color-grouped order to_poscar uses.
+        A_super = parent.A * hnf.matrix
+        coloring = to_labeling(structure)
+        n = length(coloring)
+        k = isempty(coloring) ? 0 : Int(maximum(coloring)) + 1
+        orig_frac = Enumlib.supercell_fractional_positions(hnf)
+        cart = Vector{Vector{Float64}}()
+        for color in 0:k-1
+            for site in 1:n
+                if Int(coloring[site]) == color
+                    push!(cart, A_super * collect(orig_frac[site]))
+                end
+            end
+        end
+        return cart
+    end
+
+    @testset "written basis is right-handed (default left-handed parent)" begin
+        using LinearAlgebra
+        @test det(parent.A) < 0    # confirm the test parent is left-handed
+        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        for structure in e.structures
+            hnf = e.supercells[structure.supercell_id].hnf
+            io = IOBuffer()
+            to_poscar(io, structure, parent, hnf; super_periodic = false)
+            poscar = String(take!(io))
+            A_back, _ = _cart_positions_from_poscar(poscar, length(to_labeling(structure)))
+            @test det(A_back) > 0
+        end
+    end
+
+    @testset "Cartesian positions preserved (left-handed parent → swap)" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        for structure in e.structures
+            hnf = e.supercells[structure.supercell_id].hnf
+            io = IOBuffer()
+            to_poscar(io, structure, parent, hnf;
+                       super_periodic = false,
+                       species_symbols = ["Ag", "Pt"])
+            poscar = String(take!(io))
+            n = length(to_labeling(structure))
+            _, written_cart = _cart_positions_from_poscar(poscar, n)
+            orig_cart = _orig_cart_positions(structure, parent, hnf)
+            @test length(written_cart) == length(orig_cart)
+            for (cw, co) in zip(written_cart, orig_cart)
+                @test cw ≈ co
+            end
+        end
+    end
+
+    @testset "right-handed parent: basis written verbatim (no swap)" begin
+        # Construct an actually-right-handed FCC primitive by swapping
+        # columns 1↔2 of the default left-handed one. Now det > 0.
+        using LinearAlgebra
+        parent_rh = ParentLattice([0.5 0.5 0.0; 0.0 0.5 0.5; 0.5 0.0 0.5])
+        @test det(parent_rh.A) > 0
+        sites_rh = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        e_rh = enumerate(parent_rh, sites_rh; supercells = VolumeRange(2:2))
+        for structure in e_rh.structures
+            hnf = e_rh.supercells[structure.supercell_id].hnf
+            io = IOBuffer()
+            to_poscar(io, structure, parent_rh, hnf; super_periodic = false)
+            poscar = String(take!(io))
+            A_back, _ = _cart_positions_from_poscar(poscar, length(to_labeling(structure)))
+            # No swap should have occurred — basis matches A_super exactly.
+            @test A_back ≈ parent_rh.A * hnf.matrix
+            @test det(A_back) > 0
+        end
+    end
+
+    @testset "parse-back round-trip on FCC binary n=4 (Cartesian-preserving)" begin
+        # Read back the POSCAR's numerical content and verify the *Cartesian
+        # geometry* matches the input. (Per Q8 + chunk-11b.1 chirality fix:
+        # value-equality on Cartesian positions, not byte-for-byte on basis.)
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         for (idx, structure) in enumerate(e.structures[1:min(5, length(e))])
             hnf = e.supercells[structure.supercell_id].hnf
@@ -248,18 +355,20 @@ using Enumlib
                        super_periodic = false,
                        species_symbols = ["Ag", "Pt"],
                        enumlib_id = idx)
-            lines = split(String(take!(io)), '\n')
-            # Parse back lattice vectors.
-            A_back = zeros(3, 3)
-            for j in 1:3
-                A_back[:, j] = parse.(Float64, split(strip(lines[2 + j])))
+            poscar = String(take!(io))
+            n = length(to_labeling(structure))
+            A_back, written_cart = _cart_positions_from_poscar(poscar, n)
+            @test det(A_back) > 0   # always right-handed
+            # Cartesian positions match what the original geometry produces.
+            orig_cart = _orig_cart_positions(structure, parent, hnf)
+            for (cw, co) in zip(written_cart, orig_cart)
+                @test cw ≈ co
             end
-            @test A_back ≈ parent.A * hnf.matrix
-            # Parse back the species and counts.
+            # Species + counts + mode unchanged (chirality fix doesn't touch them).
+            lines = split(poscar, '\n')
             species = split(strip(lines[6]))
             counts = parse.(Int, split(strip(lines[7])))
-            @test sum(counts) == length(to_labeling(structure))
-            # Coordinate mode.
+            @test sum(counts) == n
             @test strip(lines[8]) == "Direct"
         end
     end
