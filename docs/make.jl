@@ -1,0 +1,74 @@
+using Documenter
+using Enumlib
+
+DocMeta.setdocmeta!(Enumlib, :DocTestSetup, :(using Enumlib, LinearAlgebra); recursive = true)
+
+makedocs(
+    sitename = "Enumlib.jl",
+    authors  = "Gus Hart and contributors",
+    repo     = Remotes.GitHub("glwhart", "Enumlib.jl"),
+    format   = Documenter.HTML(
+        prettyurls = get(ENV, "CI", "false") == "true",
+        canonical  = "https://glwhart.github.io/Enumlib.jl",
+        assets     = String[],
+    ),
+    modules  = [Enumlib],
+    # Phase 13a is infrastructure — pages exist as placeholders with
+    # nothing but a TODO heading. checkdocs is set to :none for now so
+    # missing-docstring warnings don't block the deploy pipeline. Phase
+    # 13b (docstring audit) raises this to :exports.
+    checkdocs = :none,
+    pages = [
+        "Home" => "index.md",
+        "Tutorials" => [
+            "tutorials/index.md",
+            "tutorials/01-first-enumeration.md",
+            "tutorials/02-fixed-concentration.md",
+            "tutorials/03-dft-training-database.md",
+        ],
+        "How-to guides" => [
+            "how-to/index.md",
+            "how-to/construct-a-parent-lattice.md",
+            "how-to/describe-substitution-sites.md",
+            "how-to/select-supercells.md",
+            "how-to/enumerate-at-fixed-concentration.md",
+            "how-to/sweep-concentration-ranges.md",
+            "how-to/pick-an-algorithm.md",
+            "how-to/count-without-enumerating.md",
+            "how-to/estimate-cost.md",
+            "how-to/handle-super-periodicity.md",
+            "how-to/write-poscars-for-dft.md",
+        ],
+        "Reference" => [
+            "reference/index.md",
+            "reference/parent-and-sites.md",
+            "reference/supercells.md",
+            "reference/concentrations.md",
+            "reference/enumerate-and-count.md",
+            "reference/cost-estimator.md",
+            "reference/polya.md",
+            "reference/poscar-io.md",
+        ],
+        "Explanation" => [
+            "explanation/index.md",
+            "explanation/algorithm-overview.md",
+            "explanation/exhaustive-2008.md",
+            "explanation/multinomial-2012.md",
+            "explanation/recursive-stabilizer-2017.md",
+            "explanation/polya-counting.md",
+            "explanation/dispatch-and-cost-gate.md",
+            "explanation/super-periodicity.md",
+            "explanation/concentration-and-multiplicity.md",
+            "explanation/glossary.md",
+        ],
+    ],
+)
+
+deploydocs(
+    repo      = "github.com/glwhart/Enumlib.jl",
+    devbranch = "main",
+    devurl    = "dev",
+    target    = "build",
+    branch    = "gh-pages",
+    versions  = ["stable" => "v^"],
+)
