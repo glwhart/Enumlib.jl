@@ -1,10 +1,14 @@
 module Enumlib
 
+using CodecZlib: GzipCompressorStream, GzipDecompressorStream
 using Combinatorics
+using Dates
 using LinearAlgebra
 using NormalForms
 using Printf
 using Spacey, MinkowskiReduction
+using Tar
+using TOML
 using DataStructures: IntDisjointSets, find_root!, union!
 
 # --- v0.2 type catalog ---
@@ -48,8 +52,8 @@ export
     estimate_cost, format_bytes,
     # v0.2 type catalog (chunk 8) — Morgan 2017 recursive-stabilizer tree
     getUniqueColorings_recursive_stabilizer,
-    # v0.2 type catalog (chunk 11a) — POSCAR writer
-    to_poscar,
+    # v0.2 type catalog (chunk 11a/b) — POSCAR I/O
+    to_poscar, write_enumeration_archive,
 
     # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
     # methods alongside)

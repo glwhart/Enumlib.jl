@@ -1,4 +1,5 @@
 using Test
+using TOML
 using Enumlib
 
 @testset "Phase 11a — POSCAR writer (to_poscar)" begin
@@ -260,6 +261,160 @@ using Enumlib
             @test sum(counts) == length(to_labeling(structure))
             # Coordinate mode.
             @test strip(lines[8]) == "Direct"
+        end
+    end
+
+    # ============================================================================
+    # Phase 11b — write_enumeration_archive (bulk tarball + manifest)
+    # ============================================================================
+
+    @testset "write_enumeration_archive produces a valid tarball" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e;
+                                              super_periodic = false,
+                                              species_symbols = ["Ag", "Pt"],
+                                              label = "test_n4")
+            @test isfile(out)
+            @test endswith(out, ".tar.gz")
+            @test occursin("test_n4", out)
+            @test filesize(out) > 0
+        end
+    end
+
+    @testset "tarball contains one POSCAR per structure + manifest" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        n = length(e)
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e;
+                                              super_periodic = false,
+                                              species_symbols = ["Ag", "Pt"])
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                files = readdir(extract_dir)
+                @test "enumeration.toml" in files
+                poscar_files = filter(f -> startswith(f, "POSCAR."), files)
+                @test length(poscar_files) == n
+                # Filenames are zero-padded with width=2 (since 19 < 100).
+                @test "POSCAR.01" in poscar_files
+                @test "POSCAR.$(lpad(n, 2, '0'))" in poscar_files
+            end
+        end
+    end
+
+    @testset "manifest TOML is well-formed and has [enumeration] + [structure.N]" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e;
+                                              super_periodic = false,
+                                              species_symbols = ["Ag", "Pt"],
+                                              label = "manifest_test")
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
+                # Top-level [enumeration] section.
+                @test haskey(manifest, "enumeration")
+                enum_section = manifest["enumeration"]
+                @test enum_section["n_structures"] == length(e)
+                @test enum_section["n_supercells"] == length(e.supercells)
+                @test enum_section["super_periodic"] == false
+                @test enum_section["species_symbols"] == ["Ag", "Pt"]
+                @test enum_section["k"] == 2
+                @test haskey(enum_section, "created_at")
+                @test haskey(enum_section, "parent_basis_columns")
+
+                # Per-structure sections.
+                @test haskey(manifest, "structure")
+                structures_section = manifest["structure"]
+                @test length(structures_section) == length(e)
+                @test haskey(structures_section, "1")
+                first_struct = structures_section["1"]
+                @test haskey(first_struct, "concentration")
+                @test haskey(first_struct, "hnf_idx")
+                @test haskey(first_struct, "poscar_filename")
+                @test haskey(first_struct, "hnf_matrix_columns")
+                @test first_struct["poscar_filename"] == "POSCAR.01"
+            end
+        end
+    end
+
+    @testset "manifest concentration matches POSCAR header concentration" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e;
+                                              super_periodic = false,
+                                              species_symbols = ["Ag", "Pt"])
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
+                # For each structure: open the POSCAR; verify the header
+                # concentration matches the manifest entry.
+                for (id_str, info) in manifest["structure"]
+                    fname = info["poscar_filename"]
+                    poscar_path = joinpath(extract_dir, fname)
+                    line1 = open(readline, poscar_path)
+                    expected_conc = info["concentration"]
+                    @test occursin("concentration=$expected_conc ", line1)
+                end
+            end
+        end
+    end
+
+    @testset "explicit .tar.gz path is honored verbatim" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            explicit_path = joinpath(tmp, "my_specific_name.tar.gz")
+            out = write_enumeration_archive(explicit_path, e;
+                                              super_periodic = false)
+            @test out == explicit_path
+            @test isfile(explicit_path)
+        end
+    end
+
+    @testset "auto-naming includes timestamp + label" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e;
+                                              super_periodic = false,
+                                              label = "MyLabel")
+            base = basename(out)
+            @test startswith(base, "enumlib_MyLabel_")
+            @test endswith(base, ".tar.gz")
+            # Timestamp format: yyyy-mm-ddTHH-MM-SS
+            @test occursin(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}", base)
+        end
+    end
+
+    @testset "default label is 'enum'" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e; super_periodic = false)
+            @test startswith(basename(out), "enumlib_enum_")
+        end
+    end
+
+    @testset "keep_directory leaves the assembled directory next to tarball" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(joinpath(tmp, "kd_test.tar.gz"), e;
+                                              super_periodic = false,
+                                              keep_directory = true)
+            @test isfile(out)
+            kept_dir = joinpath(tmp, "kd_test")
+            @test isdir(kept_dir)
+            @test "enumeration.toml" in readdir(kept_dir)
+            poscar_files = filter(f -> startswith(f, "POSCAR."), readdir(kept_dir))
+            @test length(poscar_files) == length(e)
+        end
+    end
+
+    @testset "empty enumeration throws" begin
+        e_empty = Enumeration{3, Vector{Int8}}(parent, sites,
+                                                 Enumlib.Supercell{3}[],
+                                                 Enumlib.EnumeratedStructure{3, Vector{Int8}}[])
+        mktempdir() do tmp
+            @test_throws ArgumentError write_enumeration_archive(tmp, e_empty;
+                                                                   super_periodic = false)
         end
     end
 

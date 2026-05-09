@@ -228,3 +228,178 @@ function supercell_fractional_positions(hnf::HNF{3})
     end
     return positions
 end
+
+# ============================================================================
+# Chunk 11b — bulk write to a tarball + TOML manifest.
+# ============================================================================
+
+"""
+    write_enumeration_archive(path, enumeration::Enumeration{D,L};
+                               super_periodic::Bool,
+                               species_symbols::Vector{String} = String[],
+                               label::AbstractString = "",
+                               keep_directory::Bool = false) -> String
+
+Write every structure in `enumeration` to a single `.tar.gz` deliverable at `path`. Returns the actual tarball path written (may differ from `path` if `path` was a directory and the writer auto-named the file).
+
+The tarball contains:
+- `POSCAR.NNNNN` — one per structure, where N is zero-padded to fit `length(enumeration.structures)` (width = `max(2, ndigits(N))`). Each POSCAR's header line 1 carries `enumlib_id=NNNNN` matching the filename, plus an empty `energy_eV=` slot the calculator fills in.
+- `enumeration.toml` — manifest mapping each filename to its structure metadata, plus a `[enumeration]` top-level section recording the parent lattice, species symbols, super-periodicity policy, etc.
+
+# Arguments
+
+- `path` — output tarball path. If `path` ends in `.tar.gz` or `.tgz`, the file is written exactly there. Otherwise `path` is treated as a directory and the writer auto-names the tarball inside it as `enumlib_<label>_<yyyy-mm-ddTHH-MM-SS>.tar.gz` (timestamped to make collisions impossible).
+
+# Required kwargs
+
+- `super_periodic::Bool` — the `include_superperiodic` policy this enumeration was produced under. Recorded in every POSCAR header and in the manifest's `[enumeration]` section.
+
+# Optional kwargs
+
+- `species_symbols::Vector{String}` — length ≥ k. Default `["A", "B", "C", ...]` (one ASCII letter per color). Override at the call site if real chemistry is known at enumeration time; the calculator can also override at DFT-prep time.
+- `label::AbstractString` — descriptive component of the auto-named filename (e.g., `"FCC_AgPt_n32_15-17"`). If empty, defaults to `"enum"`.
+- `keep_directory::Bool = false` — if true, also keep the assembled directory next to the tarball at `<tarball-stem>/`. Useful for inspection or for users who'd rather not extract before editing.
+
+# Example
+
+```julia
+parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+out = write_enumeration_archive("./batch1/", e;
+                                  super_periodic = false,
+                                  species_symbols = ["Ag", "Pt"],
+                                  label = "FCC_AgPt_n4")
+# out: "./batch1/enumlib_FCC_AgPt_n4_2026-05-08T14-30-00.tar.gz"
+```
+"""
+function write_enumeration_archive(path::AbstractString, enumeration::Enumeration{D,L};
+                                    super_periodic::Bool,
+                                    species_symbols::Vector{String} = String[],
+                                    label::AbstractString = "",
+                                    keep_directory::Bool = false) where {D,L}
+    n_structures = length(enumeration.structures)
+    n_structures > 0 ||
+        throw(ArgumentError(
+            "enumeration has zero structures; nothing to write. Check your " *
+            "VolumeRange / concentration constraints."))
+
+    # Resolve output tarball path.
+    out_path = if endswith(path, ".tar.gz") || endswith(path, ".tgz")
+        # User provided an exact filename.
+        path
+    else
+        # Treat `path` as a directory; auto-name with timestamp.
+        ts = Dates.format(Dates.now(), "yyyy-mm-ddTHH-MM-SS")
+        label_part = isempty(label) ? "enum" : label
+        joinpath(path, "enumlib_$(label_part)_$(ts).tar.gz")
+    end
+
+    # Make parent directory if needed.
+    parent_dir = dirname(out_path)
+    if !isempty(parent_dir) && !isdir(parent_dir)
+        mkpath(parent_dir)
+    end
+
+    # Build the directory of POSCARs + manifest, then tar+gzip it.
+    if keep_directory
+        # Persistent directory next to the tarball (no temp).
+        stem = replace(out_path, r"\.(tar\.gz|tgz)$" => "")
+        isdir(stem) && rm(stem; recursive = true, force = true)
+        mkpath(stem)
+        _build_enumeration_directory(stem, enumeration;
+                                     super_periodic, species_symbols)
+        _tar_gzip_directory(stem, out_path)
+    else
+        # Temp dir — auto-cleaned after tarring.
+        mktempdir() do temp_dir
+            _build_enumeration_directory(temp_dir, enumeration;
+                                         super_periodic, species_symbols)
+            _tar_gzip_directory(temp_dir, out_path)
+        end
+    end
+
+    return out_path
+end
+
+# Build a directory with one POSCAR per structure plus a TOML manifest.
+function _build_enumeration_directory(dir::AbstractString,
+                                       enumeration::Enumeration{D,L};
+                                       super_periodic::Bool,
+                                       species_symbols::Vector{String}) where {D,L}
+    n_structures = length(enumeration.structures)
+    width = max(2, ndigits(n_structures))
+
+    # Resolve k from species_symbols length if supplied; otherwise infer from
+    # the maximum color seen across all structures (handles the rare case
+    # where some structures use fewer colors than others).
+    inferred_k = isempty(species_symbols) ?
+        maximum(maximum(to_labeling(s)) for s in enumeration.structures) + 1 :
+        length(species_symbols)
+    k = isempty(species_symbols) ? inferred_k : length(species_symbols)
+
+    # Build manifest dict in parallel with writing POSCARs.
+    manifest = Dict{String, Any}()
+    manifest["enumeration"] = Dict{String, Any}(
+        "created_at" => Dates.format(Dates.now(), "yyyy-mm-ddTHH:MM:SS"),
+        "n_structures" => n_structures,
+        "n_supercells" => length(enumeration.supercells),
+        "super_periodic" => super_periodic,
+        "species_symbols" => isempty(species_symbols) ?
+            [string(Char(Int('A') + (i - 1))) for i in 1:k] : species_symbols,
+        "parent_basis_columns" => [collect(enumeration.parent.A[:, j]) for j in 1:D],
+        "k" => k,
+    )
+    structures_section = Dict{String, Any}()
+
+    for (idx, structure) in enumerate(enumeration.structures)
+        sc = enumeration.supercells[structure.supercell_id]
+        hnf = sc.hnf
+        labeling = to_labeling(structure)
+        # Compute concentration string from the labeling.
+        counts = zeros(Int, k)
+        for c in labeling
+            counts[Int(c) + 1] += 1
+        end
+        concentration_str = join(counts, ":")
+
+        filename = "POSCAR." * lpad(string(idx), width, '0')
+        filepath = joinpath(dir, filename)
+        open(filepath, "w") do io
+            to_poscar(io, structure, enumeration.parent, hnf;
+                       super_periodic,
+                       species_symbols,
+                       enumlib_id = idx,
+                       hnf_idx = structure.supercell_id)
+        end
+
+        structures_section[string(idx)] = Dict{String, Any}(
+            "hnf_idx" => structure.supercell_id,
+            "concentration" => concentration_str,
+            "poscar_filename" => filename,
+            "hnf_matrix_columns" => [collect(hnf.matrix[:, j]) for j in 1:D],
+        )
+    end
+
+    manifest["structure"] = structures_section
+
+    # Write the manifest.
+    open(joinpath(dir, "enumeration.toml"), "w") do io
+        TOML.print(io, manifest; sorted = true)
+    end
+
+    return nothing
+end
+
+# Tar+gzip a directory's contents into the target path.
+function _tar_gzip_directory(dir::AbstractString, out_path::AbstractString)
+    open(out_path, "w") do io
+        gz_io = GzipCompressorStream(io)
+        try
+            Tar.create(dir, gz_io)
+        finally
+            close(gz_io)
+        end
+    end
+    return out_path
+end

@@ -1,25 +1,31 @@
 name = "Enumlib"
 uuid = "ae9d64bb-ee6e-4818-9249-167913fc9296"
-version = "0.1.0"
 authors = ["Gus Hart <gus.hart@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MinkowskiReduction = "d617d09d-b3c0-43f1-8886-30d89b900f25"
 NormalForms = "109d20d8-9763-411c-9b60-7eb2a068657f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Spacey = "6fa23216-6d9f-473e-ad34-00be7be2628b"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 
 [compat]
 CodecZlib = "0.7"
 Combinatorics = "1"
 DataStructures = "0.18"
+Dates = "1.11.0"
 NormalForms = "0.1"
 Printf = "1.11.0"
 Spacey = "0.8"
+TOML = "1.0.3"
+Tar = "1.10.0"
 julia = "1.9"
 
 [extras]
