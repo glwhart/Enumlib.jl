@@ -727,6 +727,71 @@ using Enumlib
 
     # ---- End-to-end ----
 
+    # Mirrors the docs/notes/phase11-tutorial.md walkthrough verbatim. If a
+    # future API change breaks the tutorial, this test fails — keeps the doc
+    # honest. Uses the same chunk-6-locked count of 5 structures for FCC binary
+    # 2:2 in n=4.
+    @testset "Tutorial walkthrough: FCC AgPt n=4 2:2, full Phase 11 pipeline" begin
+        # Step 1 — define parent + sites.
+        parent_t = ParentLattice([0.5 0.5 0.0;
+                                   0.5 0.0 0.5;
+                                   0.0 0.5 0.5])
+        sites_t = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        # Step 2 — count first.
+        c = Concentration_count([2, 2]; n_total = 4)
+        n_orbits = count_inequivalent(parent_t, sites_t;
+                                       supercells = VolumeRange(4:4),
+                                       concentration = c)
+        @test n_orbits == 5    # chunk-6 reference
+
+        # Step 3 — enumerate.
+        enum = enumerate(parent_t, sites_t;
+                          supercells = VolumeRange(4:4),
+                          concentration = c)
+        @test length(enum) == 5
+
+        mktempdir() do batch_dir
+            # Step 4 — write the archive.
+            out = write_enumeration_archive(batch_dir, enum;
+                                              super_periodic = false,
+                                              species_symbols = ["Ag", "Pt"],
+                                              label = "FCC_AgPt_n4_2-2",
+                                              keep_directory = true)
+            @test isfile(out)
+            @test occursin("FCC_AgPt_n4_2-2", basename(out))
+            @test endswith(out, ".tar.gz")
+
+            # Step 5 — calculator fills in energies.
+            extracted = replace(out, r"\.tar\.gz$" => "")
+            @test isdir(extracted)
+            calculator_energies = Dict{Int,Float64}(
+                1 => -45.32, 2 => -45.41, 3 => -45.28,
+                4 => -45.39, 5 => -45.35)
+            _fill_energy_slots!(extracted, calculator_energies)
+
+            # Repack to a "filled" tarball as the calculator would ship back.
+            filled_tar = joinpath(batch_dir, "batch1_filled.tar.gz")
+            cd(extracted) do
+                files = readdir(".")
+                run(pipeline(`tar -czf $filled_tar $files`; stdout = devnull))
+            end
+
+            # Step 6 — read_results from the filled tarball.
+            results = read_results(filled_tar)
+            @test results == calculator_energies
+
+            # Step 7 — pair with the original enumeration.
+            pairs = attach_results(enum, results)
+            @test length(pairs) == 5
+            for (s, energy) in pairs
+                idx = findfirst(==(s), enum.structures)
+                @test idx !== nothing
+                @test energy ≈ calculator_energies[idx]
+            end
+        end
+    end
+
     @testset "End-to-end pipeline: enumerate → archive → fill → read → attach" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4),
                                        concentration = Concentration_count([2, 2]; n_total = 4))
