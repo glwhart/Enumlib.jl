@@ -25,32 +25,32 @@ using Enumlib
         @test sum(c3.fractions) == 1//1
     end
 
-    @testset "Concentration_ratio" begin
-        c = Concentration_ratio([15, 17])
+    @testset "concentration_ratio" begin
+        c = concentration_ratio([15, 17])
         @test c.fractions == [15//32, 17//32]
 
-        c2 = Concentration_ratio([1, 1, 2])
+        c2 = concentration_ratio([1, 1, 2])
         @test c2.fractions == [1//4, 1//4, 1//2]
 
         # Negative ratio rejected
-        @test_throws ArgumentError Concentration_ratio([-1, 2])
+        @test_throws ArgumentError concentration_ratio([-1, 2])
         # All-zero rejected
-        @test_throws ArgumentError Concentration_ratio([0, 0])
+        @test_throws ArgumentError concentration_ratio([0, 0])
     end
 
-    @testset "Concentration_count" begin
-        c = Concentration_count([15, 17]; n_total = 32)
+    @testset "concentration_count" begin
+        c = concentration_count([15, 17]; n_total = 32)
         @test c.fractions == [15//32, 17//32]
 
         # Mismatched n_total
-        @test_throws ArgumentError Concentration_count([15, 17]; n_total = 30)
+        @test_throws ArgumentError concentration_count([15, 17]; n_total = 30)
 
         # Non-positive n_total
-        @test_throws ArgumentError Concentration_count([1, 1]; n_total = 0)
+        @test_throws ArgumentError concentration_count([1, 1]; n_total = 0)
     end
 
     @testset "multiplicities resolves cleanly or throws" begin
-        c = Concentration_ratio([15, 17])
+        c = concentration_ratio([15, 17])
         @test multiplicities(c, 32) == [15, 17]
         @test multiplicities(c, 64) == [30, 34]
 
@@ -131,22 +131,22 @@ using Enumlib
 
         # n=4 50% (2:2): 5 structures
         e = enumerate(parent, sites; supercells = VolumeRange(4:4),
-                                       concentration = Concentration_count([2, 2]; n_total = 4))
+                                       concentration = concentration_count([2, 2]; n_total = 4))
         @test length(e) == 5
 
         # n=8 50% (4:4): 94
         e = enumerate(parent, sites; supercells = VolumeRange(8:8),
-                                       concentration = Concentration_count([4, 4]; n_total = 8))
+                                       concentration = concentration_count([4, 4]; n_total = 8))
         @test length(e) == 94
 
         # n=8 3:5: 86
         e = enumerate(parent, sites; supercells = VolumeRange(8:8),
-                                       concentration = Concentration_count([3, 5]; n_total = 8))
+                                       concentration = concentration_count([3, 5]; n_total = 8))
         @test length(e) == 86
 
         # n=12 50% (6:6): 1552
         e = enumerate(parent, sites; supercells = VolumeRange(12:12),
-                                       concentration = Concentration_count([6, 6]; n_total = 12))
+                                       concentration = concentration_count([6, 6]; n_total = 12))
         @test length(e) == 1552
     end
 
@@ -161,7 +161,7 @@ using Enumlib
             unrestricted = length(enumerate(parent, sites; supercells = VolumeRange(n:n)))
             total_per_c = 0
             for a in 1:n-1   # exclude monochromatic (super-periodic for n ≥ 2)
-                c = Concentration_count([a, n-a]; n_total = n)
+                c = concentration_count([a, n-a]; n_total = n)
                 ce = enumerate(parent, sites; supercells = VolumeRange(n:n), concentration = c)
                 total_per_c += length(ce)
             end
@@ -178,7 +178,7 @@ using Enumlib
         for a in 0:4, b in 0:4-a
             c = 4 - a - b
             (a == 4 || b == 4 || c == 4) && continue
-            conc = Concentration_count([a, b, c]; n_total = 4)
+            conc = concentration_count([a, b, c]; n_total = 4)
             ce = enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = conc)
             total += length(ce)
         end
@@ -196,7 +196,7 @@ using Enumlib
         @test length(e_auto) == length(e_exhaustive)
 
         # With concentration → :auto routes to :multinomial
-        c = Concentration_count([2, 2]; n_total = 4)
+        c = concentration_count([2, 2]; n_total = 4)
         e_auto_c = enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = c)
         e_mult = enumerate(parent, sites; supercells = VolumeRange(4:4),
                                             concentration = c, algorithm = :multinomial)
@@ -255,7 +255,7 @@ using Enumlib
     @testset "include_superperiodic at asymmetric concentration is a no-op (trip-wire)" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        c = Concentration_count([3, 5]; n_total = 8)
+        c = concentration_count([3, 5]; n_total = 8)
         e_aper = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c)
         e_full = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c,
                                           include_superperiodic = true)
@@ -274,7 +274,7 @@ using Enumlib
         for (n, a, b, aper_ref, full_ref) in [(4, 2, 2, 5, 13),
                                               (8, 4, 4, 94, 146),
                                               (12, 6, 6, 1552, 1739)]
-            c = Concentration_count([a, b]; n_total = n)
+            c = concentration_count([a, b]; n_total = n)
             @test length(enumerate(parent, sites; supercells = VolumeRange(n:n),
                                                   concentration = c)) == aper_ref
             @test length(enumerate(parent, sites; supercells = VolumeRange(n:n),

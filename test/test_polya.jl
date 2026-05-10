@@ -97,7 +97,7 @@ using Enumlib
         # include_superperiodic = false (chunk 6 reference)
         for (n, a, b, ref) in [(4, 2, 2, 5), (8, 4, 4, 94),
                                (8, 3, 5, 86), (12, 6, 6, 1552)]
-            c = Concentration_count([a, b]; n_total = n)
+            c = concentration_count([a, b]; n_total = n)
             @test count_inequivalent(parent, sites; supercells = VolumeRange(n:n),
                                                     concentration = c) == ref
         end
@@ -105,7 +105,7 @@ using Enumlib
         # include_superperiodic = true (chunk 6.2 reference)
         for (n, a, b, ref) in [(4, 2, 2, 13), (8, 4, 4, 146),
                                (8, 3, 5, 86), (12, 6, 6, 1739)]
-            c = Concentration_count([a, b]; n_total = n)
+            c = concentration_count([a, b]; n_total = n)
             @test count_inequivalent(parent, sites; supercells = VolumeRange(n:n),
                                                     concentration = c,
                                                     include_superperiodic = true) == ref
@@ -121,7 +121,7 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
-        c = Concentration_count([3, 5]; n_total = 8)
+        c = concentration_count([3, 5]; n_total = 8)
         cnt_aper = count_inequivalent(parent, sites; supercells = VolumeRange(8:8), concentration = c)
         cnt_full = count_inequivalent(parent, sites; supercells = VolumeRange(8:8), concentration = c,
                                                      include_superperiodic = true)
@@ -129,7 +129,7 @@ using Enumlib
 
         # Stronger: also at higher n where 15:17 etc. are equally-clean asymmetric.
         # 5:7 in n=12: 5 & 7 share no common factor with 12 except via d=12. Trip-wire.
-        c2 = Concentration_count([5, 7]; n_total = 12)
+        c2 = concentration_count([5, 7]; n_total = 12)
         a2 = count_inequivalent(parent, sites; supercells = VolumeRange(12:12), concentration = c2)
         f2 = count_inequivalent(parent, sites; supercells = VolumeRange(12:12), concentration = c2,
                                                include_superperiodic = true)
@@ -185,7 +185,7 @@ using Enumlib
             unrestricted = count_inequivalent(parent, sites; supercells = VolumeRange(n:n))
             total = BigInt(0)
             for a in 1:n-1   # exclude monochromatic (super-periodic at any volume)
-                c = Concentration_count([a, n - a]; n_total = n)
+                c = concentration_count([a, n - a]; n_total = n)
                 total += count_inequivalent(parent, sites; supercells = VolumeRange(n:n),
                                                             concentration = c)
             end

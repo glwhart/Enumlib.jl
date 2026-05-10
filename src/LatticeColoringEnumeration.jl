@@ -1,4 +1,5 @@
-export checkCartesianPt, getFixingOps
+# Internal helpers — un-exported in chunk 13b.1. Call via `Enumlib.foo(...)`
+# if you need them.
 
 # Chunk 5 deletions (closes chunk-3-review item 3):
 # - struct SuperTile (3D variant; flagged "not yet used" in original) — removed.

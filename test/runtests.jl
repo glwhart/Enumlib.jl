@@ -2,6 +2,9 @@
 
 using Test
 using Enumlib
+using Enumlib: getColorings, reduceColorings, getSymEqvColorings_slow,
+    getSymInequivHNFs, getFixingOps, getPermG, getUniqueColorings,
+    generateGroup    # un-exported in chunk 13b.1; legacy testset still uses them
 using Combinatorics
 using LinearAlgebra
 using Spacey
@@ -19,6 +22,7 @@ include("test_cost_estimate.jl")
 include("test_recursive_stabilizer.jl")
 include("test_auto_dispatch.jl")
 include("test_poscar.jl")
+include("test_legacy_import.jl")
 
 @testset "Colorings and HNF enumeration" begin
     # Plain enumeration of colorings

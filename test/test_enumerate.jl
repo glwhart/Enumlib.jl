@@ -1,5 +1,6 @@
 using Test
 using Enumlib
+using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still need it
 
 @testset "Enumeration + enumerate (chunk 5)" begin
 

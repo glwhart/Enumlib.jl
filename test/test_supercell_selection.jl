@@ -1,5 +1,6 @@
 using Test
 using Enumlib
+using Enumlib: getSymInequivHNFs, getHNFColorings    # un-exported in chunk 13b.1
 using LinearAlgebra: norm
 
 @testset "SupercellSelection (chunk 4)" begin

@@ -739,7 +739,7 @@ using Enumlib
         sites_t = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
         # Step 2 — count first.
-        c = Concentration_count([2, 2]; n_total = 4)
+        c = concentration_count([2, 2]; n_total = 4)
         n_orbits = count_inequivalent(parent_t, sites_t;
                                        supercells = VolumeRange(4:4),
                                        concentration = c)
@@ -794,7 +794,7 @@ using Enumlib
 
     @testset "End-to-end pipeline: enumerate → archive → fill → read → attach" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4),
-                                       concentration = Concentration_count([2, 2]; n_total = 4))
+                                       concentration = concentration_count([2, 2]; n_total = 4))
         n = length(e)
         @test n == 5   # chunk-6 reference value for FCC binary n=4 50%
         mktempdir() do tmp

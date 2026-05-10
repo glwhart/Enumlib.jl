@@ -7,7 +7,7 @@ using Enumlib
     @testset ":recursive_stabilizer no longer rejected" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        c = Concentration_count([2, 2]; n_total = 4)
+        c = concentration_count([2, 2]; n_total = 4)
         # Should NOT throw the chunk-8-reserved ArgumentError.
         @test_nowarn enumerate(parent, sites; supercells = VolumeRange(4:4),
                                               concentration = c,
@@ -32,7 +32,7 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         for (n, a, b, ref) in [(4, 2, 2, 5), (8, 4, 4, 94),
                                (8, 3, 5, 86), (12, 6, 6, 1552)]
-            c = Concentration_count([a, b]; n_total = n)
+            c = concentration_count([a, b]; n_total = n)
             e_rs = enumerate(parent, sites; supercells = VolumeRange(n:n),
                                             concentration = c,
                                             algorithm = :recursive_stabilizer)
@@ -46,7 +46,7 @@ using Enumlib
         # chunk-6.2 locked values for include_superperiodic = true
         for (n, a, b, ref) in [(4, 2, 2, 13), (8, 4, 4, 146),
                                (8, 3, 5, 86), (12, 6, 6, 1739)]
-            c = Concentration_count([a, b]; n_total = n)
+            c = concentration_count([a, b]; n_total = n)
             e_rs = enumerate(parent, sites; supercells = VolumeRange(n:n),
                                             concentration = c,
                                             algorithm = :recursive_stabilizer,
@@ -63,7 +63,7 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         for n in [4, 8], a in 1:n-1
-            c = Concentration_count([a, n - a]; n_total = n)
+            c = concentration_count([a, n - a]; n_total = n)
             for sp in (false, true)
                 e_rs = enumerate(parent, sites; supercells = VolumeRange(n:n),
                                                 concentration = c,
@@ -114,7 +114,7 @@ using Enumlib
     @testset "estimate_cost handles :recursive_stabilizer" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        c = Concentration_count([4, 4]; n_total = 8)
+        c = concentration_count([4, 4]; n_total = 8)
         est = estimate_cost(parent, sites; supercells = VolumeRange(8:8),
                                             concentration = c,
                                             algorithm = :recursive_stabilizer)
@@ -139,7 +139,7 @@ using Enumlib
             unrestricted = length(enumerate(parent, sites; supercells = VolumeRange(n:n)))
             tree_total = 0
             for a in 1:n-1
-                c = Concentration_count([a, n - a]; n_total = n)
+                c = concentration_count([a, n - a]; n_total = n)
                 e = enumerate(parent, sites; supercells = VolumeRange(n:n),
                                               concentration = c,
                                               algorithm = :recursive_stabilizer)
@@ -183,7 +183,7 @@ using Enumlib
 
         # The HNF 2012 §4 reference: ~400,000 distinct (paper-reported); our
         # exact Pólya number is 379,926.
-        c = Concentration_count([15, 17]; n_total = 32)
+        c = concentration_count([15, 17]; n_total = 32)
         @test count_inequivalent(parent, sites; supercells = ExplicitHNFs([h_cubic]),
                                                 concentration = c) == 379926
         # Asymmetric-concentration trip-wire: at 15:17, super-periodic structures

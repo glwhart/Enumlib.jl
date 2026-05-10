@@ -21,7 +21,7 @@ export
     # v0.2 type catalog (chunk 1)
     SymmetryOp, ParentLattice,
     basis, dset, space_group, ndset, n_nonzero_translations,
-    lattice_rotations,    # added in chunk 3.1
+    lattice_rotations,
     # v0.2 type catalog (chunk 2)
     Site, Sites,
     is_active, is_inactive,
@@ -30,8 +30,6 @@ export
     # v0.2 type catalog (chunk 3)
     HNF, Supercell,
     volume,
-    # (Supercell fields are accessed directly: s.hnf, s.snf,
-    # s.n_stabilizer_ops, s.permutation_group — no accessor functions needed.)
     # v0.2 type catalog (chunk 4)
     SupercellSelection, VolumeRange, RadiusBound, ExplicitHNFs,
     enumerate_hnfs,
@@ -39,7 +37,7 @@ export
     Enumeration, EnumeratedStructure,
     to_labeling, default_memory_budget,
     # v0.2 type catalog (chunk 6)
-    Concentration, Concentration_ratio, Concentration_count,
+    Concentration, concentration_ratio, concentration_count,
     ConcentrationRange, n_species,
     multiplicities, concentrations_in_range,
     multinomial_count, multinomial_hash, multinomial_unhash,
@@ -50,37 +48,16 @@ export
     # v0.2 type catalog (chunk 7.5) — cost estimator + memory-budget gate
     EnumerationCostEstimate, EnumerationTooLargeError,
     estimate_cost, format_bytes,
-    # v0.2 type catalog (chunk 8) — Morgan 2017 recursive-stabilizer tree
-    getUniqueColorings_recursive_stabilizer,
     # v0.2 type catalog (chunk 11a/b/c) — POSCAR I/O
     to_poscar, write_enumeration_archive,
     read_results, attach_results,
-
-    # HNF enumeration (legacy lattice-coord; chunk-3 wrappers add new-type
-    # methods alongside)
-    getAllHNFs, tripletList, basesAreEquiv, getSymInequivHNFs,
-    getFixingOps, checkCartesianPt,
-    # Permutation groups
-    getPermG, getTransGroup,
-    # Coordinates and supercell structures (chunk 5: SuperTile, ColoredTile,
-    # coloringsOfHNFList removed; replaced by Enumeration / EnumeratedStructure /
-    # enumerate(...))
-    gCoordsToOrdinals, ordinalToGcoords,
-    getCartesianPts, getOrdinalsFromCartesian, get_nonzero_index,
-    # Group theory
-    isaGroup, generateGroup,
-    # Colorings
-    getColorings, getSymEqvColorings_slow, reduceColorings, getUniqueColorings,
-    # Cluster utilities
-    isRotTransEquiv, isTransEquiv, canonClustOrder!, deleteTransDuplicates!,
-    shiftToOrigin, isEquivClusters,
     # Cell utilities
-    avg_cell_radius,
-    # Structure I/O
-    enumStr, readStructenumout, readEnergies, readStrIn,
-    # Radius-based enumeration
-    radiusEnumHNFs, getHNFColorings, radEnumByXcellRadius,
-    getSymInequivHNFsByCellRadius, estimatedTime
+    avg_cell_radius
+    # NOTE: chunk 13b.1 unexports the legacy lattice-coord API, internal
+    # helpers, and cluster-equivalence helpers. Internal helpers stay in
+    # the module — call them as `Enumlib.foo(...)` if you need them. The
+    # nine legacy I/O symbols are reachable via `Enumlib.LegacyImport.foo`
+    # with a per-call deprecation warning; targeted for removal in v0.3.
 
 """
     avg_cell_radius(B)
@@ -391,5 +368,35 @@ using .Polya: polya_count, cycle_structure, aperiodic_orbit_count
 include("enumerate.jl")
 # --- chunk 11a: POSCAR writer (must come after all types) ---
 include("io/poscar.jl")
+
+# --- chunk 13b.1: deprecation shim for legacy I/O symbols ---
+#
+# The Fortran-format file I/O (CEdataSupport.jl) and the radius-based
+# enumeration entry points (radiusEnumeration.jl) are un-exported in v0.2 —
+# they're superseded by the chunk-11 POSCAR I/O and the chunk-4 RadiusBound,
+# respectively. They remain reachable via this submodule so existing user
+# code can keep running for one minor release; each call emits a
+# `Base.depwarn`. Targeted for full removal in v0.3.
+module LegacyImport
+import ..Enumlib
+
+const _LEGACY = (
+    :enumStr, :readStructenumout, :readEnergies, :readStrIn,
+    :radiusEnumHNFs, :getHNFColorings, :radEnumByXcellRadius,
+    :getSymInequivHNFsByCellRadius, :estimatedTime,
+)
+
+for fn in _LEGACY
+    @eval function $(fn)(args...; kwargs...)
+        Base.depwarn(
+            "Enumlib.LegacyImport." * $(string(fn)) *
+            " is deprecated and will be removed in v0.3.",
+            $(QuoteNode(fn)),
+        )
+        return Enumlib.$(fn)(args...; kwargs...)
+    end
+end
+
+end # module LegacyImport
 
 end # module Enumlib

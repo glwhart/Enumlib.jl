@@ -1,5 +1,6 @@
 using Test
 using Enumlib
+using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still need it
 using LinearAlgebra: det
 
 @testset "HNF and Supercell (chunk 3)" begin

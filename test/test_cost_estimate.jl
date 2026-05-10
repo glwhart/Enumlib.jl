@@ -44,7 +44,7 @@ using Enumlib
         end
 
         # Fixed concentration, both branches.
-        c = Concentration_count([4, 4]; n_total = 8)
+        c = concentration_count([4, 4]; n_total = 8)
         for sp in (false, true)
             est = estimate_cost(parent, sites; supercells = VolumeRange(8:8),
                                                concentration = c,
@@ -67,7 +67,7 @@ using Enumlib
         @test any(occursin("exhaustive", n) for n in e1.notes)
 
         # With concentration → :multinomial.
-        c = Concentration_count([2, 2]; n_total = 4)
+        c = concentration_count([2, 2]; n_total = 4)
         e2 = estimate_cost(parent, sites; supercells = VolumeRange(4:4), concentration = c)
         @test e2.chosen_algorithm == :multinomial
 
@@ -105,7 +105,7 @@ using Enumlib
         @test e_none.partition_count == 1
 
         # Single Concentration → 1.
-        c = Concentration_count([2, 2]; n_total = 4)
+        c = concentration_count([2, 2]; n_total = 4)
         e_c = estimate_cost(parent, sites; supercells = VolumeRange(4:4), concentration = c)
         @test e_c.partition_count == 1
 
@@ -138,7 +138,7 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
         e_exh = estimate_cost(parent, sites; supercells = VolumeRange(12:12))
-        c = Concentration_count([5, 7]; n_total = 12)
+        c = concentration_count([5, 7]; n_total = 12)
         e_mul = estimate_cost(parent, sites; supercells = VolumeRange(12:12),
                                               concentration = c)
         @test e_mul.peak_memory_bytes < e_exh.peak_memory_bytes

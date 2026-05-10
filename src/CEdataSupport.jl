@@ -1,6 +1,9 @@
 using CodecZlib
 
-export readStructenumout, readEnergies, readStrIn
+# Legacy I/O symbols un-exported in chunk 13b.1. Reach via
+# `Enumlib.LegacyImport.foo(...)` (with per-call deprecation warning) or
+# `Enumlib.foo(...)` if you need to bypass the warning. Removal scheduled
+# for v0.3.
 
 """ Extract energies from concatenated vasp results. Output is sorted by structure number.   
 

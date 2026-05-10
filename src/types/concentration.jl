@@ -9,7 +9,7 @@
 #     the bounds.
 #
 # Plus the three named constructors for `Concentration` per chunk-2-review item 5
-# (`Concentration_ratio`, `Concentration_count`).
+# (`concentration_ratio`, `concentration_count`).
 
 """
     Concentration(fractions::AbstractVector{<:Rational})
@@ -18,8 +18,8 @@ A single concentration: per-species fractions summing to 1, stored as `Rational{
 
 Three named constructors per chunk-2-review item 5:
 - `Concentration([15//32, 17//32])` — canonical: explicit fractions.
-- `Concentration_ratio([15, 17])` — integer ratio convenience: 15:17 → [15//32, 17//32].
-- `Concentration_count([15, 17]; n_total = 32)` — literal counts: "15 of A and 17 of B in a 32-cell." Validates that `sum(counts) == n_total`.
+- `concentration_ratio([15, 17])` — integer ratio convenience: 15:17 → [15//32, 17//32].
+- `concentration_count([15, 17]; n_total = 32)` — literal counts: "15 of A and 17 of B in a 32-cell." Validates that `sum(counts) == n_total`.
 
 The verbose names are deliberate (chunk-2-review item 5: clarity over brevity for one-time problem-setup code).
 """
@@ -38,11 +38,11 @@ struct Concentration
 end
 
 """
-    Concentration_ratio(integers::AbstractVector{<:Integer})
+    concentration_ratio(integers::AbstractVector{<:Integer})
 
-Convenience constructor: treats the integer vector as a ratio. `Concentration_ratio([15, 17])` → `[15//32, 17//32]`.
+Convenience constructor: treats the integer vector as a ratio. `concentration_ratio([15, 17])` → `[15//32, 17//32]`.
 """
-function Concentration_ratio(integers::AbstractVector{<:Integer})
+function concentration_ratio(integers::AbstractVector{<:Integer})
     all(n -> n >= 0, integers) ||
         throw(ArgumentError("ratio integers must be non-negative; got $integers"))
     s = sum(integers)
@@ -51,11 +51,11 @@ function Concentration_ratio(integers::AbstractVector{<:Integer})
 end
 
 """
-    Concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer)
+    concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer)
 
-Literal-counts constructor: interprets the integer vector as exact counts in a cell of size `n_total`. `Concentration_count([15, 17]; n_total = 32)` validates that `sum(counts) == 32` then produces `[15//32, 17//32]`. Mismatched `n_total` throws.
+Literal-counts constructor: interprets the integer vector as exact counts in a cell of size `n_total`. `concentration_count([15, 17]; n_total = 32)` validates that `sum(counts) == 32` then produces `[15//32, 17//32]`. Mismatched `n_total` throws.
 """
-function Concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer)
+function concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer)
     n_total > 0 ||
         throw(ArgumentError("n_total must be positive; got $n_total"))
     sum(counts) == n_total ||
