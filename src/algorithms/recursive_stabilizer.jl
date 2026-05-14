@@ -15,14 +15,13 @@
 
 """
     getUniqueColorings_recursive_stabilizer(perm_group, multiplicities;
-                                             include_superperiodic = false)
-        :: Vector{Vector{Int8}}
+                                             include_superperiodic = false) -> Vector{Vector{Int8}}
 
-Symmetry-inequivalent colorings at fixed concentration via the Morgan 2017 tree-search-with-shrinking-stabilizers algorithm. Public driver — analog of `getUniqueColorings_multinomial` from chunk 6.
+Symmetry-inequivalent colorings at fixed concentration via the Morgan 2017 tree-search-with-shrinking-stabilizers algorithm. Internal driver — un-exported in chunk 13b.1; users reach this algorithm via `enumerate(parent, sites; algorithm = :recursive_stabilizer, ...)`. The chunk-6 analog (`Enumlib.getUniqueColorings_multinomial`) and this one are the two parallel concentration-restricted enumerators.
 
-For high configurational freedom (large n, k ≥ 3), the tree is asymptotically faster than chunk-6's bitmap algorithm — the paper's Fig. 5 shows ~100× speedup at FCC ternary n=20. For small n, chunk-6's bitmap may still be faster (no per-level overhead); `:auto` dispatch picks based on the chunk-7.5 cost estimate.
+For high configurational freedom (large n, k ≥ 3), the tree is asymptotically faster than chunk-6's bitmap algorithm — Morgan 2017 Fig. 5 shows ~100× speedup at FCC ternary n=20. For small n, chunk-6's bitmap may still be faster (no per-level overhead); `:auto` dispatch in `enumerate(...)` picks based on the chunk-7.5 enumeration resource check (`estimate_cost`).
 
-By default (`include_superperiodic = false`), drops super-periodic colorings — those fixed by some non-identity pure translation. See `research.md` §5.2.1.
+By default (`include_superperiodic = false`), drops super-periodic colorings — those fixed by some non-identity pure translation. See `research.md` §4.4 (Morgan 2017 algorithm digest) and §5.2.1 (super-periodicity policy).
 """
 function getUniqueColorings_recursive_stabilizer(perm_group,
                                                   multiplicities::AbstractVector{<:Integer};

@@ -15,15 +15,27 @@
 # See research.md §4.3 for the paper's algorithm description.
 
 """
-    multinomial_count(multiplicities::AbstractVector{<:Integer}) :: BigInt
+    multinomial_count(multiplicities::AbstractVector{<:Integer}) -> BigInt
 
 Compute the multinomial coefficient `multinomial(n; a_1, ..., a_k)` exactly using the iterative-binomial identity:
 
     multinomial(a_1, ..., a_k) = ∏_{i=1..k} binomial(a_1 + ... + a_i, a_i)
 
-Mathematically equivalent to `n! / ∏ a_i!`, but evaluates one binomial at a time so factors cancel as we go — no wasteful `n!` intermediate. Returns `BigInt` so the result is exact for arbitrary input (binary at n=70 already overflows `Int64`); the BigInt cost is ~µs per call, negligible since `multinomial_count` runs once per (supercell, concentration) pair during pre-flight, never in an inner loop.
+Mathematically equivalent to `n! / ∏ a_i!`, but evaluates one binomial at a time so factors cancel as we go — no wasteful `n!` intermediate. Returns `BigInt` so the result is exact for arbitrary input (binary at n=70 already overflows `Int64`); the BigInt cost is ~µs per call, negligible since `multinomial_count` runs once per (supercell, concentration) pair during the enumeration resource check, never in an inner loop.
 
 See `docs/notes/chunk6-review.md` for the full tradeoff analysis (why not `Combinatorics.multinomial` + try/catch, why not the factorial form, inner-loop overflow safety proof).
+
+# Examples
+```jldoctest
+julia> multinomial_count([2, 2])   # binary, 2 of each in 4 positions: C(4,2) = 6
+6
+
+julia> multinomial_count([3, 5])   # binary 3:5 in n=8: C(8,3) = 56
+56
+
+julia> multinomial_count([2, 2, 2])   # ternary 2:2:2 in n=6: 6!/(2! 2! 2!) = 90
+90
+```
 """
 function multinomial_count(multiplicities::AbstractVector{<:Integer})::BigInt
     s = BigInt(0)
@@ -37,7 +49,7 @@ end
 
 """
     multinomial_hash(coloring::AbstractVector{<:Integer},
-                     multiplicities::AbstractVector{<:Integer}) :: Int
+                     multiplicities::AbstractVector{<:Integer}) -> Int
 
 Hash a coloring — a length-`n` vector with values in `0:k-1` and per-color counts matching `multiplicities` — to its rank in `[0, C-1]` where `C = multinomial(n; multiplicities)`. Implements the mixed-radix scheme from HF 2012 §3.1.
 
@@ -49,6 +61,19 @@ For each color `i = 1..k-1` (processed in order), this:
 Color `k-1` (the last) is determined by what's left, so we don't include it in the hash.
 
 Assumes the coloring satisfies the multiplicity constraint. Behavior is undefined otherwise (caller's responsibility — `getUniqueColorings_multinomial` only generates valid colorings).
+
+# Examples
+The 6 colorings of `[2, 2]` (binary 2:2 in n=4) each get a distinct rank in `[0, 5]`:
+```jldoctest
+julia> multinomial_hash(Int8[0, 0, 1, 1], [2, 2])
+0
+
+julia> multinomial_hash(Int8[0, 1, 0, 1], [2, 2])
+1
+
+julia> multinomial_hash(Int8[1, 1, 0, 0], [2, 2])
+5
+```
 """
 function multinomial_hash(coloring::AbstractVector{<:Integer},
                           multiplicities::AbstractVector{<:Integer})
@@ -96,11 +121,30 @@ function multinomial_hash(coloring::AbstractVector{<:Integer},
 end
 
 """
-    multinomial_unhash(idx::Integer, multiplicities::AbstractVector{<:Integer}) :: Vector{Int8}
+    multinomial_unhash(idx::Integer, multiplicities::AbstractVector{<:Integer}) -> Vector{Int8}
 
 Inverse of [`multinomial_hash`](@ref): given an index `idx ∈ [0, C-1]`, recover the unique coloring with the given multiplicities.
 
 For each color `i = 0..k-2` in order, extracts `x_i = (idx_remaining ÷ P_so_far) mod C_i`, then maps `x_i` back to a set of `a_i` positions (within the still-unfilled slots) via inverse-colex. Color `k-1` fills whatever's left.
+
+# Examples
+Round-trip with [`multinomial_hash`](@ref) — every valid coloring maps to a unique rank and back:
+```jldoctest
+julia> c = Int8[1, 0, 1, 0]; mults = [2, 2];
+
+julia> idx = multinomial_hash(c, mults)
+4
+
+julia> multinomial_unhash(idx, mults) == c
+true
+
+julia> multinomial_unhash(0, [2, 2])   # the lex-smallest coloring at this multiplicity
+4-element Vector{Int8}:
+ 0
+ 0
+ 1
+ 1
+```
 """
 function multinomial_unhash(idx::Integer, multiplicities::AbstractVector{<:Integer})
     n = sum(multiplicities)
@@ -170,7 +214,7 @@ Iterates over all `C = multinomial(n; multiplicities)` valid colorings (each at 
 
 By default (`include_superperiodic = false`), drops super-periodic colorings — those fixed by some non-identity pure translation. Pass `true` to keep them and return the full Burnside orbit space (research.md §5.2.1). Note: at asymmetric concentrations (e.g., 15:17 in n=32), super-periodic structures are number-theoretically empty, so the kwarg is a no-op there.
 
-For chunk-6 sizes (Ag-Pt at 15:17 in n=32 → C ≈ 5.7E8 → 71 MB bitmap), this fits in memory comfortably. For larger cases the bitmap won't fit in `typemax(Int)` and `enumerate(...)` redirects to the recursive-stabilizer tree (chunk 8). The pre-flight cost gate (chunk 7) catches the overflow before allocation.
+For chunk-6 sizes (Ag-Pt at 15:17 in n=32 → C ≈ 5.7E8 → 71 MB bitmap), this fits in memory comfortably. For larger cases the bitmap won't fit in `typemax(Int)` and `enumerate(...)` redirects to the recursive-stabilizer tree (chunk 8). The enumeration resource check (chunk 7) catches the overflow before allocation.
 """
 function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVector{<:Integer};
                                         include_superperiodic::Bool = false)

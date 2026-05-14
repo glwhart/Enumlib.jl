@@ -10,9 +10,22 @@
 #    subgroup lattice of the supercell's translation subgroup T. Subtracts
 #    super-periodic orbits to match `enumerate(...)`'s default-`false` count.
 #
-# Used by `count_inequivalent(...)` (in src/enumerate.jl) to give users a
-# pre-flight count without enumerating. See research.md §4.6, §5.2.1, §7.2.
+# Used by `count_inequivalent(...)` (in src/enumerate.jl) to give users an
+# enumeration resource check (count without enumerating). See research.md §4.6,
+# §5.2.1, §7.2.
 
+"""
+    module Polya
+
+Pólya / Burnside math primitives used by Enumlib's [`count_inequivalent`](@ref). Independently usable for general group-action orbit counting.
+
+Exports:
+- `polya_count(perm_group, k_or_mults)` — Burnside-averaged orbit count.
+- `cycle_structure(permutation)` — cycle lengths of a single permutation.
+- `aperiodic_orbit_count(perm_group, T_factors, k_or_mults)` — Möbius-corrected primitive (aperiodic) orbit count.
+
+See `research.md` §4.6 (Rosenbrock 2016) for the algorithm digest and `research.md` §5.2.1 for the super-periodicity policy that motivates the aperiodic variant.
+"""
 module Polya
 
 using ..Enumlib: ParentLattice, Sites, Supercell, HNF
@@ -20,11 +33,22 @@ using ..Enumlib: ParentLattice, Sites, Supercell, HNF
 export polya_count, cycle_structure, aperiodic_orbit_count
 
 """
-    cycle_structure(perm) :: Vector{Int}
+    cycle_structure(perm) -> Vector{Int}
 
 Cycle-length multiset of a permutation, sorted descending.
 
-For `perm = [2, 1, 4, 3, 5]`: cycles are `(1 2)(3 4)(5)`, so result is `[2, 2, 1]`.
+# Examples
+```jldoctest
+julia> cycle_structure([2, 1, 4, 3, 5])    # cycles (1 2)(3 4)(5)
+3-element Vector{Int64}:
+ 2
+ 2
+ 1
+
+julia> cycle_structure([2, 3, 4, 1])       # cycles (1 2 3 4) — one 4-cycle
+1-element Vector{Int64}:
+ 4
+```
 """
 function cycle_structure(perm::AbstractVector{<:Integer})::Vector{Int}
     n = length(perm)
@@ -46,13 +70,24 @@ function cycle_structure(perm::AbstractVector{<:Integer})::Vector{Int}
 end
 
 """
-    polya_count(perm_group, k::Integer) :: BigInt
+    polya_count(perm_group, k::Integer) -> BigInt
 
 Burnside-averaged count of orbits of `k`-colorings under `perm_group` — the raw orbit count, including super-periodic orbits. For each `ρ ∈ perm_group` with `c(ρ)` cycles, fix(ρ) = `k^c(ρ)`; orbit count = `(1/|G|) Σ_ρ k^c(ρ)`.
 
 Returns `BigInt`. Cost: O(|G| · n).
 
 The aperiodic version is [`aperiodic_orbit_count`](@ref).
+
+# Examples
+Cyclic `C_4` on 4 positions (the rotations of a 1×1×4 supercell), binary colorings (`k = 2`):
+Burnside sum is `(2^4 + 2^1 + 2^2 + 2^1) / 4 = 24 / 4 = 6`.
+```jldoctest
+julia> c4 = [[1,2,3,4], [2,3,4,1], [3,4,1,2], [4,1,2,3]];
+
+julia> polya_count(c4, 2)
+6
+```
+The 6 orbits are: `{AAAA}`, `{BBBB}`, `{AAAB-rotation}`, `{ABBB-rotation}`, `{AABB-rotation}` (period 4), and `{ABAB, BABA}` (period 2).
 """
 function polya_count(perm_group, k::Integer)::BigInt
     isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
@@ -65,11 +100,20 @@ function polya_count(perm_group, k::Integer)::BigInt
 end
 
 """
-    polya_count(perm_group, multiplicities::AbstractVector{<:Integer}) :: BigInt
+    polya_count(perm_group, multiplicities::AbstractVector{<:Integer}) -> BigInt
 
 Burnside-averaged orbit count at fixed multiplicities. For each `ρ` with cycle lengths `[c_1, ..., c_t]`, the number of fixed colorings is the coefficient of `x_1^{a_1}⋯x_k^{a_k}` in `∏_j (x_1^{c_j} + ⋯ + x_k^{c_j})` (HF 2012 §A.2). Computed via dynamic programming over partial-multiplicity states.
 
 Cost per permutation: O(t · ∏(a_i + 1) · k). Across the whole group: O(|G| · t · ∏(a_i + 1) · k).
+
+# Examples
+Cyclic `C_4` with multiplicities `[2, 2]` (2 of each species in 4 positions). Hand-verifiable: 6 raw colorings (`C(4, 2)`) group into 2 orbits — `{AABB, ABBA, BBAA, BAAB}` (period 4) and `{ABAB, BABA}` (period 2).
+```jldoctest
+julia> c4 = [[1,2,3,4], [2,3,4,1], [3,4,1,2], [4,1,2,3]];
+
+julia> polya_count(c4, [2, 2])
+2
+```
 """
 function polya_count(perm_group, multiplicities::AbstractVector{<:Integer})::BigInt
     isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
@@ -88,7 +132,7 @@ function polya_count(perm_group, multiplicities::AbstractVector{<:Integer})::Big
 end
 
 """
-    aperiodic_orbit_count(perm_group, snf_diagonal, k_or_mults) :: BigInt
+    aperiodic_orbit_count(perm_group, snf_diagonal, k_or_mults) -> BigInt
 
 Aperiodic orbit count — orbits whose stabilizer in the supercell's translation subgroup `T` is trivial. Matches `length(enumerate(...; include_superperiodic = false))` per supercell.
 
@@ -103,6 +147,25 @@ where `|fix(g) ∩ fix(H)|` is the number of labelings fixed by both `g` and eve
 This formulation is correct for non-normal H (subgroups of T need not be normal in G — e.g., for SNF `(1, 2, 2)` where `T = Z/2 × Z/2` is non-cyclic). Earlier sketches assumed H-normality and gave wrong counts on non-cyclic T.
 
 For our v0.2 sizes (|T| ≤ ~32), subgroup enumeration is cheap; the inner per-(g, H) joint-orbit computation is `O(n + |H|)` via union-find.
+
+# Examples
+Same cyclic `C_4` case as [`polya_count`](@ref), showing the aperiodic-vs-raw contrast. The SNF diagonal `(1, 1, 4)` says `T = Z/4` (the 1×1×4 supercell's translation subgroup).
+
+Unrestricted binary (k=2): `polya_count` gives 6 orbits total; aperiodic count drops the 1-cycle orbits `{AAAA}`, `{BBBB}` and the period-2 orbit `{ABAB, BABA}`, leaving 3 period-4 orbits.
+```jldoctest
+julia> c4 = [[1,2,3,4], [2,3,4,1], [3,4,1,2], [4,1,2,3]];
+
+julia> aperiodic_orbit_count(c4, (1, 1, 4), 2)
+3
+```
+
+Fixed-multiplicity `[2, 2]`: `polya_count` gives 2 orbits; aperiodic drops the period-2 `{ABAB, BABA}`, leaving 1 period-4 orbit `{AABB, ABBA, BBAA, BAAB}`.
+```jldoctest
+julia> c4 = [[1,2,3,4], [2,3,4,1], [3,4,1,2], [4,1,2,3]];
+
+julia> aperiodic_orbit_count(c4, (1, 1, 4), [2, 2])
+1
+```
 """
 function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int}, k::Integer)::BigInt
     return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbit_sizes
