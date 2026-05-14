@@ -215,4 +215,88 @@ using Enumlib
         @test_nowarn Sites([Site([17.0, -3.0, 99.5], [0, 1])])
     end
 
+    # ---- R51 convenience constructors from a ParentLattice ----
+    @testset "Sites(parent, ...) convenience constructors (R51)" begin
+        p_sc  = ParentLattice([1.0 0 0; 0 1 0; 0 0 1])                        # single-site Bravais
+        A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+        p_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])      # two-site multilattice
+
+        # --- Uniform forms: integer vector, BitSet, range ---
+        @testset "uniform — integer vector / BitSet / range agree" begin
+            s_v   = Sites(p_sc, [0, 1])
+            s_bs  = Sites(p_sc, BitSet([0, 1]))
+            s_rng = Sites(p_sc, 0:1)
+            for s in (s_v, s_bs, s_rng)
+                @test s isa Sites{3}
+                @test length(s.list) == 1
+                @test s.list[1].allowed_labels == BitSet([0, 1])
+                @test is_active(s.list[1])
+                @test n_active(s) == 1
+                @test n_canonical(s) == 1
+                @test n_effective(s) == 1
+            end
+        end
+
+        # --- k-species kwarg shorthand ---
+        @testset "Sites(parent; k=N) shorthand" begin
+            s2 = Sites(p_sc; k = 2)
+            @test s2.list[1].allowed_labels == BitSet([0, 1])
+
+            s3 = Sites(p_sc; k = 3)
+            @test s3.list[1].allowed_labels == BitSet([0, 1, 2])
+            @test is_active(s3.list[1])
+
+            # Invalid k: empty allowed_labels rejected at the Site layer.
+            @test_throws ArgumentError Sites(p_sc; k = 0)
+            @test_throws ArgumentError Sites(p_sc; k = -1)
+        end
+
+        # --- Multi-site parent: uniform applies to every dset position ---
+        @testset "uniform on HCP multilattice" begin
+            sites = Sites(p_hcp, [0, 1])
+            @test length(sites.list) == 2
+            @test all(s -> s.allowed_labels == BitSet([0, 1]), sites.list)
+            @test all(is_active, sites.list)
+            @test n_active(sites) == 2
+            @test n_canonical(sites) == 2   # each dset position in its own class
+            @test n_effective(sites) == 2
+
+            # Kwarg form agrees with the explicit uniform call (compare via .list —
+            # Sites itself has no Base.:(==) since the Union-Find state would need
+            # equivalence-class-aware comparison).
+            @test sites.list == Sites(p_hcp; k = 2).list
+        end
+
+        # --- Per-position form: Vector{Vector{Int}} and Vector{BitSet} both work ---
+        @testset "per-position on HCP multilattice" begin
+            sites = Sites(p_hcp, [[0, 1, 2], [0]])
+            @test length(sites.list) == 2
+            @test sites.list[1].allowed_labels == BitSet([0, 1, 2])
+            @test sites.list[2].allowed_labels == BitSet([0])
+            @test is_active(sites.list[1])
+            @test is_inactive(sites.list[2])
+            @test n_active(sites) == 1
+            @test n_canonical(sites) == 2
+
+            # BitSet entries land in the same per-position dispatch path.
+            sites_bs = Sites(p_hcp, [BitSet([0, 1, 2]), BitSet([0])])
+            @test sites.list == sites_bs.list
+        end
+
+        # --- Per-position length must match ndset(parent) ---
+        @testset "per-position length-mismatch ArgumentError" begin
+            @test_throws ArgumentError Sites(p_hcp, [[0, 1]])           # 1 vs 2
+            @test_throws ArgumentError Sites(p_hcp, [[0, 1], [0], [1]]) # 3 vs 2
+        end
+
+        # --- Single-site parent: per-position with one entry is fine ---
+        @testset "per-position on single-site parent" begin
+            sites = Sites(p_sc, [[0, 1]])      # length matches ndset(p_sc) = 1
+            @test length(sites.list) == 1
+            @test sites.list[1].allowed_labels == BitSet([0, 1])
+            # Semantically the same as the uniform form on a single-site parent.
+            @test sites.list == Sites(p_sc, [0, 1]).list
+        end
+    end
+
 end

@@ -6,56 +6,91 @@ Specify *where* substitution can happen (positions in the parent cell) and *whic
 
 ```jldoctest sites_recipe
 julia> using Enumlib
+
+julia> p_fcc = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);   # FCC primitive
+
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+
+julia> p_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);  # two-site multilattice
 ```
 
-## A single position with allowed species
+## The fast path — `Sites(parent, labels)`
 
-A [`Site`](@ref) carries a fractional-coordinate position and a set of allowed species labels (integers from `0` to `k-1`). The convenience constructor accepts a plain integer vector and converts it to a `BitSet`:
+For most problems, build `Sites` directly from the [`ParentLattice`](@ref) using the same labels on every dset position:
 
 ```jldoctest sites_recipe
-julia> s_active   = Site([0.0, 0.0, 0.0], [0, 1])   # active: A (0) or B (1)
+julia> Sites(p_fcc, [0, 1])                # single-site binary
+Sites{3} with 1 site (1 active, 1 canonical equivalence class)
+  site 1: [0.0, 0.0, 0.0]    species {0, 1}
+  equivalencies: (none)
+
+julia> Sites(p_hcp; k = 2)                 # HCP binary — k-species shorthand
+Sites{3} with 2 sites (2 active, 2 canonical equivalence classes)
+  site 1: [0.0, 0.0, 0.0]    species {0, 1}
+  site 2: [0.3333, 0.6667, 0.5]    species {0, 1}
+  equivalencies: (none)
+```
+
+For **heterogeneous** sublattices (perovskite-style: ternary on one site, fixed on another), pass a per-position list:
+
+```jldoctest sites_recipe
+julia> Sites(p_hcp, [[0, 1, 2], [0]])      # ternary on first sublattice, fixed (inactive) on second
+Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
+  site 1: [0.0, 0.0, 0.0]    species {0, 1, 2}
+  site 2: [0.3333, 0.6667, 0.5]    species {0}    [inactive]
+  equivalencies: (none)
+```
+
+**Caveat:** `enumerate(...)` currently only handles the single-site Bravais case. Multi-sublattice support for the uniform case (HF 2009) is queued as R50; the per-position heterogeneous case (perovskite-style) is queued as chunk 6.5. The *builder* works today on both — only the `enumerate(...)` dispatch is currently restricted.
+
+## The longer path — building from individual `Site`s
+
+When you need fine-grained control — different allowed labels per position *plus* equivalence-class ties between sites — drop down to constructing each [`Site`](@ref) yourself:
+
+```jldoctest sites_recipe
+julia> s_active   = Site([0.0, 0.0, 0.0], [0, 1])     # active: A (0) or B (1)
 Site{3}([0.0, 0.0, 0.0], species {0, 1})
 
-julia> s_inactive = Site([0.5, 0.5, 0.5], [0])      # inactive: only A allowed
+julia> s_inactive = Site([0.5, 0.5, 0.5], [0])        # inactive: only A allowed
 Site{3}([0.5, 0.5, 0.5], species {0}  [inactive])
 
-julia> is_active(s_active), is_inactive(s_inactive) # one is active, one isn't
+julia> is_active(s_active), is_inactive(s_inactive)   # one is active, one isn't
 (true, true)
 ```
 
 A site with **one** allowed label is **inactive** — it contributes no configurational freedom and is dropped from the labeling space during enumeration. A site with two or more allowed labels is **active**.
 
-## A collection of sites — and equivalence classes
+## Adding equivalence classes
 
-[`Sites`](@ref) wraps a `Vector{Site}` plus a *Union-Find* data structure that tracks which sites must carry the same label. Two construction styles:
+[`Sites`](@ref) wraps a `Vector{Site}` plus a *Union-Find* data structure that tracks which sites must carry the same label across all configurations. Two ways to declare equivalence:
 
 **Incremental** — start with every site in its own equivalence class, then declare ties with [`equate!`](@ref):
 
 ```jldoctest sites_recipe
-julia> list = [Site([0.0, 0.0, 0.0], [0, 1]),       # active
-               Site([0.5, 0.5, 0.5], [0, 1]),       # active
-               Site([0.25, 0.25, 0.25], [0])];      # inactive
+julia> list = [Site([0.0, 0.0, 0.0], [0, 1]),         # active
+               Site([0.5, 0.5, 0.5], [0, 1]),         # active
+               Site([0.25, 0.25, 0.25], [0])];        # inactive
 
 julia> s = Sites(list);
 
-julia> equate!(s, 1, 2);                            # site 1 and site 2 must match
+julia> equate!(s, 1, 2);                              # site 1 and site 2 must match
 
-julia> n_active(s)                                  # 2 active out of 3
+julia> n_active(s)                                    # 2 active out of 3
 2
 
-julia> n_canonical(s)                               # 2 equivalence classes: {1,2} and {3}
+julia> n_canonical(s)                                 # 2 equivalence classes: {1,2} and {3}
 2
 
-julia> n_effective(s)                               # 1 active-and-canonical: just the {1,2} class
+julia> n_effective(s)                                 # 1 active-and-canonical: just the {1,2} class
 1
 ```
 
 **Upfront partition** — declare equivalence classes at construction time:
 
 ```jldoctest sites_recipe
-julia> s2 = Sites(list, [[1, 2]]);                  # same final state as the equate! version
+julia> s2 = Sites(list, [[1, 2]]);                    # same final state as the equate! version
 
-julia> canonical(s2, 2)                             # the equivalence-class root of site 2
+julia> canonical(s2, 2)                               # the equivalence-class root of site 2
 1
 ```
 

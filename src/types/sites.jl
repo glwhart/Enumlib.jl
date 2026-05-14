@@ -81,6 +81,89 @@ end
 Sites(list::AbstractVector{Site{D}}) where D = Sites{D}(list)
 Sites(list::AbstractVector{Site{D}}, classes) where D = Sites{D}(list, classes)
 
+# ------------------------------------------------------------------------------
+# Convenience constructors from a ParentLattice (R51, 2026-05-14).
+# Take a ParentLattice + a label specification and produce a Sites without
+# forcing the user to re-thread the dset positions through Site constructors.
+# ------------------------------------------------------------------------------
+
+"""
+    Sites(parent::ParentLattice{D}, labels) where D
+    Sites(parent::ParentLattice{D}; k::Integer) where D
+
+Build a `Sites` directly from a `ParentLattice`, without restating each dset position in a `Site` constructor call.
+
+Three call shapes:
+
+- **Uniform** — `Sites(parent, labels)`: every dset position gets the same `labels`. Accepts a `BitSet`, an integer `AbstractVector`, or an integer `AbstractRange` (e.g., `0:1`, `0:k-1`).
+- **Per-position** — `Sites(parent, labels_per_position)`: `labels_per_position[i]` is the allowed-label set for dset position `i`. Length must equal `ndset(parent)`. Each element can be a `BitSet` or any integer vector.
+- **k-species shorthand** — `Sites(parent; k::Integer)`: equivalent to `Sites(parent, 0:k-1)`.
+
+The dispatch distinguishes uniform from per-position by element type: a bare `Vector{<:Integer}` is uniform (one label set), while a `Vector{<:Union{BitSet, AbstractVector{<:Integer}}}` is per-position (one label set per position).
+
+# Examples
+Simple cubic, single-site binary:
+```jldoctest sites_convenience
+julia> p = ParentLattice([1.0 0 0; 0 1 0; 0 0 1]);   # single-site Bravais; ndset = 1
+
+julia> Sites(p, [0, 1])                              # uniform binary, integer vector
+Sites{3} with 1 site (1 active, 1 canonical equivalence class)
+  site 1: [0.0, 0.0, 0.0]    species {0, 1}
+  equivalencies: (none)
+
+julia> n_active(Sites(p; k = 3))                     # ternary shorthand
+1
+```
+
+HCP, two sublattices — uniform vs per-position:
+```jldoctest sites_convenience_hcp
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+
+julia> p_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);
+
+julia> sites = Sites(p_hcp, [0, 1]);                 # uniform binary on both sublattices
+
+julia> n_active(sites), n_canonical(sites)
+(2, 2)
+
+julia> het = Sites(p_hcp, [[0, 1, 2], [0]]);         # ternary on first, fixed on second
+
+julia> n_active(het), n_canonical(het)               # only the first is active
+(1, 2)
+```
+
+A mismatched per-position length raises:
+```jldoctest sites_convenience_hcp
+julia> Sites(p_hcp, [[0, 1]])
+ERROR: ArgumentError: per-position labels has length 1 but ndset(parent) = 2
+[...]
+```
+"""
+function Sites(parent::ParentLattice{D}, labels::BitSet) where D
+    list = [Site{D}(pos, labels) for pos in parent.dset]
+    return Sites{D}(list)
+end
+
+Sites(parent::ParentLattice, labels::AbstractVector{<:Integer}) =
+    Sites(parent, BitSet(labels))
+
+Sites(parent::ParentLattice, labels::AbstractRange{<:Integer}) =
+    Sites(parent, BitSet(labels))
+
+function Sites(parent::ParentLattice{D},
+               labels_per_position::AbstractVector{<:Union{BitSet, AbstractVector{<:Integer}}}) where D
+    n = length(parent.dset)
+    length(labels_per_position) == n ||
+        throw(ArgumentError(
+            "per-position labels has length $(length(labels_per_position)) " *
+            "but ndset(parent) = $n"))
+    list = [Site{D}(pos, BitSet(lbl))
+            for (pos, lbl) in zip(parent.dset, labels_per_position)]
+    return Sites{D}(list)
+end
+
+Sites(parent::ParentLattice; k::Integer) = Sites(parent, 0:k-1)
+
 """
     equate!(sites::Sites, i::Integer, j::Integer) -> Sites
 
