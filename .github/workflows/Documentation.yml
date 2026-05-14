@@ -28,6 +28,12 @@ jobs:
             using Pkg
             Pkg.develop(PackageSpec(path = pwd()))
             Pkg.instantiate()'
+      - name: Run doctests
+        run: |
+          julia --project=docs -e '
+            using Documenter, Enumlib
+            DocMeta.setdocmeta!(Enumlib, :DocTestSetup, :(using Enumlib, LinearAlgebra); recursive = true)
+            doctest(Enumlib)'
       - name: Build and deploy
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

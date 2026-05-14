@@ -13,6 +13,29 @@ The equivalence relation is stored as a Union-Find (`IntDisjointSets`) over the 
 - **Upfront partition:** `Sites([Site(...), Site(...)], [[1,2], [3,4]])` validates the partition and builds the Union-Find in one shot. Suitable when the user already knows the equivalence classes from problem setup.
 
 The two variants produce the same internal state and can be mixed (start with the upfront variant and call `equate!` later).
+
+# Examples
+
+Upfront-partition: three sites with sites 1 and 2 tied (e.g., mirror-image slab layers); site 3 inactive.
+```jldoctest
+julia> list = [Site([0.0, 0.0, 0.0], [0, 1]),
+               Site([0.5, 0.5, 0.5], [0, 1]),
+               Site([0.25, 0.25, 0.25], [0])];
+
+julia> s = Sites(list, [[1, 2]]);
+
+julia> n_active(s)
+2
+
+julia> n_canonical(s)
+2
+
+julia> canonical(s, 2)  # site 2 collapses to site 1's root
+1
+
+julia> n_effective(s)  # active AND canonical = 1
+1
+```
 """
 mutable struct Sites{D}
     list::Vector{Site{D}}
@@ -59,9 +82,23 @@ Sites(list::AbstractVector{Site{D}}) where D = Sites{D}(list)
 Sites(list::AbstractVector{Site{D}}, classes) where D = Sites{D}(list, classes)
 
 """
-    equate!(sites::Sites, i::Integer, j::Integer)
+    equate!(sites::Sites, i::Integer, j::Integer) -> Sites
 
-Declare sites `i` and `j` equivalent in the user-supplied partition. Idempotent (equating already-equated sites is a no-op) and transitive (equating `(i,j)` then `(j,k)` puts all three in one class). Returns `sites` for chainability — supports `Sites([...]) |> s -> equate!(s, 1, 2) |> s -> equate!(s, 3, 4)`.
+Declare sites `i` and `j` equivalent in the user-supplied partition. Idempotent (equating already-equated sites is a no-op) and transitive (equating `(i,j)` then `(j,k)` puts all three in one class). Returns `sites` for chainability.
+
+# Examples
+```jldoctest
+julia> s = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.5, 0.5, 0.5], [0, 1]),
+                  Site([0.25, 0.25, 0.25], [0, 1])]);
+
+julia> equate!(s, 1, 2);  # tie sites 1 and 2
+
+julia> equate!(s, 2, 3);  # transitivity collapses all three into one class
+
+julia> n_canonical(s)
+1
+```
 """
 function equate!(s::Sites, i::Integer, j::Integer)
     n = length(s.list)
@@ -72,16 +109,41 @@ function equate!(s::Sites, i::Integer, j::Integer)
 end
 
 """
-    canonical(sites::Sites, i::Integer)
+    canonical(sites::Sites, i::Integer) -> Int
 
 Return the canonical (root) site index of the equivalence class containing site `i`. Sites in the same equivalence class share their root; the dispatcher uses one root per class as the labeling-space representative.
+
+# Examples
+```jldoctest
+julia> s = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.5, 0.5, 0.5], [0, 1])], [[1, 2]]);
+
+julia> canonical(s, 1)
+1
+
+julia> canonical(s, 2)  # same equivalence class → same root
+1
+```
 """
 canonical(s::Sites, i::Integer) = find_root!(s.equiv, i)
 
 """
-    active_canonical_sites(sites::Sites{D}) where D
+    active_canonical_sites(sites::Sites{D}) -> Vector{Tuple{Int, Site{D}}}
 
 Return a vector of `(index, Site{D})` pairs for sites that are both active (more than one allowed label) and canonical (the root of their equivalence class). This is the labeling space the enumeration algorithm sees: stripped of inactive sites and collapsed across equivalencies.
+
+# Examples
+```jldoctest
+julia> list = [Site([0.0, 0.0, 0.0], [0, 1]),
+               Site([0.5, 0.5, 0.5], [0, 1]),
+               Site([0.25, 0.25, 0.25], [0])];
+
+julia> s = Sites(list, [[1, 2]]);
+
+julia> [i for (i, _) in active_canonical_sites(s)]  # site 1 is the only active canonical
+1-element Vector{Int64}:
+ 1
+```
 """
 function active_canonical_sites(s::Sites{D}) where D
     result = Tuple{Int, Site{D}}[]

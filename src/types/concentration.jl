@@ -16,10 +16,10 @@
 
 A single concentration: per-species fractions summing to 1, stored as `Rational{Int}` for exact arithmetic.
 
-Three named constructors per chunk-2-review item 5:
-- `Concentration([15//32, 17//32])` — canonical: explicit fractions.
-- `concentration_ratio([15, 17])` — integer ratio convenience: 15:17 → [15//32, 17//32].
-- `concentration_count([15, 17]; n_total = 32)` — literal counts: "15 of A and 17 of B in a 32-cell." Validates that `sum(counts) == n_total`.
+Three named constructors per chunk-2-review item 5 — pick the one that matches what you're holding in your head:
+- `Concentration([1//4, 3//4])` — canonical: explicit fractions, fully specified.
+- `concentration_ratio([1, 3])` — *scale-free* integer ratio: 1:3 → `[1//4, 3//4]`. Non-coprime inputs work too — `[2, 6]` or `[3, 9]` all produce the same `Concentration(1//4, 3//4)` after normalization. Use when you care about the proportion, not the cell size.
+- `concentration_count([3, 9]; n_total = 12)` — *anchored* literal counts: 3 of A and 9 of B *in a 12-cell* → `[1//4, 3//4]`. Validates `sum(counts) == n_total`. Use when you've committed to a specific supercell size.
 
 The verbose names are deliberate (chunk-2-review item 5: clarity over brevity for one-time problem-setup code).
 """
@@ -38,9 +38,18 @@ struct Concentration
 end
 
 """
-    concentration_ratio(integers::AbstractVector{<:Integer})
+    concentration_ratio(integers::AbstractVector{<:Integer}) -> Concentration
 
-Convenience constructor: treats the integer vector as a ratio. `concentration_ratio([15, 17])` → `[15//32, 17//32]`.
+Convenience constructor: treats the integer vector as a ratio. Each `Concentration` fraction is `integers[i] // sum(integers)`.
+
+# Examples
+```jldoctest
+julia> concentration_ratio([2, 4])   # 2:4 reduces to 1:2 → fractions in lowest terms
+Concentration(1//3, 2//3)
+
+julia> concentration_ratio([1, 1, 2])  # ternary 1:1:2
+Concentration(1//4, 1//4, 1//2)
+```
 """
 function concentration_ratio(integers::AbstractVector{<:Integer})
     all(n -> n >= 0, integers) ||
@@ -51,9 +60,18 @@ function concentration_ratio(integers::AbstractVector{<:Integer})
 end
 
 """
-    concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer)
+    concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer) -> Concentration
 
-Literal-counts constructor: interprets the integer vector as exact counts in a cell of size `n_total`. `concentration_count([15, 17]; n_total = 32)` validates that `sum(counts) == 32` then produces `[15//32, 17//32]`. Mismatched `n_total` throws.
+Literal-counts constructor: interprets the integer vector as exact counts in a cell of size `n_total`. Validates that `sum(counts) == n_total`; mismatched `n_total` throws.
+
+# Examples
+```jldoctest
+julia> concentration_count([3, 9]; n_total = 12)   # 3 A + 9 B atoms in a 12-cell
+Concentration(1//4, 3//4)
+
+julia> concentration_count([15, 17]; n_total = 32)
+Concentration(15//32, 17//32)
+```
 """
 function concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer)
     n_total > 0 ||
@@ -71,9 +89,19 @@ Number of species in the concentration vector.
 n_species(c::Concentration) = length(c.fractions)
 
 """
-    multiplicities(c::Concentration, n_total::Integer) :: Vector{Int}
+    multiplicities(c::Concentration, n_total::Integer) -> Vector{Int}
 
 Resolve a concentration to integer per-species counts at a specific cell size. Throws `EmptyEnumerationError` (Phase 7 §7.5) if the fractions don't divide cleanly into `n_total` (e.g., `Concentration([1//3, 2//3])` at `n_total = 4`).
+
+# Examples
+```jldoctest
+julia> c = concentration_count([4, 4]; n_total = 8);
+
+julia> multiplicities(c, 16)
+2-element Vector{Int64}:
+ 8
+ 8
+```
 """
 function multiplicities(c::Concentration, n_total::Integer)
     n_total >= 1 ||
@@ -133,6 +161,11 @@ struct ConcentrationRange
     end
 end
 
+"""
+    n_species(cr::ConcentrationRange) -> Int
+
+Number of species (length of the per-species `(min, max)` bounds vector).
+"""
 n_species(cr::ConcentrationRange) = length(cr.bounds)
 
 """

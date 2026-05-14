@@ -87,7 +87,7 @@ ExplicitHNFs(hnfs::AbstractVector{HNF{D}}) where D = ExplicitHNFs{D}(hnfs)
 # ------------------------------------------------------------------------------
 
 """
-    enumerate_hnfs(s::SupercellSelection, parent::ParentLattice{D}) :: Vector{HNF{D}}
+    enumerate_hnfs(s::SupercellSelection, parent::ParentLattice{D}) -> Vector{HNF{D}}
 
 Turn a `SupercellSelection` into a concrete `Vector{HNF{D}}` for the `parent` lattice. Three methods, one per subtype:
 
@@ -96,6 +96,22 @@ Turn a `SupercellSelection` into a concrete `Vector{HNF{D}}` for the `parent` la
 - `ExplicitHNFs`: pass through unchanged.
 
 Downstream code (`enumerate(...)` in chunk 5+) treats the returned vector uniformly regardless of which selection produced it.
+
+# Examples
+FCC has 2 symmetry-inequivalent HNFs at volume 2:
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> hnfs = enumerate_hnfs(VolumeRange(2:2), p);
+
+julia> length(hnfs)
+2
+
+julia> volume.(hnfs)
+2-element Vector{Int64}:
+ 2
+ 2
+```
 """
 function enumerate_hnfs(s::VolumeRange, parent::ParentLattice{D}) where D
     result = HNF{D}[]

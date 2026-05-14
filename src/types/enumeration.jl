@@ -12,7 +12,7 @@
 
 A single enumerated derivative structure: a reference to a `Supercell{D}` (by index into the parent `Enumeration.supercells` vector) plus the labeling that decorates it.
 
-The parametric `L` is the labeling representation. For chunk 5 (v0.2-alpha) only `L = Vector{Int8}` is supported — the decoded form, ~n bytes per structure. Phase 6 §6.7 contemplates `L = Int64` (hash-based, compact) and `L = BigInt` (very-large enumerations), deferred to v0.3+ as the test-corpus sizes (n ≤ 12) don't motivate them.
+The parametric `L` is the labeling representation (the "string" of atom types). For chunk 5 (v0.2-alpha) only `L = Vector{Int8}` is supported — the decoded form, ~n bytes per structure. Phase 6 §6.7 contemplates `L = Int64` (hash-based, compact) and `L = BigInt` (very-large enumerations), deferred to v0.3+ as the test-corpus sizes (n ≤ 12) don't motivate them.
 
 Two degeneracy fields are reserved for future chunks:
 
@@ -48,9 +48,47 @@ EnumeratedStructure{D}(supercell_id::Integer, labeling::L,
     EnumeratedStructure{D,L}(supercell_id, labeling, hnf_degeneracy, labeling_degeneracy)
 
 """
-    to_labeling(s::EnumeratedStructure)
+    to_labeling(s::EnumeratedStructure) -> Vector{Int8}
 
-Return the labeling as a `Vector{Int8}`. For chunk-5's `L = Vector{Int8}` representation this is a no-op pass-through. Future representations (`Int64`, `BigInt`) will decode on access.
+Return the labeling of structure `s` as a `Vector{Int8}`. For chunk-5's `L = Vector{Int8}` representation this is a no-op pass-through. Future representations (`Int64`, `BigInt`) will decode on access.
+
+# Examples
+Small case — FCC binary at volume 2 (the first structure of two):
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+
+julia> e = enumerate(p, sites; supercells = VolumeRange(2:2));
+
+julia> to_labeling(e[1])
+2-element Vector{Int8}:
+ 0
+ 1
+```
+
+Larger case — BCC binary at volume 8 with 4:4 concentration (chunk-6 fixed-concentration enumeration), the 7th of 94 structures:
+```jldoctest
+julia> A_bcc = 0.5 * [-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0];
+
+julia> p = ParentLattice(A_bcc);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+
+julia> e = enumerate(p, sites; supercells = VolumeRange(8:8),
+                     concentration = concentration_count([4, 4]; n_total = 8));
+
+julia> to_labeling(e[7])
+8-element Vector{Int8}:
+ 0
+ 0
+ 0
+ 0
+ 1
+ 1
+ 1
+ 1
+```
 """
 to_labeling(s::EnumeratedStructure{D,Vector{Int8}}) where D = s.labeling
 

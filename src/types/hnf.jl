@@ -37,9 +37,17 @@ end
 HNF(m::AbstractMatrix{<:Integer}) = HNF{size(m, 1)}(m)
 
 """
-    volume(h::HNF)
+    volume(h::HNF) -> Int
 
 The supercell volume / index — the number of parent cells fitting inside the supercell defined by `h`. Equals the product of the diagonal entries (since `h.matrix` is lower-triangular, this is also its determinant).
+
+# Examples
+```jldoctest
+julia> h = HNF([1 0 0; 0 2 0; 0 0 3]);
+
+julia> volume(h)
+6
+```
 """
 volume(h::HNF{D}) where D = prod(h.matrix[i,i] for i in 1:D)
 
@@ -78,7 +86,7 @@ end
 # ------------------------------------------------------------------------------
 
 """
-    getSymInequivHNFs(n::Int, parent::ParentLattice{D}) where D
+    getSymInequivHNFs(n::Int, parent::ParentLattice{D})
 
 Return the symmetry-inequivalent HNFs of supercell volume `n` under the action of `parent`'s lattice point group. One representative HNF per equivalence class.
 

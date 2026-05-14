@@ -1,10 +1,10 @@
 # Enumlib.jl
 
-A Julia successor to the Fortran `enumlib` derivative-structure enumeration tool.
+A Julia successor to the Fortran `enumlib` derivative-structure enumeration tool, with significant improvements.
 Enumlib enumerates symmetry-inequivalent decorations of a parent crystal lattice
 across user-chosen supercell volumes, optionally constrained to a fixed
 concentration. Outputs are ready for cluster expansion fitting, DFT/MLIP
-training-database generation, or use as inputs to downstream materials-science
+training-database generation, or to use as inputs to downstream materials-science
 workflows.
 
 This site is organized as a [Diátaxis](https://diataxis.fr) four-quadrant
@@ -16,8 +16,8 @@ documentation tree:
   want Y, what calls do I make?"
 - **[Reference](reference/index.md)** — every public function, type, and kwarg.
   Authoritative API.
-- **[Explanation](explanation/index.md)** — the why and the math. Algorithm
-  papers, dispatch logic, super-periodicity, glossary.
+- **[Explanation](explanation/index.md)** — the why and the math. The primary algorithms, 
+  key papers, dispatch logic, super-periodicity, glossary, how finite precision is handled.
 
 !!! note "Status"
     Enumlib.jl is in active development for its v0.2.0 release. The API is
@@ -30,10 +30,9 @@ documentation tree:
 ```julia
 using Pkg
 Pkg.develop(url = "https://github.com/glwhart/Enumlib.jl")  # while unregistered
+# Pkg.add("Enumlib") # After the package is registered
 using Enumlib
 ```
-
-After v0.2.0 ships to the General registry: `Pkg.add("Enumlib")`.
 
 ## Quick taste
 

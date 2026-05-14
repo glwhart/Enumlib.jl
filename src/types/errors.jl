@@ -1,8 +1,8 @@
 # Custom exception types for Enumlib's user-protection layer.
 #
 # Per Phase 7 design (research.md §7.5, §7.6), these errors fire from the
-# pre-flight gate inside `enumerate(...)` to catch user-misuse cases before
-# the enumeration starts allocating memory or burning CPU.
+# enumeration resource check inside `enumerate(...)` to catch user-misuse cases
+# before the enumeration starts allocating memory or burning CPU.
 
 """
     EmptyEnumerationError(reason::Symbol, diagnostic::String)
@@ -65,7 +65,7 @@ end
 """
     EnumerationTooLargeError(estimate::EnumerationCostEstimate, budget_bytes::Int)
 
-Thrown by `enumerate(...)` when the pre-flight `EnumerationCostEstimate`'s `peak_memory_bytes` exceeds the configured `memory_budget`. Carries the full estimate so the user can see exactly what would have been allocated, plus the budget that was tripped.
+Thrown by `enumerate(...)` when the predicted `EnumerationCostEstimate`'s `peak_memory_bytes` exceeds the configured `memory_budget`. Carries the full estimate so the user can see exactly what would have been allocated, plus the budget that was tripped.
 
 Per Phase 7 §7.3, the gate is `on_overflow = :error` by default; expert users can pass `:warn` (warns but proceeds) or `:ignore` (silent pass-through), or set `skip_preflight = true` to bypass the estimator entirely.
 """

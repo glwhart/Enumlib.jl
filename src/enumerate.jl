@@ -26,9 +26,9 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 - `concentration::Concentration` → single fixed concentration; the multinomial-hash algorithm enumerates the exactly-`a_i`-of-each-species labelings.
 - `concentration::ConcentrationRange` → loops over `concentrations_in_range(cr, n)` for each supercell volume; gates against partition explosion via `partition_threshold` (default 100; chunk 6 review item 4).
 
-## Pre-flight cost-estimator gate (chunk 6: partial)
+## Enumeration resource check (chunk 6: partial)
 
-Chunk 6 wires only the partition-explosion gate; the memory-budget gate is still a stub (chunk 7 lands the real estimator with the Polya counter). Reserved kwargs (`memory_budget`, `on_overflow`, `skip_preflight`) are accepted and largely ignored for now.
+Chunk 6 wires only the partition-explosion check; the memory-side enumeration resource check is still a stub (chunk 7 lands the real estimator with the Polya counter). Reserved kwargs (`memory_budget`, `on_overflow`, `skip_preflight`) are accepted and largely ignored for now.
 
 ## Super-periodicity policy (chunk 6.2)
 
@@ -43,6 +43,58 @@ Chunk 6 wires only the partition-explosion gate; the memory-budget gate is still
 - Single-lattice parents only (`length(parent.dset) == 1`). Multilattice → "v0.3 feature."
 - Single-site `Sites` only. Multi-site (perovskite-style site restrictions) → chunk 6.5.
 - Zero-indexed dense `allowed_labels` (`{0, 1, ..., k-1}`). Sparse labels → chunk 6.5.
+
+# Examples
+Setup used in all examples below — FCC primitive, one binary substitution site:
+```jldoctest enumerate_examples
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+```
+
+**Unrestricted enumeration** (no concentration): all 19 symmetry-inequivalent binary FCC structures at supercell volume 4 (chunk-5 reference).
+```jldoctest enumerate_examples
+julia> e = enumerate(p, sites; supercells = VolumeRange(4:4));
+
+julia> length(e)
+19
+
+julia> to_labeling(e[1])
+4-element Vector{Int8}:
+ 0
+ 0
+ 0
+ 1
+```
+
+**Fixed concentration** via `concentration_count`: the canonical FCC binary 4:4 at n=8 → 94 structures (chunk-6 reference, HF 2012).
+```jldoctest enumerate_examples
+julia> c = concentration_count([4, 4]; n_total = 8);
+
+julia> e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c);
+
+julia> length(e)
+94
+```
+
+**Concentration range** restricting the first species to 1..2 of 12 atoms — illustrates `ConcentrationRange`'s natural use (sparse / dilute regime). The two partitions `(1,11)` and `(2,10)` together yield 216 structures at n=12.
+```jldoctest enumerate_examples
+julia> cr = ConcentrationRange([(1//12, 2//12), (10//12, 11//12)]);
+
+julia> e = enumerate(p, sites; supercells = VolumeRange(12:12), concentration = cr);
+
+julia> length(e)
+216
+```
+
+**Explicit algorithm** — `:recursive_stabilizer` (Morgan 2017) on the same fixed-concentration case as before. Returns the same 94 structures; the algorithm-equivalence guarantee.
+```jldoctest enumerate_examples
+julia> e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c,
+                     algorithm = :recursive_stabilizer);
+
+julia> length(e)
+94
+```
 """
 function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
                         supercells::SupercellSelection,
@@ -96,7 +148,7 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     k = _validate_enumerate_inputs(parent, sites, concentration)
 
-    # ---- Pre-flight cost gate (chunk 7.5) ----
+    # ---- Enumeration resource check (chunk 7.5) ----
     if !skip_preflight
         estimate = estimate_cost(parent, sites; supercells, concentration,
                                  algorithm, include_superperiodic)
@@ -245,7 +297,7 @@ end
 """
     default_memory_budget()
 
-The default `memory_budget` for `enumerate(...)` — adapts to the host machine. 25% of the system's physical memory, with a 2 GiB floor. The pre-flight cost gate is still a stub through chunk 6; chunk 7 (Polya counter) makes it a real check.
+The default `memory_budget` for `enumerate(...)` — adapts to the host machine. 25% of the system's physical memory, with a 2 GiB floor. The enumeration resource check is still a stub through chunk 6; chunk 7 (Polya counter) makes it a real check.
 
 **Caveat:** `Sys.total_memory()` reports the *machine's* RAM, not the cgroup / Slurm / Kubernetes allocation in containerized environments. HPC users on a shared cluster need to pass `memory_budget = \$SLURM_MEM_PER_NODE` (or similar) explicitly.
 """
@@ -321,6 +373,40 @@ Count symmetry-inequivalent derivative structures *without enumerating them*. P�
 Cost: O(|G| · n) per supercell for the unrestricted case; with Möbius correction add subgroup-enumeration of `T` (cheap for our v0.2 sizes). Sub-second across the chunk-6 corpus.
 
 See `research.md` §5.2.1 for the super-periodicity policy and `research.md` §4.6 / §7.2 for the underlying Pólya machinery.
+
+# Examples
+Setup — FCC binary, one substitution site:
+```jldoctest count_examples
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+```
+
+**Basic count** — the canonical FCC binary n=12 unrestricted total (chunk-5 reference):
+```jldoctest count_examples
+julia> count_inequivalent(p, sites; supercells = VolumeRange(12:12))
+7140
+```
+
+**Include super-periodics** — adds the 745 super-periodic orbits that the default policy drops (HF 2008 step 5d). Matches `length(enumerate(...; include_superperiodic = true))`.
+```jldoctest count_examples
+julia> count_inequivalent(p, sites; supercells = VolumeRange(12:12), include_superperiodic = true)
+7885
+```
+
+**Breakdown over a volume range** — `breakdown = true` returns an [`InequivalentCount`](@ref); `by_volume` is a sorted `Vector{Tuple{Int, BigInt}}` so indexing is deterministic.
+```jldoctest count_examples
+julia> ic = count_inequivalent(p, sites; supercells = VolumeRange(8:12), breakdown = true);
+
+julia> ic.total
+10609
+
+julia> ic.by_volume[1]   # smallest volume in the range
+(8, 390)
+
+julia> ic.by_volume[end] # largest
+(12, 7140)
+```
 """
 function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
                             supercells::SupercellSelection,
@@ -397,7 +483,7 @@ end
 
 # ------------------------------------------------------------------------------
 # estimate_cost — chunk 7.5 public top-level. Returns EnumerationCostEstimate
-# without enumerating. Internally consulted by enumerate(...)'s pre-flight gate.
+# without enumerating. Internally consulted by enumerate(...)'s resource check.
 # ------------------------------------------------------------------------------
 
 """
@@ -407,11 +493,27 @@ end
                   algorithm::Symbol = :auto,
                   include_superperiodic::Bool = false) -> EnumerationCostEstimate
 
-Predict the cost of `enumerate(...)` *before* running it. Useful as a pre-flight check (sized by humans) and as the engine behind `enumerate(...)`'s memory-budget gate (sized by the gate).
+Predict the cost of `enumerate(...)` *before* running it. Useful as a manual size check (call it yourself to see what `enumerate` *would* allocate) and as the engine behind `enumerate(...)`'s built-in enumeration resource check (which calls it internally to decide whether to proceed).
 
 Returns an [`EnumerationCostEstimate`](@ref) with the predicted structure count, peak-memory prediction, chosen algorithm, selection kind, partition count, and any advisory notes. See `research.md` §7.2.
 
 Cost: same as `count_inequivalent(...)` — milliseconds even for hundreds of supercells. The Pólya count is the dominant term; per-algorithm memory is closed-form.
+
+# Examples
+Sizing a request before running it is the function's primary purpose. The example below shows the *gate firing*: an unrestricted FCC binary enumeration at volume 20 is predicted to need ~138 MiB, far beyond the artificially-tiny `memory_budget = 1` byte we pass in to trigger `EnumerationTooLargeError`.
+```jldoctest; filter = r"\\d+\\.\\d+ MiB"
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+
+julia> try
+           enumerate(p, sites; supercells = VolumeRange(20:20), memory_budget = 1)
+       catch e
+           e isa EnumerationTooLargeError || rethrow()
+           format_bytes(e.estimate.peak_memory_bytes)
+       end
+"137.56 MiB"
+```
 """
 function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
                        supercells::SupercellSelection,

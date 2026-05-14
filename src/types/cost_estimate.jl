@@ -1,7 +1,7 @@
 """
     EnumerationCostEstimate
 
-Pre-flight prediction returned by [`estimate_cost`](@ref). The pre-flight gate inside `enumerate(...)` consults this struct to decide whether to proceed or throw `EnumerationTooLargeError`.
+Resource-cost prediction returned by [`estimate_cost`](@ref). The enumeration resource check inside `enumerate(...)` consults this struct to decide whether to proceed or throw `EnumerationTooLargeError`.
 
 Fields:
 
@@ -50,19 +50,28 @@ end
 """
     format_bytes(n::Integer) -> String
 
-Format a byte count as a human-readable string with the largest unit ≥ 1.
+Format a byte count as a human-readable string with the largest unit ≥ 1. Uses binary (1024-based) units to match how memory budgets are typically reported. Two-decimal precision; rounds toward zero for the unit selection.
 
-Examples:
+# Examples
+```jldoctest
+julia> format_bytes(0)
+"0 B"
 
-    format_bytes(0)         == "0 B"
-    format_bytes(1023)      == "1023 B"
-    format_bytes(1024)      == "1.00 KiB"
-    format_bytes(1024^2)    == "1.00 MiB"
-    format_bytes(1024^3)    == "1.00 GiB"
-    format_bytes(1024^4)    == "1.00 TiB"
+julia> format_bytes(1023)
+"1023 B"
 
-Uses binary (1024-based) units to match how memory budgets are typically
-reported. Two-decimal precision; rounds toward zero for the unit selection.
+julia> format_bytes(1024)
+"1.00 KiB"
+
+julia> format_bytes(1024^2)
+"1.00 MiB"
+
+julia> format_bytes(1024^3)
+"1.00 GiB"
+
+julia> format_bytes(1024^4)
+"1.00 TiB"
+```
 """
 function format_bytes(n::Integer)::String
     n < 0 && throw(ArgumentError("format_bytes: byte count must be ≥ 0; got $n"))

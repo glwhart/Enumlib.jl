@@ -3,7 +3,7 @@
 
 The geometric description of the parent multilattice for an enumeration: basis vectors `A`, dset `dset` (basis sites in fractional coordinates), and the cached `space_group` of the multilattice (rotation + fractional-translation pairs).
 
-The dset captures the multilattice basis — for a Bravais lattice, length-1; for HCP, length-2; for perovskite ABO₃, length-5. **The dset is not required to contain the origin** — placing the origin where it makes physical sense (e.g., at the inversion center for diamond) is a user choice and the enumeration math doesn't require origin-in-dset.
+The dset captures the multilattice basis — for a Bravais lattice, length==1; for HCP, length==2; for perovskite ABO₃, length==5. **The dset is not required to contain the origin** — placing the origin where it makes physical sense (e.g., at the inversion center for diamond) is a user choice and the enumeration math doesn't require origin-in-dset.
 
 ## What the constructor canonicalizes silently
 
@@ -84,27 +84,117 @@ ParentLattice(A::AbstractMatrix) =
 # Read-only accessors. Useful both for downstream callers that want to be explicit
 # (rather than reaching into struct fields) and for future-proofing — if we ever
 # change the internal representation, the accessor stays stable.
+
+"""
+    basis(p::ParentLattice{D}) -> Matrix{Float64}
+
+Return the basis matrix of the parent lattice. Columns are basis vectors in Cartesian coordinates; the matrix is `D×D`.
+
+# Examples
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> basis(p)
+3×3 Matrix{Float64}:
+ 0.0  0.5  0.5
+ 0.5  0.0  0.5
+ 0.5  0.5  0.0
+```
+"""
 basis(p::ParentLattice) = p.A
+
+"""
+    dset(p::ParentLattice{D}) -> Vector{Vector{Float64}}
+
+Return the dset (basis sites in fractional coordinates, canonicalized to `[0,1)^D`). Length 1 for a Bravais lattice (one site, shifted to the origin), length ≥ 2 for a multilattice. See [`ParentLattice`](@ref) for canonicalization details.
+
+# Examples
+```jldoctest
+julia> p = ParentLattice([1.0 0 0; 0 1 0; 0 0 1], [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]]);
+
+julia> dset(p)
+2-element Vector{Vector{Float64}}:
+ [0.0, 0.0, 0.0]
+ [0.5, 0.5, 0.5]
+```
+"""
 dset(p::ParentLattice) = p.dset
+
+"""
+    space_group(p::ParentLattice{D}) -> Vector{SymmetryOp{D}}
+
+Return the cached multilattice space group (rotation + fractional-translation pairs) of the parent. Computed once at construction by Spacey.
+
+# Examples
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> length(space_group(p))
+48
+```
+"""
 space_group(p::ParentLattice) = p.space_group
+
+"""
+    ndset(p::ParentLattice) -> Int
+
+Return the number of sites in the dset — i.e., `length(dset(p))`.
+
+# Examples
+```jldoctest
+julia> p = ParentLattice([1.0 0 0; 0 1 0; 0 0 1], [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]]);
+
+julia> ndset(p)
+2
+```
+"""
 ndset(p::ParentLattice) = length(p.dset)
 
-# Count operations whose fractional translation is non-zero — useful for distinguishing
-# symmorphic (all `t = 0`) from non-symmorphic (some `t ≠ 0`) space groups.
+"""
+    n_nonzero_translations(p::ParentLattice; tol::Real = 1e-9) -> Int
+
+Count symmetry operations whose fractional translation `t` has any component with `|t_i| > tol`. Distinguishes symmorphic space groups (all `t == 0`, so this returns 0) from non-symmorphic ones (screw axes / glide planes, where some operations carry an intrinsic translation).
+
+# Examples
+```jldoctest
+julia> p_sc = ParentLattice([1.0 0 0; 0 1 0; 0 0 1]);  # simple cubic — Pm-3m, symmorphic
+
+julia> n_nonzero_translations(p_sc)
+0
+
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+
+julia> p_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);  # HCP — P6_3/mmc
+
+julia> n_nonzero_translations(p_hcp)
+12
+```
+"""
 n_nonzero_translations(p::ParentLattice; tol::Real = 1e-9) =
     count(op -> any(abs(t) > tol for t in op.t), p.space_group)
 
 """
-    lattice_rotations(p::ParentLattice{D}) :: Vector{Matrix{Int}}
+    lattice_rotations(p::ParentLattice{D}) -> Vector{Matrix{Int}}
 
-Project out just the rotation parts of `p.space_group`, dropping the fractional
-translations. This is what callers like `getSymInequivHNFs` and `Supercell`'s
-constructor want — the HNF symmetry equivalence and the supercell stabilizer
-detection are pure-rotation tests; fractional translations don't enter.
+Project out just the rotation parts of `p.space_group`, dropping the fractional translations. This is what callers like `getSymInequivHNFs` and `Supercell`'s constructor want — the HNF symmetry equivalence and the supercell stabilizer detection are pure-rotation tests; fractional translations don't enter.
 
-Returns a fresh `Vector{Matrix{Int}}` (one allocation per call). Cheap enough for
-typical use; if profiling motivates it, we can later cache this on `ParentLattice`
-itself.
+Returns a fresh `Vector{Matrix{Int}}` (one allocation per call). Cheap enough for typical use; if profiling motivates it, we can later cache this on `ParentLattice` itself.
+
+# Examples
+```jldoctest
+julia> p = ParentLattice([1.0 0 0; 0 1 0; 0 0 1]);  # simple cubic, point group order 48
+
+julia> rots = lattice_rotations(p);
+
+julia> length(rots)
+48
+
+julia> rots[1]  # the identity is first
+3×3 Matrix{Int64}:
+ 1  0  0
+ 0  1  0
+ 0  0  1
+```
 """
 lattice_rotations(p::ParentLattice) = [op.R for op in p.space_group]
 
