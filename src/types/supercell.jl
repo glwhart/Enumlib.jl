@@ -13,6 +13,26 @@ A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SN
 ## Construction
 
 `Supercell(hnf::HNF{D}, parent::ParentLattice{D})` builds the SNF, finds the stabilizer subgroup of `parent.space_group`, and constructs the permutation group via the legacy `getPermG`. The permutation-group construction is cached at construction time (per chunk 2 review item 1) — small memory cost (~kB per supercell) for substantial savings during the labeling enumeration loop, which consults `permutation_group` once per labeling check.
+
+# Examples
+Building one of FCC's two symmetry-inequivalent volume-2 supercells:
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sc = Supercell(enumerate_hnfs(VolumeRange(2:2), p)[1], p)
+Supercell{3} (n = 2, |stabilizer| = 12, |perm group| = 2)
+  HNF: 1 0 0 / 0 1 0 / 0 0 2
+  SNF diag: [1, 1, 2]
+
+julia> volume(sc.hnf)
+2
+
+julia> sc.snf
+3-element Vector{Int64}:
+ 1
+ 1
+ 2
+```
 """
 struct Supercell{D}
     hnf::HNF{D}

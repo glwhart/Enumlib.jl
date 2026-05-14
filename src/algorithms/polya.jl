@@ -17,7 +17,7 @@
 """
     module Polya
 
-Pólya / Burnside math primitives used by Enumlib's [`count_inequivalent`](@ref). Independently usable for general group-action orbit counting.
+Pólya / Burnside math primitives used by Enumlib's [`Enumlib.count_inequivalent`](@ref). Independently usable for general group-action orbit counting.
 
 Exports:
 - `polya_count(perm_group, k_or_mults)` — Burnside-averaged orbit count.

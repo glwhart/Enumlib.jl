@@ -10,14 +10,14 @@ makedocs(
     format   = Documenter.HTML(
         prettyurls = get(ENV, "CI", "false") == "true",
         canonical  = "https://glwhart.github.io/Enumlib.jl",
-        assets     = String[],
+        assets     = ["assets/strip_index_prefix.js"],
     ),
     modules  = [Enumlib],
-    # Phase 13a is infrastructure — pages exist as placeholders with
-    # nothing but a TODO heading. checkdocs is set to :none for now so
-    # missing-docstring warnings don't block the deploy pipeline. Phase
-    # 13b (docstring audit) raises this to :exports.
-    checkdocs = :none,
+    # Chunk 13b.4 raised checkdocs from :none to :exports — every public
+    # symbol must appear in some `@docs` block on a reference page, and
+    # every docstring's cross-references must resolve. Failures fail the
+    # build (and CI), so reference-side drift can't reach production.
+    checkdocs = :exports,
     pages = [
         "Home" => "index.md",
         "Tutorials" => [

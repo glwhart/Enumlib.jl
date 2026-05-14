@@ -1,7 +1,10 @@
 # Cost estimator
 
-Public API for `estimate_cost` and the budget-gate types.
+Public API for `estimate_cost` and the resource-check types.
 
-!!! warning "Phase 13a placeholder"
-    Content lands in **Phase 13b** of the v0.2 documentation rollout. This
-    stub exists so the site builds end-to-end during infrastructure setup.
+```@docs
+estimate_cost
+EnumerationCostEstimate
+EnumerationTooLargeError
+format_bytes
+```

@@ -6,6 +6,19 @@ A space-group operation in lattice coordinates: a rotation `R` (D×D integer mat
 `SymmetryOp{3}` is the type of every element of `ParentLattice{3}.space_group`. The parametric `D` is for forward compatibility with 2D enumerations (v0.3+). See `docs/notes/v0.2-plan.md` (Type-system glossary) for the meaning of "thin wrapper", "specialize", and parametric types.
 
 Thin wrapper around Spacey's `SpacegroupOp`. The fractional translation `t` is canonicalized to `[0,1)^D` at construction (delegated to `Spacey._canonicalize_τ`); we don't need to wrap again.
+
+# Examples
+The identity element of any 3D point group has `R = I` and `t = 0`:
+```jldoctest
+julia> id = SymmetryOp{3}([1 0 0; 0 1 0; 0 0 1], [0.0, 0.0, 0.0])
+SymmetryOp{3}([1 0 0; 0 1 0; 0 0 1], [0.0, 0.0, 0.0])
+
+julia> id.R
+3×3 Matrix{Int64}:
+ 1  0  0
+ 0  1  0
+ 0  0  1
+```
 """
 struct SymmetryOp{D}
     R::Matrix{Int}                   # lattice-coord rotation/reflection (D×D)

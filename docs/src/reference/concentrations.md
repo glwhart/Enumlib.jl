@@ -1,7 +1,16 @@
 # Concentrations
 
-Public API for the concentration constructors and `ConcentrationRange`.
+Public API for the concentration constructors, `ConcentrationRange`, and the multinomial-hash primitives.
 
-!!! warning "Phase 13a placeholder"
-    Content lands in **Phase 13b** of the v0.2 documentation rollout. This
-    stub exists so the site builds end-to-end during infrastructure setup.
+```@docs
+Concentration
+concentration_ratio
+concentration_count
+ConcentrationRange
+n_species
+multiplicities
+concentrations_in_range
+multinomial_count
+multinomial_hash
+multinomial_unhash
+```

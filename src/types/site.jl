@@ -8,6 +8,16 @@ The position is in fractional coordinates of the parent lattice (`ParentLattice{
 A site is **inactive** if `length(allowed_labels) == 1` — only one species can occupy it, so it has no configurational freedom and gets stripped from the labeling space during enumeration. A site is **active** otherwise.
 
 `Site` does not validate the position against any specific `ParentLattice` (per chunk 2 design item 1). Cross-validation happens at the `enumerate(parent, sites)` boundary — keeps `Site` parametric on `D` only.
+
+# Examples
+A binary substitution site (active — two allowed labels) and a fixed-species site (inactive — one allowed label):
+```jldoctest
+julia> Site([0.0, 0.0, 0.0], [0, 1])
+Site{3}([0.0, 0.0, 0.0], species {0, 1})
+
+julia> Site([0.5, 0.5, 0.5], [0])
+Site{3}([0.5, 0.5, 0.5], species {0}  [inactive])
+```
 """
 struct Site{D}
     position::Vector{Float64}    # length D, in fractional coords of the parent
@@ -34,18 +44,34 @@ Site(position::AbstractVector{<:Real}, allowed) =
     Site(position, BitSet(allowed))
 
 """
-    is_inactive(s::Site)
+    is_inactive(s::Site) -> Bool
 
-A site is inactive iff its `allowed_labels` has exactly one element — only one species
-can occupy it, so it contributes no configurational freedom to the enumeration.
+A site is inactive iff its `allowed_labels` has exactly one element — only one species can occupy it, so it contributes no configurational freedom to the enumeration.
+
+# Examples
+```jldoctest
+julia> is_inactive(Site([0.0, 0.0, 0.0], [0, 1]))
+false
+
+julia> is_inactive(Site([0.5, 0.5, 0.5], [0]))
+true
+```
 """
 is_inactive(s::Site) = length(s.allowed_labels) == 1
 
 """
-    is_active(s::Site)
+    is_active(s::Site) -> Bool
 
-A site is active iff it has more than one allowed label. Active sites are the ones the
-enumeration algorithm will assign labels to.
+A site is active iff it has more than one allowed label. Active sites are the ones the enumeration algorithm will assign labels to.
+
+# Examples
+```jldoctest
+julia> is_active(Site([0.0, 0.0, 0.0], [0, 1]))
+true
+
+julia> is_active(Site([0.5, 0.5, 0.5], [0]))
+false
+```
 """
 is_active(s::Site) = !is_inactive(s)
 

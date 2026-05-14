@@ -2,6 +2,23 @@
 
 Public API for `ParentLattice`, `Site`, `Sites`, and the equivalence helpers.
 
-!!! warning "Phase 13a placeholder"
-    Content lands in **Phase 13b** of the v0.2 documentation rollout. This
-    stub exists so the site builds end-to-end during infrastructure setup.
+```@docs
+SymmetryOp
+ParentLattice
+basis
+dset
+space_group
+ndset
+n_nonzero_translations
+lattice_rotations
+Site
+Sites
+is_active
+is_inactive
+equate!
+canonical
+active_canonical_sites
+n_active
+n_canonical
+n_effective
+```

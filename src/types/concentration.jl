@@ -138,7 +138,26 @@ end
 
 Per-species `(min, max)` bounds. Decomposes at each cell size into a list of `Concentration`s within the bounds via `concentrations_in_range`.
 
-Used for "I want all binary structures with composition in 40–60% range" or "I want every ternary stoichiometry where C is at most 1/3."
+# Examples
+
+"All binary structures with composition in the 40–60% range" — each species in `[2//5, 3//5]`. At a 10-site cell that's 3 partitions:
+```jldoctest
+julia> cr = ConcentrationRange([(2//5, 3//5), (2//5, 3//5)]);
+
+julia> concentrations_in_range(cr, 10)
+3-element Vector{Concentration}:
+ Concentration(2//5, 3//5)
+ Concentration(1//2, 1//2)
+ Concentration(3//5, 2//5)
+```
+
+"Every ternary stoichiometry where C is at most 1/3" — first two species unconstrained, third species in `[0, 1//3]`. At a 6-site cell that's 18 partitions:
+```jldoctest
+julia> cr = ConcentrationRange([(0//1, 1//1), (0//1, 1//1), (0//1, 1//3)]);
+
+julia> length(concentrations_in_range(cr, 6))
+18
+```
 """
 struct ConcentrationRange
     bounds::Vector{Tuple{Rational{Int}, Rational{Int}}}
@@ -169,11 +188,23 @@ Number of species (length of the per-species `(min, max)` bounds vector).
 n_species(cr::ConcentrationRange) = length(cr.bounds)
 
 """
-    concentrations_in_range(cr::ConcentrationRange, n_total::Integer) :: Vector{Concentration}
+    concentrations_in_range(cr::ConcentrationRange, n_total::Integer) -> Vector{Concentration}
 
 Enumerate every integer-multiplicity vector `(a_1, ..., a_k)` with `sum(a_i) = n_total` and `lo_i ≤ a_i / n_total ≤ hi_i`, returning the corresponding `Concentration`s. Used by chunk-6's `enumerate(...)` to walk a concentration range.
 
 Per Phase 7 §7.6, the chunk-6 default `partition_threshold = 100` checks the result of this function; if the count exceeds the threshold and `on_partition_overflow = :error`, `enumerate(...)` throws a `PartitionExplosionError` with a "narrow your range" message.
+
+# Examples
+Asymmetric binary range — A in `[25%, 50%]`, B in `[50%, 75%]` — at a supercell size of 8 yields 3 partitions:
+```jldoctest
+julia> cr = ConcentrationRange([(1//4, 1//2), (1//2, 3//4)]);
+
+julia> concentrations_in_range(cr, 8)
+3-element Vector{Concentration}:
+ Concentration(1//4, 3//4)
+ Concentration(3//8, 5//8)
+ Concentration(1//2, 1//2)
+```
 """
 function concentrations_in_range(cr::ConcentrationRange, n_total::Integer)
     n_total >= 1 ||

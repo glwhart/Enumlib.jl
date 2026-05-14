@@ -2,6 +2,14 @@
 
 Authoritative signature, kwargs, and return-type documentation for the two top-level entry points.
 
-!!! warning "Phase 13a placeholder"
-    Content lands in **Phase 13b** of the v0.2 documentation rollout. This
-    stub exists so the site builds end-to-end during infrastructure setup.
+```@docs
+Base.enumerate(::ParentLattice{D}, ::Sites{D}) where D
+Enumeration
+EnumeratedStructure
+to_labeling
+default_memory_budget
+count_inequivalent
+InequivalentCount
+EmptyEnumerationError
+PartitionExplosionError
+```

@@ -1,7 +1,15 @@
 # Supercells and volume ranges
 
-Public API for `HNF`, `Supercell`, `VolumeRange`, `RadiusBound`, `ExplicitHNFs`, and `getSymInequivHNFs`.
+Public API for `HNF`, `Supercell`, and the `SupercellSelection` family.
 
-!!! warning "Phase 13a placeholder"
-    Content lands in **Phase 13b** of the v0.2 documentation rollout. This
-    stub exists so the site builds end-to-end during infrastructure setup.
+```@docs
+HNF
+Supercell
+volume
+SupercellSelection
+VolumeRange
+RadiusBound
+ExplicitHNFs
+enumerate_hnfs
+avg_cell_radius
+```

@@ -12,6 +12,16 @@ authoritative description of the API surface.
 - [Pólya counting](polya.md)
 - [POSCAR I/O and result attachment](poscar-io.md)
 
-!!! warning "Phase 13a placeholder"
-    Reference docstrings are audited and surfaced in **Phase 13b** of the
-    v0.2 documentation rollout.
+## Index
+
+```@index
+Pages = [
+    "parent-and-sites.md",
+    "supercells.md",
+    "concentrations.md",
+    "enumerate-and-count.md",
+    "cost-estimator.md",
+    "polya.md",
+    "poscar-io.md",
+]
+```

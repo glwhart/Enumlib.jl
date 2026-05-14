@@ -64,7 +64,7 @@ export
 
 Get the average distance from the center of the unit cell `B` to its 8 corners. Used as a unit-cell size measure for the radius-based supercell selection ([`RadiusBound`](@ref)). Minkowski-reduces the basis first so the measure is independent of the user's cell representation (e.g., a skewed basis and its Minkowski-reduced equivalent get the same value).
 
-Renamed from `cellRadius` in chunk 4 — the original used max distance, but per chunk 2 review item 2 we switched to avg. Avg gives finer tie-breaking (8 corner distances rarely all match pairwise) and is more descriptive for elongated cells (max gets dominated by the longest direction; avg weights all axes smoothly). For a cube `avg ≈ max ≈ side·√3/2` so the difference only shows up for non-cubic cells.
+Renamed from `cellRadius` in chunk 4 — the original used max distance, but per chunk 2 review item 2 we switched to average distance. Average gives finer tie-breaking (8 corner distances rarely all match pairwise) and is more descriptive for elongated cells (max gets dominated by the longest direction; avg weights all axes smoothly). For a cube `avg ≈ max ≈ side·√3/2` so the difference only shows up for non-cubic cells.
 
 # Examples
 A unit cube spans `[0, 1]^3`; its center is at `(0.5, 0.5, 0.5)`, equidistant from all 8 corners at `√3/2 ≈ 0.866`.

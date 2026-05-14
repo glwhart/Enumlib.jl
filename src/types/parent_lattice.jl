@@ -3,12 +3,12 @@
 
 The geometric description of the parent multilattice for an enumeration: basis vectors `A`, dset `dset` (basis sites in fractional coordinates), and the cached `space_group` of the multilattice (rotation + fractional-translation pairs).
 
-The dset captures the multilattice basis — for a Bravais lattice, length==1; for HCP, length==2; for perovskite ABO₃, length==5. **The dset is not required to contain the origin** — placing the origin where it makes physical sense (e.g., at the inversion center for diamond) is a user choice and the enumeration math doesn't require origin-in-dset.
+The dset captures the multilattice basis — for a Bravais lattice, length==1; for HCP, length==2; for perovskite ABO₃, length==5. **The dset does not need to contain the origin** — placing the origin where it makes physical sense (e.g., at the inversion center for diamond) is a user choice and the enumeration math doesn't require the dset to include the origin.
 
 ## What the constructor canonicalizes silently
 
 1. **Periodic-coordinate wrap.** Each dset position is folded into `[0,1)^D` via `mod(., 1)`. So `[1.5, -0.5, 0.5]` becomes `[0.5, 0.5, 0.5]` — mathematically equivalent under lattice translation. (Matches the convention in ASE / pymatgen.)
-2. **Bravais origin shift (only when `length(dset) == 1`).** A single-site dset has a degenerate choice of origin — there's no geometric structure picking one position over another. We shift the lone dset entry to the origin, so the resulting `space_group` doesn't carry artifact `t`-translations introduced by the user's choice of origin. **For multilattice (`length(dset) ≥ 2`) we never shift** — the relative positions encode physically meaningful structure (placing the origin at diamond's inversion center is the canonical example).
+2. **Bravais origin shift (only when `length(dset) == 1`).** A single-site dset has a degenerate choice of origin — there's no geometric structure picking one position over another. We shift the lone dset entry to the origin, so the resulting `space_group` doesn't carry artifact `t`-translations introduced by the user's choice of origin. **For multilattices (`length(dset) ≥ 2`) we never shift** — the relative positions encode physically meaningful structure (placing the origin at diamond's inversion center is the canonical example).
 
 ## Numerical scale check
 
