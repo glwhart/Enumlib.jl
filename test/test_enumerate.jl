@@ -126,15 +126,35 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         @test_throws ArgumentError enumerate(parent, sites; supercells = sel, algorithm = :foo)
     end
 
-    # ---- Multilattice — regime B (uniform sublattices, HF 2009 pending R50.2) ----
-    @testset "enumerate — regime B (uniform multilattice) errors with R50.2-pending message" begin
-        # HCP — 2-element dset, both sublattices have the same allowed_labels (binary).
+    # ---- Multilattice — regime B (uniform sublattices, HF 2009) ----
+    # R50.2b (2026-05-15) flipped this from a throw-test to a Fortran-corpus
+    # anchor test. HCP binary counts at n = 1..6 match the Fortran enumlib
+    # reference (full mode, no label-exchange elimination): [3, 10, 50, 270,
+    # 651, 4793].
+    @testset "enumerate — regime B HCP Fortran corpus" begin
         a = 1.0; c = sqrt(8/3)
         A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
         parent = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
                        Site([1/3, 2/3, 1/2], [0, 1])])
-        @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(2:2))
+        fortran_hcp = [3, 10, 50, 270, 651, 4793]
+        for n in 1:6
+            @test length(enumerate(parent, sites; supercells = VolumeRange(n:n))) == fortran_hcp[n]
+            @test count_inequivalent(parent, sites; supercells = VolumeRange(n:n)) == fortran_hcp[n]
+        end
+    end
+
+    # ---- Multilattice — regime B Diamond (FCC + 2-atom dset) ----
+    @testset "enumerate — regime B Diamond Fortran corpus" begin
+        fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+        parent = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                       Site([0.25, 0.25, 0.25], [0, 1])])
+        fortran_diamond = [3, 7, 33, 171]
+        for n in 1:4
+            @test length(enumerate(parent, sites; supercells = VolumeRange(n:n))) == fortran_diamond[n]
+            @test count_inequivalent(parent, sites; supercells = VolumeRange(n:n)) == fortran_diamond[n]
+        end
     end
 
     # ---- Multilattice — regime C (heterogeneous sublattices, chunk 6.5) ----

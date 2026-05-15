@@ -41,7 +41,7 @@ Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
   equivalencies: (none)
 ```
 
-**Caveat:** `enumerate(...)` currently only handles the single-site Bravais case. Multi-sublattice support for the uniform case (HF 2009) is queued as R50; the per-position heterogeneous case (perovskite-style) is queued as chunk 6.5. The *builder* works today on both — only the `enumerate(...)` dispatch is currently restricted.
+**Coverage today:** `enumerate(...)` handles both single-site Bravais parents *and* uniform multilattices (the HCP / Diamond / etc. case where every dset position shares the same `allowed_labels`). The per-position **heterogeneous** case (perovskite-style — different labels per sublattice) is queued as chunk 6.5; the builder works today, but `enumerate(...)` rejects it pending the multinomial-restricted algorithm.
 
 ## The longer path — building from individual `Site`s
 

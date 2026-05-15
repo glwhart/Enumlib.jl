@@ -57,9 +57,13 @@ struct Supercell{D}
         snf_diag = [S[i,i] for i in 1:D]
 
         # Permutation group: rotations of the stabilizer composed with the
-        # supercell's translation group. Pure-integer arithmetic via the
-        # lattice-coord legacy `getPermG`.
-        perm_group = getPermG(hnf.matrix, fixingOps, LG)
+        # supercell's translation group. R50.2b (2026-05-15) switches to the
+        # parent-aware `getPermG` method which builds the correct n_D·n-site
+        # permutation group for multilattice parents using the dset-permutation
+        # precompute (parent.dset_perms / dset_shifts, populated in R50.2a).
+        # Single-lattice (n_D = 1) falls out as the degenerate case — output
+        # is byte-for-byte identical to the legacy method.
+        perm_group = getPermG(hnf.matrix, fixingOps, parent)
 
         new(hnf, snf_diag, n_stabilizer, perm_group)
     end

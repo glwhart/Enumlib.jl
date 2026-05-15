@@ -208,7 +208,13 @@ function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
         sc = Supercell(hnf, parent)
         push!(supercells_list, sc)
         sc_id = length(supercells_list)
-        colorings = getUniqueColorings(k, sc.permutation_group; include_superperiodic)
+        # n_translations = n_cells (NOT n_D · n_cells) — super-periodicity is
+        # detected by fix-by-pure-translation, and pG[1..n_cells] is the
+        # identity-rotation × translation-subgroup block in the dset-blocks layout.
+        n_cells = volume(hnf)
+        colorings = getUniqueColorings(k, sc.permutation_group;
+                                       include_superperiodic,
+                                       n_translations = n_cells)
         for c in colorings
             osz = _orbit_size(sc.permutation_group, c)
             push!(structures, EnumeratedStructure{D, Vector{Int8}}(
@@ -264,25 +270,29 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
                                        coloring_fn) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
+    n_D = ndset(parent)
 
     for hnf in hnfs
         sc = Supercell(hnf, parent)
         push!(supercells_list, sc)
         sc_id = length(supercells_list)
         n = volume(hnf)
+        n_total = n_D * n   # total supercell sites = n_D · n
 
         # Resolve the concentration(s) to enumerate at this supercell volume.
+        # Multiplicities live on n_D · n sites; single-lattice falls out as the
+        # degenerate case (n_total = n).
         concs = if concentration isa Concentration
             try
-                multiplicities(concentration, n)  # validate divisibility
+                multiplicities(concentration, n_total)  # validate divisibility
                 Concentration[concentration]
             catch e
                 e isa EmptyEnumerationError || rethrow()
-                # Concentration doesn't divide cleanly into this n; skip the volume.
+                # Concentration doesn't divide cleanly; skip the volume.
                 Concentration[]
             end
         else  # ConcentrationRange
-            crs = concentrations_in_range(concentration, n)
+            crs = concentrations_in_range(concentration, n_total)
             if length(crs) > partition_threshold
                 if on_partition_overflow === :error
                     throw(PartitionExplosionError(length(crs), partition_threshold,
@@ -297,7 +307,7 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
         end
 
         for c in concs
-            mults = multiplicities(c, n)
+            mults = multiplicities(c, n_total)
             colorings = coloring_fn(sc.permutation_group, mults)
             for coloring in colorings
                 osz = _orbit_size(sc.permutation_group, coloring)
@@ -355,18 +365,18 @@ function _validate_enumerate_inputs(parent::ParentLattice{D}, sites::Sites{D},
         labels_uniform = all(s.allowed_labels == sites.list[1].allowed_labels
                              for s in sites.list)
         if labels_uniform
-            throw(ArgumentError(
-                "Multilattice (uniform sublattices) `enumerate(...)` — HF 2008/2009 " *
-                "implementation pending (R50.2). The builder " *
-                "`Sites(parent, $(collect(sites.list[1].allowed_labels)))` constructs " *
-                "the right Sites object today; the dispatch path to actually " *
-                "enumerate it lands in a follow-up chunk."))
+            # Regime B: uniform multilattice. R50.2b (2026-05-15) flipped this from
+            # "throw R50.2-pending" to "fall through." The post-cascade validation
+            # below uses sites.list[1] as the representative — sound for regime B
+            # because all sites carry identical allowed_labels. The multilattice
+            # permutation group is built correctly by the parent-aware getPermG
+            # method (R50.2b) consuming the R50.2a-precomputed (π, v_i).
         else
             throw(ArgumentError(
                 "Multilattice with per-site `allowed_labels` (heterogeneous sublattices) " *
                 "requires the multinomial-restricted algorithm — chunk 6.5. " *
                 "For uniform sublattices (same allowed_labels at every dset position), " *
-                "see R50.2."))
+                "use a `Sites(parent, [...])` with one shared label set."))
         end
     end
 
@@ -459,6 +469,7 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
                             include_superperiodic::Bool = false,
                             breakdown::Bool = false) where D
     k = _validate_enumerate_inputs(parent, sites, concentration)
+    n_D = ndset(parent)
 
     hnfs = enumerate_hnfs(supercells, parent)
 
@@ -470,21 +481,26 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
     for hnf in hnfs
         sc = Supercell(hnf, parent)
         n = volume(hnf)
+        n_total = n_D * n                # total sites = n_D · n
         snf_diag = (Int(sc.snf[1]), Int(sc.snf[2]), Int(sc.snf[3]))
 
         # Resolve concentration(s) to enumerate at this supercell volume.
+        # Multiplicities are resolved against the total site count n_total =
+        # n_D · n, not n — for multilattice (n_D ≥ 2) the colorings live on
+        # n_D · n supercell sites. Single-lattice (n_D = 1) is the degenerate
+        # case where n_total = n.
         concs_here = if concentration === nothing
             Union{Concentration, Nothing}[nothing]
         elseif concentration isa Concentration
             try
-                multiplicities(concentration, n)  # validates divisibility
+                multiplicities(concentration, n_total)  # validates divisibility
                 Union{Concentration, Nothing}[concentration]
             catch e
                 e isa EmptyEnumerationError || rethrow()
                 Union{Concentration, Nothing}[]
             end
         else  # ConcentrationRange
-            Union{Concentration, Nothing}[c for c in concentrations_in_range(concentration, n)]
+            Union{Concentration, Nothing}[c for c in concentrations_in_range(concentration, n_total)]
         end
 
         hnf_count = BigInt(0)
@@ -497,7 +513,7 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
                     Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, k)
                 end
             else
-                mults = multiplicities(c, n)
+                mults = multiplicities(c, n_total)
                 if include_superperiodic
                     Polya.polya_count(sc.permutation_group, mults)
                 else
@@ -608,6 +624,7 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
 
     # Resolve the HNF list (deferred work — same call enumerate makes).
     hnfs = enumerate_hnfs(supercells, parent)
+    n_D = ndset(parent)
 
     # Total count via the chunk-7 machinery.
     total_count = count_inequivalent(parent, sites; supercells, concentration,
@@ -620,9 +637,11 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     selection_kind = supercells isa VolumeRange ? :volume_range :
                      supercells isa RadiusBound ? :radius_bound : :explicit_hnfs
 
-    # Partition count (chunk 6 already exposes the partition machinery).
+    # Partition count (chunk 6 already exposes the partition machinery). For
+    # multilattice (n_D ≥ 2), the multiplicity vectors are resolved against
+    # n_D · volume(h) total sites, not volume(h).
     partition_count = if concentration isa ConcentrationRange
-        sum(length(concentrations_in_range(concentration, volume(h))) for h in hnfs;
+        sum(length(concentrations_in_range(concentration, n_D * volume(h))) for h in hnfs;
             init = 0)
     else
         1
@@ -652,8 +671,10 @@ function _predict_peak_memory(hnfs, parent, k::Int, concentration, algorithm::Sy
                               total_count::BigInt)::Int
     isempty(hnfs) && return 0
 
+    n_D = ndset(parent)
     n_max = maximum(volume(h) for h in hnfs)
-    output_per_struct = 64 + n_max * sizeof(Int8)   # struct overhead + labeling
+    # Labeling length = n_D · n; output_per_struct grows with total sites.
+    output_per_struct = 64 + n_D * n_max * sizeof(Int8)
     output_total = clamp(Int(min(total_count, typemax(Int) ÷ max(1, output_per_struct))),
                          0, typemax(Int)) * output_per_struct
 
@@ -669,28 +690,29 @@ function _predict_peak_memory(hnfs, parent, k::Int, concentration, algorithm::Sy
     else
         for hnf in hnfs
             n = volume(hnf)
+            n_total = n_D * n
             if algorithm == :exhaustive
-                # BitVector(k^n) bytes.
-                C = BigInt(k)^n
+                # BitVector(k^(n_D·n)) bytes.
+                C = BigInt(k)^n_total
                 bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
             else  # :multinomial
                 # Per (HNF, concentration) bitmap. Take max across concentrations
                 # at this volume.
                 concs_here = if concentration isa Concentration
                     try
-                        multiplicities(concentration, n)
+                        multiplicities(concentration, n_total)
                         [concentration]
                     catch e
                         e isa EmptyEnumerationError || rethrow()
                         Concentration[]
                     end
                 elseif concentration isa ConcentrationRange
-                    concentrations_in_range(concentration, n)
+                    concentrations_in_range(concentration, n_total)
                 else
                     Concentration[]   # shouldn't happen for :multinomial, but safe
                 end
                 for c in concs_here
-                    mults = multiplicities(c, n)
+                    mults = multiplicities(c, n_total)
                     C = multinomial_count(mults)
                     bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
                 end
@@ -719,25 +741,26 @@ function _multinomial_bitmap_fits(parent::ParentLattice{D},
                                    concentration::Union{Concentration, ConcentrationRange},
                                    memory_budget::Int) where D
     threshold = (memory_budget * 8) ÷ 10        # 80% of budget
+    n_D = ndset(parent)
 
     hnfs = enumerate_hnfs(supercells, parent)
     isempty(hnfs) && return true                 # nothing to enumerate; either is fine
 
     for hnf in hnfs
-        n = volume(hnf)
+        n_total = n_D * volume(hnf)
         concs_here = if concentration isa Concentration
             try
-                multiplicities(concentration, n)
+                multiplicities(concentration, n_total)
                 [concentration]
             catch e
                 e isa EmptyEnumerationError || rethrow()
                 Concentration[]
             end
         else  # ConcentrationRange
-            concentrations_in_range(concentration, n)
+            concentrations_in_range(concentration, n_total)
         end
         for c in concs_here
-            mults = multiplicities(c, n)
+            mults = multiplicities(c, n_total)
             C = multinomial_count(mults)
             _bitmap_bytes(C) > threshold && return false
         end

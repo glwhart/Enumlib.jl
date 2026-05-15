@@ -98,6 +98,28 @@ using LinearAlgebra: det
         end
     end
 
+    # ---- R50.2b: multilattice permutation group structural tests ----
+    # Verifies the n_D · n-site shape of the perm group on the HCP parent at
+    # n = 2 (so n_D · n = 4). Pre-R50.2b this was silently length 2 (single-
+    # lattice degenerate). Post-R50.2b every perm is a bijection of 1:4 and
+    # the identity is present.
+    @testset "Supercell — HCP multilattice n=2 perm group shape (R50.2b)" begin
+        a = 1.0; c = sqrt(8/3)
+        A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
+        dset_hcp = [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]
+        parent = ParentLattice(A_hcp, dset_hcp)
+        hnfs = getSymInequivHNFs(2, parent)
+        for h in hnfs
+            sc = Supercell(h, parent)
+            n_total = 2 * volume(h)                # n_D · n = 4
+            for perm in sc.permutation_group
+                @test length(perm) == n_total
+                @test sort(perm) == collect(1:n_total)   # bijection
+            end
+            @test collect(1:n_total) in sc.permutation_group   # identity is present
+        end
+    end
+
     # ---- getSymInequivHNFs counts across a corpus of lattices and sizes ----
     # Captured by running getSymInequivHNFs once during chunk 3 development
     # (per chunk 3 design item 5) and locked here as the regression target.

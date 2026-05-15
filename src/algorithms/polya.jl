@@ -176,10 +176,19 @@ end
 
 function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
                                multiplicities::AbstractVector{<:Integer})::BigInt
-    n = sum(multiplicities)
-    n == prod(snf_diagonal) ||
+    isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
+    nT = prod(snf_diagonal)
+    n_D, rem = divrem(length(perm_group[1]), nT)
+    rem == 0 && n_D >= 1 ||
         throw(DimensionMismatch(
-            "sum(multiplicities) = $n ≠ prod(snf_diagonal) = $(prod(snf_diagonal))"))
+            "permutation length $(length(perm_group[1])) is not a multiple of " *
+            "prod(snf_diagonal) = $nT"))
+    n_total = n_D * nT
+    sum_m = sum(multiplicities)
+    sum_m == n_total ||
+        throw(DimensionMismatch(
+            "sum(multiplicities) = $sum_m ≠ n_D · prod(snf_diagonal) = $n_total " *
+            "(n_D = $n_D inferred from permutation length)"))
     return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbit_sizes
         # Fixed-multiplicity fixed-count: polynomial coefficient on orbit sizes
         # (the "cycle structure" for the polynomial DP).
@@ -247,20 +256,30 @@ end
 # fixed-multiplicity.
 function _aperiodic_orbit_count_impl(fix_count::Function, perm_group,
                                      snf_diagonal::NTuple{3,Int})::BigInt
-    n = prod(snf_diagonal)
     isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
-    length(perm_group[1]) == n ||
+    nT = prod(snf_diagonal)
+    L = length(perm_group[1])
+    n_D, rem = divrem(L, nT)
+    (rem == 0 && n_D >= 1) ||
         throw(DimensionMismatch(
-            "permutation length $(length(perm_group[1])) ≠ |T| = $n"))
+            "permutation length $L is not a multiple of " *
+            "prod(snf_diagonal) = $nT"))
+    n_total = n_D * nT
 
-    # Pre-materialize each subgroup H as a list of permutations on n positions.
-    H_perms_with_mu = [(_translation_perms(snf_diagonal, H), mu)
+    # Pre-materialize each subgroup H as a list of permutations on n_total
+    # positions. For multilattice (n_D > 1), translations act identically on
+    # each dset block: dset positions don't move under a pure translation, so
+    # the n_T-position perm is block-replicated with offsets (i-1)·nT. This
+    # mirrors the layout in `getPermG(h, fixingOps, parent)` where rotations
+    # combine with translations as `iR[full_iT]` with
+    # `full_iT = vcat((iT .+ (i-1)*n for i in 1:n_D)...)`.
+    H_perms_with_mu = [(_translation_perms(snf_diagonal, H, n_D), mu)
                        for (H, mu) in _subgroups_with_mobius(snf_diagonal) if mu != 0]
 
     total_sum = BigInt(0)
     for g in perm_group
         for (H_perms, mu) in H_perms_with_mu
-            orbit_sizes = _joint_orbit_partition(g, H_perms, n)
+            orbit_sizes = _joint_orbit_partition(g, H_perms, n_total)
             total_sum += mu * fix_count(orbit_sizes)
         end
     end
@@ -375,29 +394,38 @@ function _span(H::Set{NTuple{3,Int}}, K::Set{NTuple{3,Int}}, snf_diagonal::NTupl
 end
 
 # Materialize a subgroup H of T = Z/d_1 × Z/d_2 × Z/d_3 as a list of permutations
-# on n = d_1·d_2·d_3 positions. Each h = (a, b, c) ∈ H induces the permutation
-# "shift position (i, j, k) → ((i+a) mod d_1, (j+b) mod d_2, (k+c) mod d_3)".
+# on n_total = n_D · d_1·d_2·d_3 positions. Each h = (a, b, c) ∈ H induces the
+# permutation "shift position (i, j, k) → ((i+a) mod d_1, (j+b) mod d_2,
+# (k+c) mod d_3)" within each dset block. Translations are pure lattice shifts
+# and do not move atoms between dsets, so each dset block gets the same shift.
 #
-# Position layout matches `getPermG`'s: index = i*(d_2·d_3) + j*d_3 + k + 1
-# with i changing slowest, k fastest. The identity element (0,0,0) is included
-# (it's `1:n` and is harmless under union-find — adding a no-op to the joint).
+# Position layout matches the parent-aware `getPermG`'s: dset-block ordering,
+# `flat_idx(dset_i, g_idx) = (dset_i - 1) · n + g_idx`, where the cell-index
+# part is `i·(d_2·d_3) + j·d_3 + k + 1` with i changing slowest, k fastest.
+# The identity element (0,0,0) is included (it's `1:n_total` and is harmless
+# under union-find — adding a no-op to the joint).
 function _translation_perms(snf_diagonal::NTuple{3,Int},
-                            H::Set{NTuple{3,Int}})
+                            H::Set{NTuple{3,Int}}, n_D::Int = 1)
     d1, d2, d3 = snf_diagonal
     n = d1 * d2 * d3
+    n_total = n_D * n
     factor = (d2 * d3, d3, 1)
 
     perms = Vector{Vector{Int}}()
     for h in H
-        perm = Vector{Int}(undef, n)
-        idx = 0
-        for i in 0:d1-1, j in 0:d2-1, k in 0:d3-1
-            idx += 1
-            ni = mod(i + h[1], d1)
-            nj = mod(j + h[2], d2)
-            nk = mod(k + h[3], d3)
-            new_idx = ni * factor[1] + nj * factor[2] + nk * factor[3] + 1
-            perm[idx] = new_idx
+        perm = Vector{Int}(undef, n_total)
+        # Per-cell perm on n positions, then replicated per dset block.
+        for dset in 1:n_D
+            offset = (dset - 1) * n
+            idx = 0
+            for i in 0:d1-1, j in 0:d2-1, k in 0:d3-1
+                idx += 1
+                ni = mod(i + h[1], d1)
+                nj = mod(j + h[2], d2)
+                nk = mod(k + h[3], d3)
+                new_idx = ni * factor[1] + nj * factor[2] + nk * factor[3] + 1
+                perm[offset + idx] = offset + new_idx
+            end
         end
         push!(perms, perm)
     end

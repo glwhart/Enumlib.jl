@@ -274,11 +274,17 @@ include("clusterequvi.jl")
 """
     getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
 
-Permutation group for the supercell `h` of parent lattice (point group `LG` in
-lattice coordinates), given the ordinal mask `fixingOps` selecting the stabilizer
-subgroup. Eq. 3 of the original enumlib paper, all in pure-integer arithmetic.
-(The Cartesian-coord variant was dropped in chunk 3 to keep the implementation
-in integers; see chunk 3 design.)
+Single-lattice permutation group for the supercell `h` under the lattice-coord
+point group `LG`, given the ordinal mask `fixingOps` selecting the stabilizer
+subgroup. Eq. 3 of HF 2008, all in pure-integer arithmetic. (The Cartesian-coord
+variant was dropped in chunk 3 — see chunk 3 design.)
+
+**Legacy single-lattice method.** Used by `radiusEnumeration.jl` and
+`CEdataSupport.jl` (single-lattice by construction). For multilattice or
+general use through `ParentLattice`, prefer the new `getPermG(h, fixingOps,
+parent::ParentLattice)` method which handles single- and multi-lattice
+uniformly (R50.2b, 2026-05-15). Removal queued for v0.3 — see v0.2-plan
+"v0.3+ shopping list."
 """
 function getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
     S, L, _ = snf(h)
@@ -299,6 +305,86 @@ function getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
     return perm
 end
 
+"""
+    getPermG(h, fixingOps, parent::ParentLattice{D}) where D
+
+Permutation group for the supercell `h` on the multilattice `D × G` site set
+(size `n_D · n` where `n_D = ndset(parent)` and `n = vol(h)`), given the ordinal
+mask `fixingOps` selecting the rotations that fix the superlattice.
+
+For each fixing op `(N, t)`, applies the per-site action from the dset-mapping
+writeup (`docs/notes/multilattice_dset_mapping_writeup.pdf`) using the
+precomputed `(π, v_i)` cached on `parent` (R50.2a):
+
+    (d_i, g)  →  (d_{π(i)}, g')   with  g' = T·v_i + (T·N·T⁻¹)·g   (mod SNF diag)
+
+where `T` is the SNF left-transition matrix. Pure integer arithmetic (R50.2's L6
+lock — the precomputed `v_i` is integer-valued in lattice coords; no tolerance
+needed once we're in the SNF basis). Composes with the supercell translation
+subgroup `T_supercell` (each `τ ∈ G` acts as `(d_i, g) → (d_i, g+τ)`, same shift
+applied within every dset block).
+
+Site ordering (L3): `flat_idx(d_i, g) = (i-1)·n + g_idx` — "dset blocks", matching
+the Fortran enumlib's convention in `get_rotation_perms_lists`. Single-lattice
+(n_D = 1) degenerates exactly to the legacy single-lattice path because the
+precomputed `π = [1]` and `v = [[0,0,0]]` (R50.2a) make the dset-permutation and
+shift terms trivial.
+
+Returns `Vector{Vector{Int}}` — perm-group permutations of length `n_D · n`.
+"""
+function getPermG(h, fixingOps, parent::ParentLattice{D}) where D
+    S, L_snf, _ = snf(h)
+    Linv = round.(Int, inv(L_snf))
+    diag_S = diag(S)
+    z1, z2, z3 = diag_S
+    n   = prod(diag_S)
+    n_D = ndset(parent)
+    LG  = lattice_rotations(parent)
+
+    GspcSites = [[i, j, k] for i in 0:z1-1 for j in 0:z2-1 for k in 0:z3-1]
+    factor    = [z2*z3, z3, 1]                # g flat index = i*z2*z3 + j*z3 + k + 1
+
+    fixing_indices = findall(fixingOps)
+    rotPerms = Vector{Vector{Int}}()
+    for op_idx in fixing_indices
+        N_op = LG[op_idx]
+        π    = parent.dset_perms[op_idx]
+        v    = parent.dset_shifts[op_idx]
+        TNT⁻¹ = L_snf * N_op * Linv           # T · N · T⁻¹ (integer matrix)
+        perm = Vector{Int}(undef, n_D * n)
+        for i in 1:n_D
+            Tv = L_snf * v[i]                 # T · v_i (integer vector)
+            for (g_idx, g) in enumerate(GspcSites)
+                g_prime      = mod.(Tv + TNT⁻¹ * g, diag_S)
+                g_prime_flat = sum(g_prime .* factor) + 1
+                src_idx = (i - 1) * n + g_idx
+                img_idx = (π[i] - 1) * n + g_prime_flat
+                perm[src_idx] = img_idx
+            end
+        end
+        push!(rotPerms, perm)
+    end
+
+    # Deduplicate (different fixing rotations can induce the same site perm)
+    # and put into canonical order (matches the legacy single-lattice method's
+    # `unique! ∘ sort!`).
+    unique!(rotPerms)
+    sort!(rotPerms)
+
+    # Compose with the supercell translation subgroup: τ ∈ G acts as
+    # (d_i, g) → (d_i, g+τ). In flat indexing, that's the same `tGrp[k]`
+    # permutation applied within each dset block.
+    tGrp = getTransGroup([z1, z2, z3])        # Vector{Vector{Int}}, perms of length n
+    perms = Vector{Vector{Int}}()
+    for iR in rotPerms
+        for iT in tGrp
+            full_iT = vcat((iT .+ (i-1)*n for i in 1:n_D)...)
+            push!(perms, iR[full_iT])         # composition: iT then iR
+        end
+    end
+    return perms
+end
+
 # --- colorings via permutation group (depends on coloring_hash / coloring_unhash above) ---
 
 """
@@ -313,20 +399,25 @@ those fixed by some non-identity pure translation, which would be duplicates
 of smaller-supercell derivatives across a volume sweep. Pass `true` to keep
 them and return the full Burnside orbit space (research.md §5.2.1).
 """
-function getUniqueColorings(k, pG; include_superperiodic::Bool = false)
+function getUniqueColorings(k, pG; include_superperiodic::Bool = false,
+                            n_translations::Int = length(pG[1]))
     n = length(pG[1])
     idx = ntuple(i->0:k-1, n)
     mul = [k^(i-1) for i ∈ reverse(1:n)]
     hashTbl = trues(k^n)
+    # Super-periodicity is detected by checking fix-by-translation: pG[1..n_T]
+    # is identity-rotation × translation-subgroup (size n_T = |T| = n_cells).
+    # For single-lattice n_T = n = n_cells; for multilattice the caller passes
+    # n_T = n_cells (n = n_D · n_cells). The legacy default n_T = n preserves
+    # single-lattice behavior.
     for (i, ic) in enumerate(CartesianIndices(idx))
         c = reverse(Tuple(ic))
         if !hashTbl[i] continue end
         for (ig, g) ∈ enumerate(pG[2:end])
             test = coloring_hash(mul, c[g]) + 1
-            # `ig < n` selects pG[2..n] — the n-1 non-identity pure translations
-            # (see getPermG: perm[1..n] = identity rotation × translation subgroup).
-            # A coloring fixed by one of those is super-periodic.
-            if test > i || (!include_superperiodic && test == i && ig < n)
+            # `ig < n_translations` selects pG[2..n_T] — the n_T-1 non-identity
+            # pure translations. A coloring fixed by one of those is super-periodic.
+            if test > i || (!include_superperiodic && test == i && ig < n_translations)
                 hashTbl[test] = false
             end
         end
