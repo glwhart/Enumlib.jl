@@ -126,9 +126,9 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         @test_throws ArgumentError enumerate(parent, sites; supercells = sel, algorithm = :foo)
     end
 
-    # ---- Multilattice — graceful error ----
-    @testset "enumerate — multilattice errors with v0.3 message" begin
-        # HCP — 2-element dset.
+    # ---- Multilattice — regime B (uniform sublattices, HF 2009 pending R50.2) ----
+    @testset "enumerate — regime B (uniform multilattice) errors with R50.2-pending message" begin
+        # HCP — 2-element dset, both sublattices have the same allowed_labels (binary).
         a = 1.0; c = sqrt(8/3)
         A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
         parent = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
@@ -137,8 +137,29 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(2:2))
     end
 
-    # ---- Sites validation — multi-site Sites errors with chunk-6 message ----
-    @testset "enumerate — multi-site Sites errors" begin
+    # ---- Multilattice — regime C (heterogeneous sublattices, chunk 6.5) ----
+    @testset "enumerate — regime C (heterogeneous multilattice) errors" begin
+        a = 1.0; c = sqrt(8/3)
+        A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
+        parent = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+        # First sublattice binary, second sublattice fixed — different allowed_labels.
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                       Site([1/3, 2/3, 1/2], [0])])
+        @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(2:2))
+    end
+
+    # ---- Multilattice — dset/Sites length mismatch ----
+    @testset "enumerate — multilattice with Sites length ≠ ndset errors" begin
+        a = 1.0; c = sqrt(8/3)
+        A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
+        parent = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+        # ndset = 2 but Sites has only 1 entry.
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(2:2))
+    end
+
+    # ---- Single-site parent + multi-site Sites: regime A confused ----
+    @testset "enumerate — multi-site Sites on single-site parent errors" begin
         parent = ParentLattice([1.0 0 0; 0 1.0 0; 0 0 1.0])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
                        Site([0.5, 0.5, 0.5], [0, 1])])

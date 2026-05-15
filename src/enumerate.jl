@@ -327,18 +327,47 @@ default_memory_budget() = max(2 * 2^30, Int(Sys.total_memory() ÷ 4))
 
 function _validate_enumerate_inputs(parent::ParentLattice{D}, sites::Sites{D},
                                     concentration) where D
-    if ndset(parent) > 1
-        throw(ArgumentError(
-            "single-lattice parents only (`length(parent.dset) == 1`). Got dset of " *
-            "length $(ndset(parent)). Multilattice support (HCP, perovskite, slab) " *
-            "requires extending getPermG to handle n × n_D sites; deferred to v0.3."))
-    end
+    # ---- Regime discrimination (R50.1) ----
+    # Distinguishes the four cases the user can hit:
+    #   • Regime A          — single-site parent + single-site Sites → falls through.
+    #   • A-confused        — single-site parent + multi-site Sites  → setup error.
+    #   • dset/Sites mismatch — multilattice parent + Sites length ≠ ndset → setup error.
+    #   • Regime B          — multilattice parent + uniform Sites    → HF 2009 (R50.2 pending).
+    #   • Regime C          — multilattice parent + heterogeneous Sites → chunk 6.5.
+    nd  = ndset(parent)
+    nsl = length(sites.list)
 
-    if length(sites.list) != 1
-        throw(ArgumentError(
-            "single-site Sites only. Got $(length(sites.list)) sites. " *
-            "Multi-site Sites (per-site `allowed_labels`, perovskite-style site " *
-            "restrictions) requires the multinomial-restricted algorithm; chunk 6.5."))
+    if nd == 1
+        if nsl != 1
+            throw(ArgumentError(
+                "Sites of length $nsl on a single-site parent — only one site " *
+                "is allowed when ndset(parent) = 1."))
+        end
+        # Regime A: falls through to the rest of validation below.
+    else  # nd >= 2 (multilattice parent)
+        if nsl != nd
+            throw(ArgumentError(
+                "ndset(parent) = $nd but Sites has $nsl entries; one site per " *
+                "dset position is required. Consider `Sites(parent, [0, 1])` " *
+                "(R51 convenience constructor)."))
+        end
+        # Regime B vs C: check whether all sites carry the same allowed_labels.
+        labels_uniform = all(s.allowed_labels == sites.list[1].allowed_labels
+                             for s in sites.list)
+        if labels_uniform
+            throw(ArgumentError(
+                "Multilattice (uniform sublattices) `enumerate(...)` — HF 2008/2009 " *
+                "implementation pending (R50.2). The builder " *
+                "`Sites(parent, $(collect(sites.list[1].allowed_labels)))` constructs " *
+                "the right Sites object today; the dispatch path to actually " *
+                "enumerate it lands in a follow-up chunk."))
+        else
+            throw(ArgumentError(
+                "Multilattice with per-site `allowed_labels` (heterogeneous sublattices) " *
+                "requires the multinomial-restricted algorithm — chunk 6.5. " *
+                "For uniform sublattices (same allowed_labels at every dset position), " *
+                "see R50.2."))
+        end
     end
 
     site = sites.list[1]
