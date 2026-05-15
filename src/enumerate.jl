@@ -182,6 +182,20 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 end
 
 # ------------------------------------------------------------------------------
+# Orbit size of a labeling under a permutation group, via the orbit-stabilizer
+# theorem: |orbit| = |G| / |Stab|. Stabilizer membership: σ ∈ Stab(c) iff
+# applying σ to c leaves c unchanged. Computed once per surviving canonical
+# labeling at enumerate time; stored on EnumeratedStructure for downstream
+# consumers (R33, 2026-05-14).
+# ------------------------------------------------------------------------------
+function _orbit_size(perm_group::AbstractVector, coloring::AbstractVector)
+    stab_count = count(perm_group) do σ
+        all(coloring[σ[i]] == coloring[i] for i in eachindex(coloring))
+    end
+    return length(perm_group) ÷ stab_count
+end
+
+# ------------------------------------------------------------------------------
 # :exhaustive algorithm body — chunk 5's logic, factored out.
 # ------------------------------------------------------------------------------
 
@@ -196,8 +210,9 @@ function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
         sc_id = length(supercells_list)
         colorings = getUniqueColorings(k, sc.permutation_group; include_superperiodic)
         for c in colorings
+            osz = _orbit_size(sc.permutation_group, c)
             push!(structures, EnumeratedStructure{D, Vector{Int8}}(
-                sc_id, Int8.(c), 1, 1))
+                sc_id, Int8.(c), 1, 1, osz))
         end
     end
     return Enumeration{D, Vector{Int8}}(parent, sites, supercells_list, structures)
@@ -285,8 +300,9 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
             mults = multiplicities(c, n)
             colorings = coloring_fn(sc.permutation_group, mults)
             for coloring in colorings
+                osz = _orbit_size(sc.permutation_group, coloring)
                 push!(structures, EnumeratedStructure{D, Vector{Int8}}(
-                    sc_id, coloring, 1, 1))
+                    sc_id, coloring, 1, 1, osz))
             end
         end
     end

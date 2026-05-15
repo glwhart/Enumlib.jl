@@ -20,23 +20,43 @@ Two degeneracy fields are reserved for future chunks:
 - `labeling_degeneracy` — when label-rotation duplicates collapse, this counts how many user-facing labelings collapse to one canonical representative. Always 1 in chunk 5.
 
 Both are kept as fields (8 bytes each) so chunk 6 doesn't need to migrate the struct shape.
+
+The `orbit_size` field (R33, 2026-05-14) is the symmetry-orbit size of the labeling under the supercell's permutation group `G` — i.e., `|G| / |Stab(labeling)|`, via the orbit-stabilizer theorem. This is UNCLE's `d_F` (HF 2008 Eq. 3); downstream consumers use it for free-energy weighting in MC simulations, convex-hull degeneracy display, and phase-space coverage diagnostics.
+
+# Examples
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+
+julia> e = enumerate(p, sites; supercells = VolumeRange(2:2),
+                     concentration = concentration_count([1, 1]; n_total = 2));
+
+julia> e[1].orbit_size            # the only orbit at this concentration has size |G|/|Stab|
+2
+```
 """
 struct EnumeratedStructure{D,L}
     supercell_id::Int
     labeling::L
     hnf_degeneracy::Int
     labeling_degeneracy::Int
+    orbit_size::Int
 
     function EnumeratedStructure{D,L}(supercell_id::Integer, labeling::L,
                                        hnf_degeneracy::Integer = 1,
-                                       labeling_degeneracy::Integer = 1) where {D,L}
+                                       labeling_degeneracy::Integer = 1,
+                                       orbit_size::Integer = 1) where {D,L}
         supercell_id >= 1 ||
             throw(ArgumentError("supercell_id must be ≥ 1, got $supercell_id"))
         hnf_degeneracy >= 1 ||
             throw(ArgumentError("hnf_degeneracy must be ≥ 1, got $hnf_degeneracy"))
         labeling_degeneracy >= 1 ||
             throw(ArgumentError("labeling_degeneracy must be ≥ 1, got $labeling_degeneracy"))
-        new(Int(supercell_id), labeling, Int(hnf_degeneracy), Int(labeling_degeneracy))
+        orbit_size >= 1 ||
+            throw(ArgumentError("orbit_size must be ≥ 1, got $orbit_size"))
+        new(Int(supercell_id), labeling,
+            Int(hnf_degeneracy), Int(labeling_degeneracy), Int(orbit_size))
     end
 end
 
@@ -44,8 +64,10 @@ end
 # (the chunk-5 default) the user provides D explicitly: EnumeratedStructure{3}(1, [Int8(0), Int8(1)]).
 EnumeratedStructure{D}(supercell_id::Integer, labeling::L,
                        hnf_degeneracy::Integer = 1,
-                       labeling_degeneracy::Integer = 1) where {D,L} =
-    EnumeratedStructure{D,L}(supercell_id, labeling, hnf_degeneracy, labeling_degeneracy)
+                       labeling_degeneracy::Integer = 1,
+                       orbit_size::Integer = 1) where {D,L} =
+    EnumeratedStructure{D,L}(supercell_id, labeling,
+                             hnf_degeneracy, labeling_degeneracy, orbit_size)
 
 """
     to_labeling(s::EnumeratedStructure) -> Vector{Int8}
@@ -92,26 +114,30 @@ julia> to_labeling(e[7])
 """
 to_labeling(s::EnumeratedStructure{D,Vector{Int8}}) where D = s.labeling
 
-# Equality + hashing — value semantics across all four fields.
+# Equality + hashing — value semantics across all five fields.
 Base.:(==)(a::EnumeratedStructure{D,L}, b::EnumeratedStructure{D,L}) where {D,L} =
     a.supercell_id == b.supercell_id &&
     a.labeling == b.labeling &&
     a.hnf_degeneracy == b.hnf_degeneracy &&
-    a.labeling_degeneracy == b.labeling_degeneracy
+    a.labeling_degeneracy == b.labeling_degeneracy &&
+    a.orbit_size == b.orbit_size
 function Base.hash(s::EnumeratedStructure, h::UInt)
     h = hash(s.supercell_id, h)
     h = hash(s.labeling, h)
     h = hash(s.hnf_degeneracy, h)
     h = hash(s.labeling_degeneracy, h)
+    h = hash(s.orbit_size, h)
     return h
 end
 
-# Pretty printing.
+# Pretty printing. orbit_size is always shown (it's the load-bearing degeneracy
+# field downstream consumers actually use); the two placeholder degeneracy
+# fields are only shown when non-trivial.
 function Base.show(io::IO, s::EnumeratedStructure{D,L}) where {D,L}
     deg = (s.hnf_degeneracy == 1 && s.labeling_degeneracy == 1) ? "" :
           ", deg=(hnf=$(s.hnf_degeneracy), labeling=$(s.labeling_degeneracy))"
     print(io, "EnumeratedStructure{$D}(supercell #$(s.supercell_id), labeling=",
-              s.labeling, deg, ")")
+              s.labeling, deg, ", orbit_size=$(s.orbit_size))")
 end
 
 

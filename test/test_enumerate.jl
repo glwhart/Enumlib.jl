@@ -238,4 +238,123 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         @test sort(to_labeling.(e_default)) == sort(to_labeling.(e_explicit))
     end
 
+    # ---- R33: orbit_size field ----
+    # The orbit_size on each EnumeratedStructure is the symmetry-orbit size of the
+    # labeling under the supercell's permutation group: |orbit(c)| = |G| / |Stab(c)|.
+    # Aggregate identity (when include_superperiodic = true): the orbit sizes
+    # within a single supercell sum to k^n (unrestricted) or multinomial(n; mults)
+    # (fixed concentration) — every labeling lives in exactly one orbit.
+    @testset "orbit_size field (R33)" begin
+        A_fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+        parent_fcc = ParentLattice(A_fcc)
+        sites_fcc = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        A_bcc = 0.5 * [-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0]
+        parent_bcc = ParentLattice(A_bcc)
+        sites_bcc = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        # Helper: group structures by supercell_id, sum orbit_sizes per supercell.
+        function _orbit_sum_per_supercell(e)
+            sums = Dict{Int, Int}()
+            for s in e
+                sums[s.supercell_id] = get(sums, s.supercell_id, 0) + s.orbit_size
+            end
+            return sums
+        end
+
+        # 1. Smallest sanity: FCC binary n=2 unrestricted → 2^2 = 4 per HNF.
+        @testset "FCC binary n=2 unrestricted: sum per HNF = 2^n = 4" begin
+            e = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(2:2),
+                          include_superperiodic = true)
+            sums = _orbit_sum_per_supercell(e)
+            @test !isempty(sums)
+            for (_, total) in sums
+                @test total == 4
+            end
+        end
+
+        # 2. Default-policy canonical: FCC binary n=4 → 2^4 = 16 per HNF.
+        @testset "FCC binary n=4 unrestricted: sum per HNF = 2^n = 16" begin
+            e = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(4:4),
+                          include_superperiodic = true)
+            sums = _orbit_sum_per_supercell(e)
+            @test length(sums) == 7   # 7 inequivalent HNFs at FCC n=4
+            for (_, total) in sums
+                @test total == 16
+            end
+        end
+
+        # 3. Larger volume: FCC binary n=8 unrestricted → 2^8 = 256 per HNF.
+        @testset "FCC binary n=8 unrestricted: sum per HNF = 2^n = 256" begin
+            e = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(8:8),
+                          include_superperiodic = true)
+            sums = _orbit_sum_per_supercell(e)
+            @test !isempty(sums)
+            for (_, total) in sums
+                @test total == 256
+            end
+        end
+
+        # 4. Different parent lattice: BCC binary n=4 → 16 per HNF.
+        @testset "BCC binary n=4 unrestricted: sum per HNF = 2^n = 16" begin
+            e = enumerate(parent_bcc, sites_bcc; supercells = VolumeRange(4:4),
+                          include_superperiodic = true)
+            sums = _orbit_sum_per_supercell(e)
+            @test !isempty(sums)
+            for (_, total) in sums
+                @test total == 16
+            end
+        end
+
+        # 5. Fixed-concentration small: FCC binary 2:2 at n=4 → multinomial = 6 per HNF.
+        @testset "FCC binary 2:2 at n=4: sum per HNF = multinomial = 6" begin
+            c = concentration_count([2, 2]; n_total = 4)
+            e = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(4:4),
+                          concentration = c, include_superperiodic = true)
+            sums = _orbit_sum_per_supercell(e)
+            @test !isempty(sums)
+            for (_, total) in sums
+                @test total == 6   # multinomial_count([2,2]) = 6
+            end
+        end
+
+        # 6. Fixed-concentration medium: FCC binary 4:4 at n=8 → multinomial = 70 per HNF.
+        @testset "FCC binary 4:4 at n=8: sum per HNF = multinomial = 70" begin
+            c = concentration_count([4, 4]; n_total = 8)
+            e = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(8:8),
+                          concentration = c, include_superperiodic = true)
+            sums = _orbit_sum_per_supercell(e)
+            @test !isempty(sums)
+            for (_, total) in sums
+                @test total == 70   # multinomial_count([4,4]) = 70
+            end
+        end
+
+        # 7. Per-structure divisibility: every orbit_size divides |perm_group|
+        #    (orbit-stabilizer theorem corollary).
+        @testset "per-structure divisibility |orbit| | |G|" begin
+            e = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(4:4),
+                          include_superperiodic = true)
+            for s in e
+                sc = e.supercells[s.supercell_id]
+                G_size = length(sc.permutation_group)
+                @test s.orbit_size >= 1
+                @test G_size % s.orbit_size == 0
+            end
+        end
+
+        # 8. Cross-algorithm consistency: :multinomial and :recursive_stabilizer
+        #    produce the same orbit-size multiset for the same (parent, sites, conc).
+        @testset "cross-algorithm orbit-size consistency (FCC 4:4 n=8)" begin
+            c = concentration_count([4, 4]; n_total = 8)
+            e_mult = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(8:8),
+                               concentration = c, algorithm = :multinomial)
+            e_tree = enumerate(parent_fcc, sites_fcc; supercells = VolumeRange(8:8),
+                               concentration = c, algorithm = :recursive_stabilizer)
+            @test length(e_mult) == length(e_tree)
+            @test sort([s.orbit_size for s in e_mult]) ==
+                  sort([s.orbit_size for s in e_tree])
+        end
+    end
+
 end
