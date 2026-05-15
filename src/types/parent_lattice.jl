@@ -24,8 +24,19 @@ struct ParentLattice{D}
     A::Matrix{Float64}                    # column j is the j-th basis vector (Cartesian)
     dset::Vector{Vector{Float64}}         # basis sites in fractional coords (canonicalized to [0,1)^D)
     space_group::Vector{SymmetryOp{D}}    # multilattice space group (rotation + fractional translation)
+    # R50.2a (2026-05-15): dset-permutation precomputation per symmetry op. For
+    # each space_group[op_idx] = (N, t), `dset_perms[op_idx][i]` is the index
+    # π(i) such that `N·d_i + t = d_{π(i)} + v_i` for some lattice vector v_i;
+    # `dset_shifts[op_idx][i]` is that v_i (integer vector, length D, in lattice
+    # coords). Used by the multilattice getPermG path (R50.2b). For single-
+    # lattice parents (n_D = 1) these are trivially [[1]] / [[zeros(Int, D)]]
+    # for every op — the multilattice path degenerates to the single-lattice
+    # path automatically.
+    dset_perms::Vector{Vector{Int}}
+    dset_shifts::Vector{Vector{Vector{Int}}}
 
-    function ParentLattice{D}(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector}) where D
+    function ParentLattice{D}(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector};
+                              eps_dset::Real = 1e-6) where D
         # ---- Shape checks ----
         size(A) == (D, D) ||
             throw(ArgumentError("basis matrix must be $D×$D, got $(size(A))"))
@@ -69,17 +80,77 @@ struct ParentLattice{D}
         ops = Spacey.spacegroup(crystal)
         sg = SymmetryOp{D}[SymmetryOp{D}(op) for op in ops]
 
-        new(Af, ds, sg)
+        # ---- Precompute the dset-permutation data per symmetry op (R50.2a) ----
+        # For each op (N, t) and each d_i, find d_j such that N·d_i + t ≡ d_j (mod L),
+        # recording π(i) = j and v_i = the lattice shift. Pure integer arithmetic on
+        # the difference, with eps_dset tolerance to absorb float-precision noise on
+        # the dset positions. See docs/notes/multilattice_dset_mapping_writeup.pdf
+        # for the derivation; the integer-arithmetic claim follows from HF 2009's
+        # observation that t can always be chosen as an element of D.
+        dset_perms = Vector{Vector{Int}}(undef, length(sg))
+        dset_shifts = Vector{Vector{Vector{Int}}}(undef, length(sg))
+        for (op_idx, op) in enumerate(sg)
+            π, v = _dset_permutation(ds, op.R, op.t, eps_dset, op_idx)
+            dset_perms[op_idx] = π
+            dset_shifts[op_idx] = v
+        end
+
+        new(Af, ds, sg, dset_perms, dset_shifts)
     end
 end
 
+# R50.2a internal helper. For one symmetry op (R, t) and a dset, compute the
+# induced dset permutation π and the per-site lattice shifts v_i such that
+# `R·d_i + t = d_{π(i)} + v_i` for every d_i in the dset. Pure integer
+# arithmetic on the difference: a match exists iff `R·d_i + t - d_j` rounds
+# cleanly to an integer vector within eps_dset.
+#
+# Throws ArgumentError with a diagnostic if no match exists for some d_i —
+# usually means either eps_dset is too tight or Spacey returned a spurious op
+# (the dset isn't actually preserved by this nominal symmetry).
+function _dset_permutation(dset::AbstractVector{<:AbstractVector{<:Real}},
+                            R::AbstractMatrix{<:Integer},
+                            t::AbstractVector{<:Real},
+                            eps_dset::Real,
+                            op_idx::Integer = 0)
+    n_D = length(dset)
+    D = length(dset[1])
+    π = zeros(Int, n_D)
+    v = [zeros(Int, D) for _ in 1:n_D]
+
+    for i in 1:n_D
+        rotated = R * dset[i] + t      # fractional coords
+        found = false
+        for j in 1:n_D
+            diff = rotated - dset[j]
+            v_int = round.(Int, diff)
+            if all(abs(diff[k] - v_int[k]) < eps_dset for k in 1:D)
+                π[i] = j
+                v[i] = v_int
+                found = true
+                break
+            end
+        end
+        if !found
+            op_str = op_idx == 0 ? "" : " (op_idx = $op_idx)"
+            throw(ArgumentError(
+                "No dset match$op_str for dset position #$i. Either `eps_dset` is " *
+                "too tight (try `ParentLattice(...; eps_dset = 1e-4)`) or this " *
+                "symmetry op is spurious — verify by inspecting `parent.space_group`. " *
+                "Rotated position: $(rotated); dset: $(dset)."))
+        end
+    end
+    return π, v
+end
+
 # Outer constructor: infer D from the basis matrix's first dimension.
-ParentLattice(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector}) =
-    ParentLattice{size(A, 1)}(A, dset)
+ParentLattice(A::AbstractMatrix, dset::AbstractVector{<:AbstractVector};
+              eps_dset::Real = 1e-6) =
+    ParentLattice{size(A, 1)}(A, dset; eps_dset)
 
 # Convenience: single-lattice (Bravais) constructor — dset is just the origin.
-ParentLattice(A::AbstractMatrix) =
-    ParentLattice(A, [zeros(Float64, size(A, 1))])
+ParentLattice(A::AbstractMatrix; eps_dset::Real = 1e-6) =
+    ParentLattice(A, [zeros(Float64, size(A, 1))]; eps_dset)
 
 # Read-only accessors. Useful both for downstream callers that want to be explicit
 # (rather than reaching into struct fields) and for future-proofing — if we ever

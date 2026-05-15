@@ -47,7 +47,7 @@ include("test_legacy_import.jl")
     # Uses the lattice-coordinate API throughout (Cartesian variants dropped in
     # chunk 3 — see docs/notes/chunk3-design.md).
     pLat = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]
-    LG = pointGroup(pLat)
+    LG = pointgroup(pLat)
     hnf = getSymInequivHNFs(4, LG)
     fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
     @test map(1:7) do i

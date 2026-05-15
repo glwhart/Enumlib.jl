@@ -114,9 +114,9 @@ using LinearAlgebra: norm
     # Chunk 4 fixes them; this test confirms the fix landed by calling both
     # functions directly.
     @testset "Bug-fix: getFixingLatticeOps stale refs cleared" begin
-        using Spacey: pointGroup
+        using Spacey: pointgroup
         A = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]
-        LG = pointGroup(A)
+        LG = pointgroup(A)
         h = [1 0 0; 0 1 0; 0 0 2]   # volume 2 HNF on FCC
         # getHNFColorings — exercises the radiusEnumeration.jl call site.
         @test_nowarn getHNFColorings(h, 2, LG)

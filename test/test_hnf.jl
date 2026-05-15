@@ -128,9 +128,11 @@ using LinearAlgebra: det
 
     # ---- Bridge between new and legacy ----
     @testset "Bridge: new getSymInequivHNFs matches legacy lattice-coord version" begin
-        using Spacey: pointGroup
+        # Spacey renamed `pointGroup` → `pointgroup` (lowercase) sometime after the
+        # chunk-3 test was written. Following the rename here so the test runs again.
+        using Spacey: pointgroup
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
-        LG = pointGroup(parent.A)
+        LG = pointgroup(parent.A)
 
         for n in [2, 4, 8]
             new_hnfs = getSymInequivHNFs(n, parent)

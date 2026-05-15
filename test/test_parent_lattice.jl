@@ -179,4 +179,102 @@ using LinearAlgebra
         @test n_nonzero_translations(dia) == 24
     end
 
+    # ---- R50.2a: dset-permutation precomputation ----
+    # For every symmetry op (N, t) and every dset position d_i, we precompute:
+    #   - π(i): the index of the d_j that N·d_i + t maps to (mod L).
+    #   - v_i: the lattice shift (integer vector) such that N·d_i + t = d_{π(i)} + v_i.
+    # Used by the multilattice getPermG path (R50.2b).
+    @testset "dset-permutation precomputation (R50.2a)" begin
+
+        # Single-lattice (FCC primitive): degenerate n_D = 1 case.
+        @testset "single-lattice — π and v are trivial for every op" begin
+            A = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+            p = ParentLattice(A)
+            @test length(p.dset_perms) == length(p.space_group)
+            @test length(p.dset_shifts) == length(p.space_group)
+            # Every op sends the lone dset position to itself with zero lattice shift.
+            @test all(π == [1] for π in p.dset_perms)
+            @test all(v == [[0, 0, 0]] for v in p.dset_shifts)
+        end
+
+        # HCP (P6_3/mmc) multilattice: 24 ops, 6_3 screw swaps the two sublattices.
+        @testset "HCP — 24 ops split 12/12 between preserve and swap" begin
+            A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+            p_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+
+            @test length(p_hcp.space_group) == 24
+            @test length(p_hcp.dset_perms) == 24
+            # The identity is always first; it preserves the sublattices with no shift.
+            @test p_hcp.dset_perms[1] == [1, 2]
+            @test p_hcp.dset_shifts[1] == [[0, 0, 0], [0, 0, 0]]
+
+            # Each π must be a permutation of {1, 2} (only two valid permutations for n_D = 2).
+            for π in p_hcp.dset_perms
+                @test sort(π) == [1, 2]
+            end
+
+            # Half preserve, half swap.
+            preserve = count(==([1, 2]), p_hcp.dset_perms)
+            swap     = count(==([2, 1]), p_hcp.dset_perms)
+            @test preserve == 12
+            @test swap == 12
+            @test preserve + swap == 24
+        end
+
+        # Diamond (Fd-3m) multilattice: 48 ops, glide planes swap the sublattices.
+        @testset "Diamond — 48 ops split 24/24" begin
+            A_fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+            p_dia = ParentLattice(A_fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
+
+            @test length(p_dia.space_group) == 48
+            @test p_dia.dset_perms[1] == [1, 2]
+            preserve = count(==([1, 2]), p_dia.dset_perms)
+            swap     = count(==([2, 1]), p_dia.dset_perms)
+            @test preserve == 24
+            @test swap == 24
+        end
+
+        # Math writeup worked example — verifies _dset_permutation directly against
+        # the derivation in docs/notes/multilattice_dset_mapping_writeup.pdf.
+        # Setup: 5·I primary lattice; D = {(0,0,0), (0,3,0), (2,3,0), (2,0,0)} in
+        # Cartesian. Test op: N = 90°-rotation-around-z-then-invert-z, lattice-frame
+        # t = (2, 0, 0). Expected π = (4, 1, 2, 3); expected v_i (Cartesian) =
+        # {(0,0,0), (5,0,0), (5,-5,0), (0,-5,0)}.
+        # Translated to lattice-frame coords (divide by 5): dset in (0,1)^3,
+        # t = (0.4, 0, 0), v_i = {(0,0,0), (1,0,0), (1,-1,0), (0,-1,0)}.
+        @testset "math writeup worked example" begin
+            dset_cart = [[0.0, 0.0, 0.0], [0.0, 3.0, 0.0], [2.0, 3.0, 0.0], [2.0, 0.0, 0.0]]
+            dset_frac = [d ./ 5 for d in dset_cart]
+            N = [0 1 0; -1 0 0; 0 0 -1]
+            t_frac = [2.0, 0.0, 0.0] ./ 5
+
+            π, v = Enumlib._dset_permutation(dset_frac, N, t_frac, 1e-6, 0)
+            @test π == [4, 1, 2, 3]
+            @test v == [[0, 0, 0], [1, 0, 0], [1, -1, 0], [0, -1, 0]]
+        end
+
+        # _dset_permutation rejects a spurious op (one that doesn't preserve the dset).
+        # 90° z-rotation applied to (0.3, 0.7, 0.5) sends it to (0.7, -0.3, 0.5),
+        # which mod 1 is (0.7, 0.7, 0.5) — not in {(0,0,0), (0.3, 0.7, 0.5)}.
+        @testset "_dset_permutation throws on spurious op" begin
+            bad_dset = [[0.0, 0.0, 0.0], [0.3, 0.7, 0.5]]
+            bad_R = [0 1 0; -1 0 0; 0 0 1]
+            bad_t = [0.0, 0.0, 0.0]
+            @test_throws ArgumentError Enumlib._dset_permutation(bad_dset, bad_R, bad_t, 1e-6, 0)
+        end
+
+        # eps_dset is configurable via the ParentLattice constructor.
+        @testset "eps_dset kwarg propagates" begin
+            A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+            dset_hcp = [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]
+            # Default (1e-6) — works.
+            @test_nowarn ParentLattice(A_hcp, dset_hcp)
+            # Tighter (1e-12) — still works because float-precision noise on the
+            # rotation arithmetic is well below 1e-12.
+            @test_nowarn ParentLattice(A_hcp, dset_hcp; eps_dset = 1e-12)
+            # Looser (1e-3) — works too; well above the natural separations.
+            @test_nowarn ParentLattice(A_hcp, dset_hcp; eps_dset = 1e-3)
+        end
+    end
+
 end
