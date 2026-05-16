@@ -56,4 +56,4 @@ When you genuinely *want* the run to proceed despite a tripped gate, pass one of
 
 - Reference: [`estimate_cost`](@ref), [`EnumerationCostEstimate`](@ref), [`EnumerationTooLargeError`](@ref), [`format_bytes`](@ref), [`default_memory_budget`](@ref).
 - How-to: [Pick an algorithm](pick-an-algorithm.md), [Count without enumerating](count-without-enumerating.md), [Sweep concentration ranges](sweep-concentration-ranges.md).
-- Explanation: [Dispatch and the cost gate](../explanation/dispatch-and-cost-gate.md). *(Coming in 13e.)*
+- Explanation: [Dispatch and the cost gate](../explanation/dispatch-and-cost-gate.md).

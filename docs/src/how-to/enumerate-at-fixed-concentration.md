@@ -55,4 +55,4 @@ Concentration(1//4, 3//4)
 
 - Reference: [`Concentration`](@ref), [`concentration_count`](@ref), [`concentration_ratio`](@ref), [`multiplicities`](@ref).
 - How-to: [Sweep concentration ranges](sweep-concentration-ranges.md), [Count without enumerating](count-without-enumerating.md), [Pick an algorithm](pick-an-algorithm.md).
-- Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md). *(Coming in 13e.)*
+- Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md).

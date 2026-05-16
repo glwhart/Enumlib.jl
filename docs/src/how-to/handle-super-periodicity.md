@@ -45,4 +45,4 @@ At an asymmetric concentration like 1:11 in n=12, no super-periodic structures c
 
 - Reference: [`Base.enumerate`](@ref), [`count_inequivalent`](@ref), [`Enumlib.Polya.aperiodic_orbit_count`](@ref).
 - How-to: [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md), [Count without enumerating](count-without-enumerating.md).
-- Explanation: [Super-periodicity](../explanation/super-periodicity.md), [Pólya counting](../explanation/polya-counting.md). *(Coming in 13e.)*
+- Explanation: [Super-periodicity](../explanation/super-periodicity.md), [Pólya counting](../explanation/polya-counting.md).

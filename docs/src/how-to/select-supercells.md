@@ -63,4 +63,4 @@ Useful for regression tests, literature reference cases, or when you want to stu
 
 - Reference: [`SupercellSelection`](@ref), [`VolumeRange`](@ref), [`RadiusBound`](@ref), [`ExplicitHNFs`](@ref), [`enumerate_hnfs`](@ref), [`avg_cell_radius`](@ref), [`HNF`](@ref), [`Supercell`](@ref).
 - How-to: [Describe substitution sites](describe-substitution-sites.md) — done first; [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md) — the next step.
-- Explanation: [Algorithm overview](../explanation/algorithm-overview.md). *(Coming in 13e.)*
+- Explanation: [Algorithm overview](../explanation/algorithm-overview.md).

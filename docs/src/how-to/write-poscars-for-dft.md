@@ -83,5 +83,5 @@ tagged = attach_results(e, results)
 
 - Reference: [`to_poscar`](@ref), [`write_enumeration_archive`](@ref), [`read_results`](@ref), [`attach_results`](@ref), [`EnumeratedStructure`](@ref), [`Enumeration`](@ref).
 - How-to: [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md) — usually done first.
-- Tutorial: [DFT/MLIP training database](../tutorials/03-dft-training-database.md). *(Coming in 13d.)*
-- Explanation: [Algorithm overview](../explanation/algorithm-overview.md). *(Coming in 13e.)*
+- Tutorial: [DFT/MLIP training database](../tutorials/03-dft-training-database.md).
+- Explanation: [Algorithm overview](../explanation/algorithm-overview.md).

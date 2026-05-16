@@ -62,4 +62,4 @@ In the example above we drop the threshold to 5 to fire the gate on a small case
 
 - Reference: [`ConcentrationRange`](@ref), [`concentrations_in_range`](@ref), [`n_species`](@ref), [`PartitionExplosionError`](@ref).
 - How-to: [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md), [Count without enumerating](count-without-enumerating.md), [Estimate the cost of an enumeration](estimate-cost.md).
-- Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md). *(Coming in 13e.)*
+- Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md).

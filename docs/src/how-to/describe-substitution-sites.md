@@ -109,4 +109,4 @@ The enumerator only assigns independent labels to the **active canonical** sites
 
 - Reference: [`Site`](@ref), [`Sites`](@ref), [`equate!`](@ref), [`is_active`](@ref), [`is_inactive`](@ref), [`canonical`](@ref), [`active_canonical_sites`](@ref), [`n_active`](@ref), [`n_canonical`](@ref), [`n_effective`](@ref).
 - How-to: [Construct a parent lattice](construct-a-parent-lattice.md) — done first; [Select supercells](select-supercells.md) — the next step.
-- Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md). *(Coming in 13e.)*
+- Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md).

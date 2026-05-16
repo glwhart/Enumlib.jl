@@ -56,4 +56,4 @@ julia> n_nonzero_translations(p_hcp)   # P6_3/mmc has 12 screw ops of 24
 
 - Reference: [`ParentLattice`](@ref), [`basis`](@ref), [`dset`](@ref), [`space_group`](@ref), [`n_nonzero_translations`](@ref).
 - How-to: [Describe substitution sites](describe-substitution-sites.md) — the next step.
-- Explanation: [Glossary entry on the Hadamard ratio](../explanation/glossary.md). *(Coming in 13e.)*
+- Explanation: [Glossary entry on the Hadamard ratio](../explanation/glossary.md).

@@ -63,4 +63,4 @@ The 22 extra structures at n=4 are the super-periodic orbits — labelings whose
 
 - Reference: [`count_inequivalent`](@ref), [`InequivalentCount`](@ref), [`Enumlib.Polya.polya_count`](@ref), [`Enumlib.Polya.aperiodic_orbit_count`](@ref).
 - How-to: [Estimate the cost of an enumeration](estimate-cost.md), [Handle super-periodicity](handle-super-periodicity.md), [Pick an algorithm](pick-an-algorithm.md).
-- Explanation: [Pólya counting](../explanation/polya-counting.md), [Super-periodicity](../explanation/super-periodicity.md). *(Coming in 13e.)*
+- Explanation: [Pólya counting](../explanation/polya-counting.md), [Super-periodicity](../explanation/super-periodicity.md).
