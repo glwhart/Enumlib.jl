@@ -44,6 +44,20 @@ The HF 2008/2012 algorithms were originally stated for single-lattice (Bravais) 
 
 The **heterogeneous** multilattice case (different allowed labels per dset position — perovskite-style) needs the **multinomial-restricted** algorithm and is queued for chunk 6.5.
 
+## Reference derivative-structure counts
+
+Hart & Forcade 2008 Table 1 lists the unrestricted derivative-structure counts (super-periodics dropped) for the basic Bravais lattices at supercell volumes up to 8 or so. These are the canonical sanity-check numbers — Enumlib's test suite locks against them.
+
+For example, FCC binary at volumes 1 through 3 cumulative = 10 structures (2 + 2 + 6 — matching the chunk-5 reference and HF 2008 Table 1's third column). Reproduce with:
+
+```julia
+parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+sites = Sites(parent, [0, 1])
+length(enumerate(parent, sites; supercells = VolumeRange(1:3)))   # 10
+```
+
+See [Tutorial 01](../tutorials/01-first-enumeration.md) for the walkthrough. HF 2008 Table 1 also covers BCC and HCP (the latter via HF 2009's multilattice extension); the multilattice counts are locked separately as the R50.2b Fortran-corpus anchors (`[3, 10, 50, 270, 651, 4793]` for HCP n = 1..6 and `[3, 7, 33, 171]` for diamond n = 1..4).
+
 ## Where to go next
 
 - **Pick an algorithm**: [pick-an-algorithm how-to](../how-to/pick-an-algorithm.md), [dispatch-and-cost-gate](dispatch-and-cost-gate.md).

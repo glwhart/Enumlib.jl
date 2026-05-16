@@ -4,11 +4,13 @@ Compact reference for terms used across the documentation, with pointers to wher
 
 **Bravais lattice.** A periodic point lattice with one site per primitive cell. `ParentLattice(A)` with no dset argument (or a single-element dset) is Bravais. Contrast with **multilattice**.
 
-**Coloring.** A labeling of supercell sites with species indices (`{0, 1, ..., k-1}`). The output of `enumerate(...)` is the set of symmetry-inequivalent colorings. Synonym: **labeling**.
+**Coloring.** The atom-species vector for one supercell — a `Vector{Int8}` of indices in `{0, 1, ..., k-1}`. The accessor function is [`to_labeling`](@ref); "coloring" and "labeling" are interchangeable in the literature, but we use "coloring" in body prose to free up "labeling" for API contexts. Contrast with **configuration** (the supercell-plus-coloring pair).
 
-**Concentration.** The composition of a labeling: the fraction (or count) of each species. See [`Concentration`](@ref) and the [concentration-and-multiplicity](concentration-and-multiplicity.md) explanation.
+**Concentration.** The composition of a coloring: the fraction (or count) of each species. See [`Concentration`](@ref) and the [concentration-and-multiplicity](concentration-and-multiplicity.md) explanation.
 
-**Derivative structure.** A symmetry-inequivalent decoration of a supercell — what Enumlib enumerates. From Hart & Forcade 2008.
+**Configuration.** A supercell paired with a coloring — what an [`EnumeratedStructure`](@ref) value represents. The output of `enumerate(...)` is a list of symmetry-inequivalent configurations. We avoid the word *structure* in body prose because of the collision with Julia's `struct` and the type name `EnumeratedStructure`; the original HF 2008 paper calls these *derivative structures*.
+
+**Derivative structure.** The literature name (HF 2008 paper title) for what we call a **configuration**. Same thing.
 
 **dset (basis sites).** For a multilattice, the list of basis-site fractional coordinates in the primitive cell. For FCC, `dset = [(0,0,0)]` (single site). For HCP, `dset = [(0,0,0), (1/3, 2/3, 1/2)]` (two sites).
 
@@ -24,7 +26,7 @@ Compact reference for terms used across the documentation, with pointers to wher
 
 **HNF (Hermite Normal Form).** An integer-matrix canonical form for a supercell relative to its parent. Each HNF uniquely identifies a supercell shape up to parent symmetry. See [`HNF`](@ref).
 
-**Labeling.** Synonym for **coloring**. The `Vector{Int8}` field carried by each `EnumeratedStructure`.
+**Labeling.** Synonym for **coloring** — the API uses this name (the accessor function is [`to_labeling`](@ref)). Body prose uses *coloring*; both refer to the same `Vector{Int8}`.
 
 **Multilattice.** A parent lattice with two or more dset sites per primitive cell (HCP, diamond, perovskite). Contrast with **Bravais lattice** (single dset site).
 
