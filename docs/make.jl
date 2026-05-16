@@ -33,6 +33,7 @@ makedocs(
             "how-to/select-supercells.md",
             "how-to/enumerate-at-fixed-concentration.md",
             "how-to/sweep-concentration-ranges.md",
+            "how-to/enumerate-multilattice.md",
             "how-to/pick-an-algorithm.md",
             "how-to/count-without-enumerating.md",
             "how-to/estimate-cost.md",

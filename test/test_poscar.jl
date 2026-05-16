@@ -374,6 +374,138 @@ using Enumlib
     end
 
     # ============================================================================
+    # R50.2d — multilattice POSCAR I/O (HCP, Diamond)
+    # ============================================================================
+
+    @testset "multilattice POSCAR: HCP n=2 round-trip (R50.2d)" begin
+        using LinearAlgebra
+        A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+        parent_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+        sites_hcp = Sites(parent_hcp, [0, 1])
+        e = enumerate(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
+        @test length(e) == 10   # locked Fortran corpus anchor
+
+        for (idx, structure) in enumerate(e.structures)
+            hnf = e.supercells[structure.supercell_id].hnf
+            coloring = to_labeling(structure)
+            n_total = length(coloring)
+            @test n_total == 4   # n_D · n = 2 · 2
+
+            io = IOBuffer()
+            to_poscar(io, structure, parent_hcp, hnf;
+                       super_periodic = false,
+                       species_symbols = ["Ti", "V"],
+                       enumlib_id = idx)
+            poscar = String(take!(io))
+            lines = split(poscar, '\n')
+
+            # Header
+            @test startswith(lines[1], "# enumlib_id=$idx")
+            @test occursin("energy_eV=", lines[1])
+            # Species, counts, mode
+            @test split(strip(lines[6])) == ["Ti", "V"]
+            counts = parse.(Int, split(strip(lines[7])))
+            @test sum(counts) == n_total
+            @test strip(lines[8]) == "Direct"
+
+            # Round-trip: written basis × written fractionals == original
+            # Cartesian positions in color-grouped order. Right-handed parent
+            # so no chirality swap.
+            A_back = zeros(3, 3)
+            for j in 1:3
+                A_back[:, j] = parse.(Float64, split(strip(lines[2 + j])))
+            end
+            @test det(A_back) > 0
+            @test A_back ≈ parent_hcp.A * hnf.matrix
+
+            position_lines = [strip(l) for l in lines[9:end] if !isempty(strip(l))]
+            @test length(position_lines) == n_total
+            written_cart = [A_back * parse.(Float64, split(l)) for l in position_lines]
+
+            # Original Cartesian positions in color-grouped order
+            A_super = parent_hcp.A * hnf.matrix
+            orig_frac = Enumlib.supercell_fractional_positions(hnf, parent_hcp)
+            @test length(orig_frac) == n_total
+            k = Int(maximum(coloring)) + 1
+            orig_cart = Vector{Vector{Float64}}()
+            for color in 0:k-1
+                for site in 1:n_total
+                    if Int(coloring[site]) == color
+                        push!(orig_cart, A_super * collect(orig_frac[site]))
+                    end
+                end
+            end
+            for (cw, co) in zip(written_cart, orig_cart)
+                @test cw ≈ co
+            end
+        end
+    end
+
+    @testset "multilattice POSCAR: Diamond n=2 round-trip (R50.2d)" begin
+        using LinearAlgebra
+        fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+        parent_d = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
+        sites_d = Sites(parent_d, [0, 1])
+        e = enumerate(parent_d, sites_d; supercells = VolumeRange(2:2))
+        @test length(e) == 7   # locked Fortran corpus anchor
+
+        for structure in e.structures
+            hnf = e.supercells[structure.supercell_id].hnf
+            coloring = to_labeling(structure)
+            @test length(coloring) == 4   # n_D · n = 2 · 2
+
+            io = IOBuffer()
+            to_poscar(io, structure, parent_d, hnf;
+                       super_periodic = false,
+                       species_symbols = ["Si", "Ge"])
+            poscar = String(take!(io))
+            lines = split(poscar, '\n')
+            position_lines = [strip(l) for l in lines[9:end] if !isempty(strip(l))]
+            @test length(position_lines) == 4
+        end
+    end
+
+    @testset "multilattice POSCAR archive: HCP n=2 tarball + manifest" begin
+        A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+        parent_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+        sites_hcp = Sites(parent_hcp, [0, 1])
+        e = enumerate(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
+
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e;
+                                              super_periodic = false,
+                                              species_symbols = ["Ti", "V"],
+                                              label = "HCP_TiV_n2")
+            @test isfile(out)
+            @test endswith(out, ".tar.gz")
+            @test filesize(out) > 0
+        end
+    end
+
+    @testset "supercell_fractional_positions parent-aware overload (R50.2d)" begin
+        # Single-lattice degenerate path: parent-aware overload returns the
+        # same n_cells positions as the no-parent version.
+        fcc = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+        h = HNF{3}([1 0 0; 0 1 0; 0 0 4])
+        @test Enumlib.supercell_fractional_positions(h) ==
+              Enumlib.supercell_fractional_positions(h, fcc)
+
+        # Multilattice: returns n_D · n_cells positions in dset-blocks layout.
+        A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+        parent_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+        h_hcp = HNF{3}([1 0 0; 0 1 0; 0 0 2])
+        positions = Enumlib.supercell_fractional_positions(h_hcp, parent_hcp)
+        @test length(positions) == 4   # n_D · n_cells = 2 · 2
+        # Dset block 1 (positions 1..2): Bravais sites, dset[1] = origin
+        @test all(collect(positions[1]) .≈ [0.0, 0.0, 0.0])
+        @test all(collect(positions[2]) .≈ [0.0, 0.0, 0.5])
+        # Dset block 2 (positions 3..4): dset[2] = (1/3, 2/3, 1/2) offset by h^{-1}
+        # h^{-1} = diag(1, 1, 1/2), so h^{-1}·dset[2] = (1/3, 2/3, 0.25)
+        @test all(collect(positions[3]) .≈ [1/3, 2/3, 0.25])
+        @test all(collect(positions[4]) .≈ [1/3, 2/3, 0.75])
+    end
+
+    # ============================================================================
     # Phase 11b — write_enumeration_archive (bulk tarball + manifest)
     # ============================================================================
 

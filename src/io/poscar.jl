@@ -183,7 +183,10 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     # If we swapped columns 1↔2 of A_super to fix chirality (above), the
     # corresponding fractional positions must also have their first two
     # coordinates swapped so the Cartesian positions stay invariant.
-    fractional_positions = supercell_fractional_positions(hnf)
+    # For multilattice parents (n_D ≥ 2), positions cover n_D · n_cells sites
+    # in the dset-blocks layout matching the labeling. For single-lattice
+    # this degenerates to the n_cells case.
+    fractional_positions = supercell_fractional_positions(hnf, parent)
     if chirality_swap
         fractional_positions = [(p[2], p[1], p[3]) for p in fractional_positions]
     end
@@ -205,15 +208,17 @@ end
 
 """
     supercell_fractional_positions(hnf::HNF{D}) :: Vector{NTuple{D,Float64}}
+    supercell_fractional_positions(hnf::HNF{D}, parent::ParentLattice{D}) :: Vector{NTuple{D,Float64}}
 
-Fractional coordinates (in the supercell basis) of each of the `volume(hnf)` sites in the supercell, in the same order as `getPermG`'s site indexing.
+Fractional coordinates (in the supercell basis) of each of the `n_D · volume(hnf)` sites in the supercell, in the same order as `getPermG`'s site indexing. The parent-aware overload handles multilattice (`n_D ≥ 2`); the single-argument form is the single-lattice case (`n_D = 1`, returns `volume(hnf)` positions).
 
-Internal helper for POSCAR writing. Derivation: from the SNF `U·h·V = S` (NormalForms.jl convention) with `S = diag(d_1, ..., d_D)`, site `(i_1, ..., i_D)` in SNF coords has primitive-lattice integer position `U^{-1}·(i_1, ..., i_D)`, so its supercell-fractional position is `h^{-1}·U^{-1}·(i_1, ..., i_D) = V·(i_1/d_1, ..., i_D/d_D)` (mod 1).
+Internal helper for POSCAR writing. Derivation: from the SNF `U·h·V = S` (NormalForms.jl convention) with `S = diag(d_1, ..., d_D)`, the Bravais site `(i_1, ..., i_D)` in SNF coords has parent-fractional position `U^{-1}·(i_1, ..., i_D)`, so its supercell-fractional position is `h^{-1}·U^{-1}·(i_1, ..., i_D) = V·(i_1/d_1, ..., i_D/d_D)` (mod 1). For multilattice, the atom at dset position `α` adds `h^{-1}·dset[α]` to this Bravais position.
 
-The site iteration order matches `getPermG`'s `[[i,j,k] for i ∈ 0:d_1-1 for j ∈ 0:d_2-1 for k ∈ 0:d_3-1]` (3D specialization), so site `m` returned here corresponds to color `coloring[m]` in any chunk-5/6/8 enumeration.
+The site iteration order matches the dset-blocks layout used by the parent-aware `getPermG` (R50.2b): `flat_idx(α, g) = (α-1)·n + g_idx` with `g_idx` iterating `[[i,j,k] for i ∈ 0:d_1-1 for j ∈ 0:d_2-1 for k ∈ 0:d_3-1]` (3D specialization). So site `m` in the returned vector corresponds to color `coloring[m]` in any chunk-5/6/8 enumeration.
 
-# Example
+# Examples
 
+Single-lattice (Bravais), returns `n_cells` positions:
 ```jldoctest
 julia> using Enumlib
 
@@ -225,6 +230,24 @@ julia> Enumlib.supercell_fractional_positions(h)
  (0.0, 0.0, 0.25)
  (0.0, 0.0, 0.5)
  (0.0, 0.0, 0.75)
+```
+
+HCP multilattice (`n_D = 2`), returns `2 · n_cells` positions in dset-blocks layout — first all cells for dset position 1, then all cells for dset position 2:
+```jldoctest
+julia> using Enumlib
+
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+
+julia> p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);
+
+julia> h = HNF{3}([1 0 0; 0 1 0; 0 0 2]);
+
+julia> Enumlib.supercell_fractional_positions(h, p)
+4-element Vector{Tuple{Float64, Float64, Float64}}:
+ (0.0, 0.0, 0.0)
+ (0.0, 0.0, 0.5)
+ (0.3333333333333333, 0.6666666666666666, 0.25)
+ (0.3333333333333333, 0.6666666666666666, 0.75)
 ```
 """
 function supercell_fractional_positions(hnf::HNF{3})
@@ -244,6 +267,29 @@ function supercell_fractional_positions(hnf::HNF{3})
         positions[idx] = (mod(sup_frac[1], 1.0),
                           mod(sup_frac[2], 1.0),
                           mod(sup_frac[3], 1.0))
+    end
+    return positions
+end
+
+function supercell_fractional_positions(hnf::HNF{3}, parent::ParentLattice{3})
+    n_D = ndset(parent)
+    cell_positions = supercell_fractional_positions(hnf)   # n_cells positions
+    n_D == 1 && return cell_positions
+
+    # Multilattice: add h^{-1} · dset[α] to each cell position, in dset-blocks
+    # layout matching the parent-aware getPermG site indexing.
+    h_inv = inv(hnf.matrix)
+    n_cells = length(cell_positions)
+    positions = Vector{NTuple{3,Float64}}(undef, n_D * n_cells)
+    for α in 1:n_D
+        dset_super = h_inv * parent.dset[α]   # supercell-fractional offset for this dset position
+        offset = (α - 1) * n_cells
+        for g_idx in 1:n_cells
+            cp = cell_positions[g_idx]
+            positions[offset + g_idx] = (mod(cp[1] + dset_super[1], 1.0),
+                                         mod(cp[2] + dset_super[2], 1.0),
+                                         mod(cp[3] + dset_super[3], 1.0))
+        end
     end
     return positions
 end
