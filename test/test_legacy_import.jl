@@ -4,9 +4,13 @@
     # (2) calling it through the submodule emits a depwarn.
 
     @testset "all legacy symbols reachable through Enumlib.LegacyImport" begin
-        for fn in (:enumStr, :readStructenumout, :readEnergies, :readStrIn,
-                   :radiusEnumHNFs, :getHNFColorings, :radEnumByXcellRadius,
-                   :getSymInequivHNFsByCellRadius, :estimatedTime)
+        # v0.3-prep: the radius-based enumeration symbols (radiusEnumHNFs,
+        # getHNFColorings, radEnumByXcellRadius, getSymInequivHNFsByCellRadius,
+        # estimatedTime) were removed when src/radiusEnumeration.jl was retired
+        # in favor of `enumerate(..., supercells = RadiusBound(...))` and the
+        # legacy `getPermG(h, fixingOps, LG::Vector{Matrix{Int}})` method was
+        # dropped. Only the Fortran-format I/O symbols remain in the shim.
+        for fn in (:enumStr, :readStructenumout, :readEnergies, :readStrIn)
             @test isdefined(Enumlib.LegacyImport, fn)
             @test getfield(Enumlib.LegacyImport, fn) isa Function
         end

@@ -157,11 +157,11 @@ Base.lastindex(e::Enumeration) = length(e.structures)
 
 # Pretty printing — clear-and-complete per the working agreement.
 function Base.show(io::IO, e::Enumeration{D,L}) where {D,L}
-    n_structs = length(e.structures)
+    n_configs = length(e.structures)
     n_supercells = length(e.supercells)
     n_sites = length(e.sites.list)
     println(io, "Enumeration{$D, $(L)} ",
-                "($n_structs structure$(n_structs==1 ? "" : "s"), ",
+                "($n_configs configuration$(n_configs==1 ? "" : "s"), ",
                 "$n_supercells supercell$(n_supercells==1 ? "" : "s"), ",
                 "$n_sites site$(n_sites==1 ? "" : "s"))")
     print(io,   "  parent: ", length(e.parent.space_group), "-op space group, ",

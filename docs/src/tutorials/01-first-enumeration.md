@@ -59,7 +59,7 @@ The third input is the *supercell selection*: the user chooses which supercells 
 
 ```jldoctest first_enum
 julia> e = enumerate(parent, sites; supercells = VolumeRange(1:3))
-Enumeration{3, Vector{Int8}} (10 structures, 6 supercells, 1 site)
+Enumeration{3, Vector{Int8}} (10 configurations, 6 supercells, 1 site)
   parent: 48-op space group, 1-element dset
 ```
 

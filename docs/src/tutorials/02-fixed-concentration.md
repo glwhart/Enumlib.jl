@@ -55,7 +55,7 @@ Pass the [`Concentration`](@ref) as the `concentration` kwarg. Reuse `Concentrat
 julia> c = Concentration([1//4, 3//4]);
 
 julia> e = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c)
-Enumeration{3, Vector{Int8}} (42 structures, 20 supercells, 1 site)
+Enumeration{3, Vector{Int8}} (42 configurations, 20 supercells, 1 site)
   parent: 48-op space group, 1-element dset
 ```
 

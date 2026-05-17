@@ -1,6 +1,6 @@
 using Test
 using Enumlib
-using Enumlib: getSymInequivHNFs, getHNFColorings    # un-exported in chunk 13b.1
+using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1
 using LinearAlgebra: norm
 
 @testset "SupercellSelection (chunk 4)" begin
@@ -108,18 +108,8 @@ using LinearAlgebra: norm
         @test result[3] == h3
     end
 
-    # ---- Bug-fix verification: getFixingLatticeOps → getFixingOps ----
-    # The chunk-3 rename left stale references in coloringsOfHNFList
-    # (LatticeColoringEnumeration.jl) and getHNFColorings (radiusEnumeration.jl).
-    # Chunk 4 fixes them; this test confirms the fix landed by calling both
-    # functions directly.
-    @testset "Bug-fix: getFixingLatticeOps stale refs cleared" begin
-        using Spacey: pointGroup
-        A = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]
-        LG = pointGroup(A)
-        h = [1 0 0; 0 1 0; 0 0 2]   # volume 2 HNF on FCC
-        # getHNFColorings — exercises the radiusEnumeration.jl call site.
-        @test_nowarn getHNFColorings(h, 2, LG)
-    end
+    # (The "Bug-fix: getFixingLatticeOps stale refs cleared" testset was
+    # retired in v0.3-prep along with `radiusEnumeration.jl`, which it was
+    # exercising via the now-removed `getHNFColorings` entry point.)
 
 end

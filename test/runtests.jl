@@ -3,8 +3,7 @@
 using Test
 using Enumlib
 using Enumlib: getColorings, reduceColorings, getSymEqvColorings_slow,
-    getSymInequivHNFs, getFixingOps, getPermG, getUniqueColorings,
-    generateGroup    # un-exported in chunk 13b.1; legacy testset still uses them
+    generateGroup    # un-exported utility helpers used by the legacy testset below
 using Combinatorics
 using LinearAlgebra
 using Spacey
@@ -43,35 +42,10 @@ include("test_legacy_import.jl")
     G5 = generateGroup([2 3 5 1 4; 1 5 2 3 4])
     @test getSymEqvColorings_slow(3,5,G5) == [[0, 0, 0, 0, 0], [0, 0, 0, 0, 1], [0, 0, 0, 0, 2], [0, 0, 0, 1, 1], [0, 0, 0, 1, 2], [0, 0, 0, 2, 2], [0, 0, 1, 1, 1], [0, 0, 1, 1, 2], [0, 0, 1, 2, 1], [0, 0, 1, 2, 2], [0, 0, 2, 2, 1], [0, 0, 2, 2, 2], [0, 1, 1, 1, 1], [0, 1, 1, 1, 2], [0, 1, 1, 2, 2], [0, 1, 2, 1, 2], [0, 1, 2, 2, 2], [0, 2, 2, 2, 2], [1, 1, 1, 1, 1], [1, 1, 1, 1, 2], [1, 1, 1, 2, 2], [1, 1, 2, 2, 2], [1, 2, 2, 2, 2], [2, 2, 2, 2, 2]]
 
-    # Symmetry-inequivalent colorings via HNF + permutation group, 4-site fcc.
-    # Uses the lattice-coordinate API throughout (Cartesian variants dropped in
-    # chunk 3 — see docs/notes/chunk3-design.md).
-    pLat = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]
-    LG = pointGroup(pLat)
-    hnf = getSymInequivHNFs(4, LG)
-    fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
-    @test map(1:7) do i
-        pG = getPermG(hnf[i], fixingOps[i], LG)
-        return getUniqueColorings(3, pG) |> length
-    end == [15, 15, 15, 15, 15, 12, 9]
-    @test map(1:7) do i
-        pG = getPermG(hnf[i], fixingOps[i], LG)
-        return getUniqueColorings(2, pG) |> length
-    end == [3, 3, 3, 3, 3, 2, 2]
-
-    # 8-site fcc supercell — same count enumlib reports
-    hnf = getSymInequivHNFs(8, LG)
-    fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
-    @test map(1:length(hnf)) do i
-        pG = getPermG(hnf[i], fixingOps[i], LG)
-        return getUniqueColorings(2, pG) |> length
-    end |> sum == 390
-
-    # 12-site fcc supercell — same count enumlib reports
-    hnf = getSymInequivHNFs(12, LG)
-    fixingOps = [getFixingOps(hnf[i], LG) for i in axes(hnf,1)]
-    @test map(1:length(hnf)) do i
-        pG = getPermG(hnf[i], fixingOps[i], LG)
-        return getUniqueColorings(2, pG) |> length
-    end |> sum == 7140
+    # (The HNF + lattice-coord getPermG legacy-API regression suite — formerly
+    # FCC binary/ternary at n=4/8/12 — was retired in v0.3-prep when the legacy
+    # `getPermG(h, fixingOps, LG::Vector{Matrix{Int}})` method was removed. The
+    # same canonical counts (3/3/3/3/3/2/2 ternary at n=4, sum=390 binary at
+    # n=8, sum=7140 binary at n=12) are now locked via the public
+    # `enumerate(...)` API in test_enumerate.jl.)
 end

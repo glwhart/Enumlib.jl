@@ -277,27 +277,10 @@ using LinearAlgebra
         end
     end
 
-    # ---- R50.2b: cross-method consistency for getPermG on single-lattice ----
-    # The new parent-aware getPermG (R50.2b) should agree with the legacy
-    # LG-based getPermG on every single-lattice case (the L1 degenerate path).
-    # Three parents × three volumes = 9 cross-checks.
-    @testset "getPermG cross-method consistency (single-lattice, R50.2b)" begin
-        sc_parent  = ParentLattice([1.0 0 0; 0 1.0 0; 0 0 1.0])
-        fcc_parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
-        bcc_parent = ParentLattice([-0.5 0.5 0.5; 0.5 -0.5 0.5; 0.5 0.5 -0.5])
-
-        for parent in (sc_parent, fcc_parent, bcc_parent)
-            LG = Enumlib.lattice_rotations(parent)
-            for n in (2, 4, 8)
-                for h in getSymInequivHNFs(n, parent)
-                    fixingOps = Enumlib.getFixingOps(h.matrix, LG)
-                    perm_old = Enumlib.getPermG(h.matrix, fixingOps, LG)
-                    perm_new = Enumlib.getPermG(h.matrix, fixingOps, parent)
-                    @test length(perm_old) == length(perm_new)
-                    @test Set(perm_old) == Set(perm_new)
-                end
-            end
-        end
-    end
+    # (The "getPermG cross-method consistency (single-lattice, R50.2b)"
+    # testset was retired in v0.3-prep along with the legacy LG-vector
+    # `getPermG(h, fixingOps, LG::Vector{Matrix{Int}})` method it was
+    # asserting equality against. The parent-aware getPermG remains the
+    # only method; cross-checking it against itself is meaningless.)
 
 end

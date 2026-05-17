@@ -272,40 +272,6 @@ include("clusterequvi.jl")
 # --- permutation groups (depend on getTransGroup from LatticeColoringEnumeration) ---
 
 """
-    getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
-
-Single-lattice permutation group for the supercell `h` under the lattice-coord
-point group `LG`, given the ordinal mask `fixingOps` selecting the stabilizer
-subgroup. Eq. 3 of HF 2008, all in pure-integer arithmetic. (The Cartesian-coord
-variant was dropped in chunk 3 — see chunk 3 design.)
-
-**Legacy single-lattice method.** Used by `radiusEnumeration.jl` and
-`CEdataSupport.jl` (single-lattice by construction). For multilattice or
-general use through `ParentLattice`, prefer the new `getPermG(h, fixingOps,
-parent::ParentLattice)` method which handles single- and multi-lattice
-uniformly (R50.2b, 2026-05-15). Removal queued for v0.3 — see v0.2-plan
-"v0.3+ shopping list."
-"""
-function getPermG(h, fixingOps, LG::Vector{Matrix{Int}})
-    S, L, _ = snf(h)
-    Linv = round.(Int, inv(L))
-    z1, z2, z3 = diag(S)
-    GspcSites = [[i,j,k] for i ∈ 0:z1-1 for j ∈ 0:z2-1 for k ∈ 0:z3-1]
-    GSitesRot = [[mod.(L * iLG * Linv * i, [z1; z2; z3]) for i ∈ GspcSites] for iLG ∈ LG[fixingOps]]
-    factor = [z2*z3, z3, 1]
-    rotGrp = [[sum(i .* factor) + 1 for i in j] for j in GSitesRot] |> unique
-    sort!(rotGrp)
-    tGrp = getTransGroup([z1, z2, z3])
-    perm = Vector{Vector{Int}}()
-    for iR ∈ rotGrp
-        for iT ∈ tGrp
-            push!(perm, iR[iT])
-        end
-    end
-    return perm
-end
-
-"""
     getPermG(h, fixingOps, parent::ParentLattice{D}) where D
 
 Permutation group for the supercell `h` on the multilattice `D × G` site set
@@ -425,11 +391,6 @@ function getUniqueColorings(k, pG; include_superperiodic::Bool = false,
     return [coloring_unhash(i, k, n) for i ∈ findall(hashTbl)]
 end
 
-# --- radius-based HNF enumeration (uses avg_cell_radius, getSymInequivHNFs,
-#     getFixingOps, getPermG, getAllHNFs, basesAreEquiv) ---
-
-include("radiusEnumeration.jl")
-
 # --- chunk 3 type catalog (depends on getFixingOps, getPermG, getSymInequivHNFs,
 #     and snf — all defined above) ---
 include("types/hnf.jl")
@@ -462,19 +423,23 @@ include("io/poscar.jl")
 
 # --- chunk 13b.1: deprecation shim for legacy I/O symbols ---
 #
-# The Fortran-format file I/O (CEdataSupport.jl) and the radius-based
-# enumeration entry points (radiusEnumeration.jl) are un-exported in v0.2 —
-# they're superseded by the chunk-11 POSCAR I/O and the chunk-4 RadiusBound,
-# respectively. They remain reachable via this submodule so existing user
-# code can keep running for one minor release; each call emits a
-# `Base.depwarn`. Targeted for full removal in v0.3.
+# The Fortran-format file I/O (CEdataSupport.jl) is un-exported in v0.2 —
+# superseded by the chunk-11 POSCAR I/O. It remains reachable via this
+# submodule so existing user code can keep running for one minor release;
+# each call emits a `Base.depwarn`. Targeted for full removal at some future v0.x.
+#
+# The radius-based enumeration entry points (formerly in radiusEnumeration.jl —
+# `radiusEnumHNFs`, `getHNFColorings`, `radEnumByXcellRadius`,
+# `getSymInequivHNFsByCellRadius`, `estimatedTime`) were dropped in v0.3-prep
+# (2026-05-17) — superseded by `enumerate(..., supercells = RadiusBound(...))`
+# in chunk 4. The legacy `getPermG(h, fixingOps, LG::Vector{Matrix{Int}})`
+# method was their only remaining single-lattice consumer; removed in the same
+# pass.
 module LegacyImport
 import ..Enumlib
 
 const _LEGACY = (
     :enumStr, :readStructenumout, :readEnergies, :readStrIn,
-    :radiusEnumHNFs, :getHNFColorings, :radEnumByXcellRadius,
-    :getSymInequivHNFsByCellRadius, :estimatedTime,
 )
 
 for fn in _LEGACY
