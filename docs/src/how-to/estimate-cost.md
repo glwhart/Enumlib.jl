@@ -50,7 +50,7 @@ When you genuinely *want* the run to proceed despite a tripped gate, pass one of
 - `on_overflow = :warn` — log a warning and proceed.
 - `on_overflow = :ignore` — proceed silently.
 - `memory_budget = <bigger>` — raise the budget. Default is `default_memory_budget()` (25% of system RAM, with a 2 GiB floor).
-- `skip_preflight = true` — bypass the estimator entirely. Use sparingly: this also skips the cost-and-algorithm-info notes you'd normally see.
+- `skip_resource_check = true` — bypass the estimator entirely. Use sparingly: this also skips the cost-and-algorithm-info notes you'd normally see.
 
 ## See also
 

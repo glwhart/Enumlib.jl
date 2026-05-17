@@ -8,7 +8,7 @@
               partition_threshold::Int = 100,
               on_partition_overflow::Symbol = :error,
               include_superperiodic::Bool = false,
-              skip_preflight::Bool = false) -> Enumeration{D, Vector{Int8}}
+              skip_resource_check::Bool = false) -> Enumeration{D, Vector{Int8}}
 
 Enumerate symmetry-inequivalent derivative structures of `parent` decorated by labelings drawn from `sites.allowed_labels`, over the supercells specified by `supercells`, optionally constrained to a fixed `concentration` or `ConcentrationRange`.
 
@@ -28,7 +28,7 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 
 ## Enumeration resource check (chunk 6: partial)
 
-Chunk 6 wires only the partition-explosion check; the memory-side enumeration resource check is still a stub (chunk 7 lands the real estimator with the Polya counter). Reserved kwargs (`memory_budget`, `on_overflow`, `skip_preflight`) are accepted and largely ignored for now.
+Chunk 6 wires only the partition-explosion check; the memory-side enumeration resource check is still a stub (chunk 7 lands the real estimator with the Polya counter). Reserved kwargs (`memory_budget`, `on_overflow`, `skip_resource_check`) are accepted and largely ignored for now.
 
 ## Super-periodicity policy (chunk 6.2)
 
@@ -105,7 +105,7 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
                         partition_threshold::Int = 100,
                         on_partition_overflow::Symbol = :error,
                         include_superperiodic::Bool = false,
-                        skip_preflight::Bool = false) where D
+                        skip_resource_check::Bool = false) where D
 
     # ---- Algorithm dispatch ----
     if algorithm == :auto
@@ -149,7 +149,7 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
     k = _validate_enumerate_inputs(parent, sites, concentration)
 
     # ---- Enumeration resource check (chunk 7.5) ----
-    if !skip_preflight
+    if !skip_resource_check
         estimate = estimate_cost(parent, sites; supercells, concentration,
                                  algorithm, include_superperiodic)
         if estimate.peak_memory_bytes > memory_budget

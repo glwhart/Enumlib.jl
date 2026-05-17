@@ -42,7 +42,7 @@ What happens next depends on `on_resource_overflow` (default `:error`):
 - `:warn` — `@warn` the estimate and proceed.
 - `:ignore` — silently proceed.
 
-There's also a `skip_preflight::Bool = false` kwarg that disables the check entirely. (Note: the kwarg name is staged for renaming to match the new "enumeration resource check" terminology in v0.3+; see the v0.2 plan's "Pending rename of `skip_preflight` kwarg" entry.)
+There's also a `skip_resource_check::Bool = false` kwarg that disables the check entirely.
 
 ## `memory_budget`
 

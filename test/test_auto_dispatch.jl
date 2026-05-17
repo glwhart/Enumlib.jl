@@ -45,9 +45,9 @@ using Enumlib
     @testset ":auto / tight memory_budget → :recursive_stabilizer + completes" begin
         c = concentration_count([6, 6]; n_total = 12)
         # Budget where multinomial bitmap (116 bytes) > budget × 0.8 (= 80 → 100 budget).
-        # But the gate would also fire because output > 100. So bypass with skip_preflight.
+        # But the gate would also fire because output > 100. So bypass with skip_resource_check.
         e = enumerate(parent, sites; supercells = VolumeRange(12:12), concentration = c,
-                                     memory_budget = 100, skip_preflight = true)
+                                     memory_budget = 100, skip_resource_check = true)
         # We don't have a direct way to inspect chosen algorithm from Enumeration,
         # but we can verify the count matches the chunk-6 reference (which means
         # whichever algorithm was picked, it produced the right answer).

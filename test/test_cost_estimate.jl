@@ -179,13 +179,13 @@ using Enumlib
         @test length(e) == 19
     end
 
-    @testset "skip_preflight = true bypasses the gate entirely" begin
+    @testset "skip_resource_check = true bypasses the gate entirely" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        # Even with absurd budget = 1, skip_preflight = true runs without error
-        # because the gate is never consulted.
+        # Even with absurd budget = 1, skip_resource_check = true runs without
+        # error because the gate is never consulted.
         e = enumerate(parent, sites; supercells = VolumeRange(4:4),
-                                     memory_budget = 1, skip_preflight = true)
+                                     memory_budget = 1, skip_resource_check = true)
         @test length(e) == 19
     end
 

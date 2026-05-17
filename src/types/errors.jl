@@ -67,7 +67,7 @@ end
 
 Thrown by `enumerate(...)` when the predicted `EnumerationCostEstimate`'s `peak_memory_bytes` exceeds the configured `memory_budget`. Carries the full estimate so the user can see exactly what would have been allocated, plus the budget that was tripped.
 
-Per Phase 7 §7.3, the gate is `on_overflow = :error` by default; expert users can pass `:warn` (warns but proceeds) or `:ignore` (silent pass-through), or set `skip_preflight = true` to bypass the estimator entirely.
+Per Phase 7 §7.3, the gate is `on_overflow = :error` by default; expert users can pass `:warn` (warns but proceeds) or `:ignore` (silent pass-through), or set `skip_resource_check = true` to bypass the estimator entirely.
 """
 struct EnumerationTooLargeError <: Exception
     estimate::EnumerationCostEstimate
@@ -87,5 +87,5 @@ function Base.showerror(io::IO, e::EnumerationTooLargeError)
           "\n  • Add a `concentration` to switch from :exhaustive to :multinomial.",
           "\n  • Pass `on_overflow = :warn` or `:ignore` to bypass the gate.",
           "\n  • Pass `memory_budget = <bigger>` if you have the RAM.",
-          "\n  • Pass `skip_preflight = true` to skip estimation entirely.")
+          "\n  • Pass `skip_resource_check = true` to skip estimation entirely.")
 end
