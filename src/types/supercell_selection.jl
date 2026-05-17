@@ -159,3 +159,55 @@ function enumerate_hnfs(s::RadiusBound, parent::ParentLattice{D}) where D
 end
 
 enumerate_hnfs(s::ExplicitHNFs{D}, parent::ParentLattice{D}) where D = copy(s.hnfs)
+
+# ------------------------------------------------------------------------------
+# _enumerate_hnfs_with_degeneracies — internal helper that pairs each canonical
+# HNF with its parent-point-group orbit size on the HNFs at that volume (the
+# Fortran enumlib's hnf_degen). Used by `enumerate(...)` / `count_inequivalent`
+# to populate `Supercell.hnf_degeneracy` without each Supercell construction
+# re-running the symmetric-HNF reduction (which would be O(N²) total).
+# ------------------------------------------------------------------------------
+
+function _enumerate_hnfs_with_degeneracies(s::VolumeRange, parent::ParentLattice{D}) where D
+    result = Tuple{HNF{D}, Int}[]
+    for n in s.range
+        append!(result, getSymInequivHNFs_with_degeneracies(n, parent))
+    end
+    return result
+end
+
+function _enumerate_hnfs_with_degeneracies(s::RadiusBound, parent::ParentLattice{D}) where D
+    parent_radius = avg_cell_radius(parent.A)
+    cutoff = s.max_radius_ratio * parent_radius
+    LG = lattice_rotations(parent)
+
+    survivors = Matrix{Int}[]
+    for n in 1:s.max_volume
+        for m in getAllHNFs(n)
+            avg_cell_radius(parent.A * m) <= cutoff && push!(survivors, m)
+        end
+    end
+    isempty(survivors) && return Tuple{HNF{D}, Int}[]
+
+    # Symmetry-reduce the radius-survivors with class-size tracking. Same
+    # algorithm as `_getSymInequivHNFs_with_degens` but on a pre-filtered list.
+    n_surv = length(survivors)
+    class_id = collect(1:n_surv)
+    for i in 1:n_surv-1
+        class_id[i] == i || continue
+        for j in i+1:n_surv
+            class_id[j] == j || continue
+            basesAreEquiv(survivors[i], survivors[j], LG) && (class_id[j] = i)
+        end
+    end
+    canonical = findall(i -> class_id[i] == i, 1:n_surv)
+    return [(HNF{D}(survivors[i]), count(==(i), class_id)) for i in canonical]
+end
+
+# ExplicitHNFs: user-supplied HNFs aren't necessarily canonical reps, so each
+# one's degeneracy is computed independently. Same O(N · |getAllHNFs|) cost as
+# direct `Supercell(hnf, parent)` construction.
+function _enumerate_hnfs_with_degeneracies(s::ExplicitHNFs{D}, parent::ParentLattice{D}) where D
+    LG = lattice_rotations(parent)
+    return [(h, _compute_hnf_degeneracy(h, LG)) for h in s.hnfs]
+end

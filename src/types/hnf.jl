@@ -97,3 +97,14 @@ function getSymInequivHNFs(n::Int, parent::ParentLattice{D}) where D
     legacy_hnfs = getSymInequivHNFs(n, LG)   # legacy lattice-coord; returns Vector{Matrix{Int}}
     return [HNF{D}(m) for m in legacy_hnfs]
 end
+
+"""
+    getSymInequivHNFs_with_degeneracies(n::Int, parent::ParentLattice{D}) -> Vector{Tuple{HNF{D}, Int}}
+
+Same as [`getSymInequivHNFs`](@ref) but returns each canonical HNF paired with its **HNF-class degeneracy**: the number of volume-`n` HNFs in the parent-point-group orbit of this representative. Used to populate `Supercell.hnf_degeneracy` in batch — avoids the O(N) re-computation that direct `Supercell(hnf, parent)` construction otherwise does per supercell.
+"""
+function getSymInequivHNFs_with_degeneracies(n::Int, parent::ParentLattice{D}) where D
+    LG = lattice_rotations(parent)
+    legacy_hnfs, class_sizes = _getSymInequivHNFs_with_degens(n, LG)
+    return [(HNF{D}(m), c) for (m, c) in zip(legacy_hnfs, class_sizes)]
+end

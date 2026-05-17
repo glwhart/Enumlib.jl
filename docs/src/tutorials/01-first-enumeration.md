@@ -110,7 +110,7 @@ Each configuration carries a `supercell_id`. Pick a more interesting one than `e
 
 ```jldoctest first_enum
 julia> sc = e.supercells[e[8].supercell_id]
-Supercell{3} (n = 3, |stabilizer| = 8, |perm group| = 6)
+Supercell{3} (n = 3, |stabilizer| = 8, |perm group| = 6, hnf_degeneracy = 6)
   HNF: 1 0 0 / 0 1 0 / 0 1 3
   SNF diag: [1, 1, 3]
 ```

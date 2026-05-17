@@ -84,18 +84,35 @@ end
 getSymInequivHNFs(n,LG) returns the symmetry-inequivalent HNFs, of size n, under the action of the group LG, the symmetries of the parent lattice in lattice coordinates.
 """
 function getSymInequivHNFs(d,LG::Vector{Matrix{Int}})
+    canonical, _ = _getSymInequivHNFs_with_degens(d, LG)
+    return canonical
+end
+
+"""
+    _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
+
+Return `(canonical_hnfs, class_sizes)` where `class_sizes[i]` is the number of volume-`d` HNFs in the parent-point-group orbit of `canonical_hnfs[i]` — i.e., the size of its symmetry class. Sum of class sizes equals the total number of volume-`d` HNFs from `getAllHNFs(d)`.
+
+The canonical HNFs and their ordering match what `getSymInequivHNFs(d, LG)` returns. This is the with-degeneracies sibling used to populate `Supercell.hnf_degeneracy` (v0.3-prep: the Fortran enumlib's `hnf_degen`).
+"""
+function _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
     HNFList = getAllHNFs(d)
     n = length(HNFList)
-    mask = trues(n)
+    # class_id[j] = canonical (smallest) index in HNFList equivalent to j.
+    class_id = collect(1:n)
     for i ∈ 1:n-1
+        class_id[i] == i || continue       # i already in earlier class — skip
         for j ∈ i+1:n
-            if !mask[j] continue end
-            if basesAreEquiv(HNFList[i],HNFList[j],LG)
-                mask[j] = false
+            class_id[j] == j || continue   # j already classified — skip
+            if basesAreEquiv(HNFList[i], HNFList[j], LG)
+                class_id[j] = i
             end
         end
     end
-    return [HNFList[i] for i ∈ findall(mask.==1)] # Return only the symmetry-inequivalent HNFs
+    canonical_indices = findall(i -> class_id[i] == i, 1:n)
+    canonical = [HNFList[i] for i in canonical_indices]
+    class_sizes = [count(==(i), class_id) for i in canonical_indices]
+    return canonical, class_sizes
 end
 
 """

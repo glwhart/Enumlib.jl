@@ -6,22 +6,21 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
 
     # ---- EnumeratedStructure construction + validation ----
     @testset "EnumeratedStructure validation" begin
-        # Valid construction with explicit fields
-        s = EnumeratedStructure{3, Vector{Int8}}(1, Int8[0, 1, 0, 1], 1, 1)
+        # v0.3-prep: labeling_degeneracy + hnf_degeneracy fields dropped from
+        # EnumeratedStructure (the former was a duplicate of orbit_size; the
+        # latter moved to Supercell where it semantically belongs).
+        s = EnumeratedStructure{3, Vector{Int8}}(1, Int8[0, 1, 0, 1], 3)
         @test s.supercell_id == 1
         @test s.labeling == Int8[0, 1, 0, 1]
-        @test s.hnf_degeneracy == 1
-        @test s.labeling_degeneracy == 1
+        @test s.orbit_size == 3
 
-        # Defaults for the two degeneracy fields.
+        # Default for orbit_size.
         s2 = EnumeratedStructure{3, Vector{Int8}}(2, Int8[0, 0])
-        @test s2.hnf_degeneracy == 1
-        @test s2.labeling_degeneracy == 1
+        @test s2.orbit_size == 1
 
         # Validation
         @test_throws ArgumentError EnumeratedStructure{3, Vector{Int8}}(0, Int8[0])      # supercell_id < 1
-        @test_throws ArgumentError EnumeratedStructure{3, Vector{Int8}}(1, Int8[0], 0)   # hnf_degeneracy < 1
-        @test_throws ArgumentError EnumeratedStructure{3, Vector{Int8}}(1, Int8[0], 1, 0)  # labeling_degeneracy < 1
+        @test_throws ArgumentError EnumeratedStructure{3, Vector{Int8}}(1, Int8[0], 0)   # orbit_size < 1
     end
 
     # ---- to_labeling accessor ----

@@ -14,14 +14,9 @@ A single enumerated derivative structure: a reference to a `Supercell{D}` (by in
 
 The parametric `L` is the labeling representation (the "string" of atom types). For chunk 5 (v0.2-alpha) only `L = Vector{Int8}` is supported — the decoded form, ~n bytes per structure. Phase 6 §6.7 contemplates `L = Int64` (hash-based, compact) and `L = BigInt` (very-large enumerations), deferred to v0.3+ as the test-corpus sizes (n ≤ 12) don't motivate them.
 
-Two degeneracy fields are reserved for future chunks:
+The `orbit_size` field is the symmetry-orbit size of the labeling under the supercell's permutation group `G` — i.e., `|G| / |Stab(labeling)|`, via the orbit-stabilizer theorem. This is UNCLE's `d_F` (HF 2008 Eq. 3) and matches the Fortran enumlib's `lab_degen` field. Downstream consumers use it for free-energy weighting in MC simulations, convex-hull degeneracy display, and phase-space coverage diagnostics.
 
-- `hnf_degeneracy` — when `ConcentrationRange` is supplied, multiple HNFs may share a structure under label-symmetry; this counts how many. Always 1 in chunk 5.
-- `labeling_degeneracy` — when label-rotation duplicates collapse, this counts how many user-facing labelings collapse to one canonical representative. Always 1 in chunk 5.
-
-Both are kept as fields (8 bytes each) so chunk 6 doesn't need to migrate the struct shape.
-
-The `orbit_size` field (R33, 2026-05-14) is the symmetry-orbit size of the labeling under the supercell's permutation group `G` — i.e., `|G| / |Stab(labeling)|`, via the orbit-stabilizer theorem. This is UNCLE's `d_F` (HF 2008 Eq. 3); downstream consumers use it for free-energy weighting in MC simulations, convex-hull degeneracy display, and phase-space coverage diagnostics.
+**Removed in v0.3-prep:** the placeholder fields `labeling_degeneracy` (always 1, was conceptually a duplicate of `orbit_size` — R33's addition merged the concept under the better name) and `hnf_degeneracy` (per-supercell, not per-configuration — moved to [`Supercell`](@ref) where it semantically belongs).
 
 # Examples
 ```jldoctest
@@ -39,35 +34,23 @@ julia> e[1].orbit_size            # the only orbit at this concentration has siz
 struct EnumeratedStructure{D,L}
     supercell_id::Int
     labeling::L
-    hnf_degeneracy::Int
-    labeling_degeneracy::Int
     orbit_size::Int
 
     function EnumeratedStructure{D,L}(supercell_id::Integer, labeling::L,
-                                       hnf_degeneracy::Integer = 1,
-                                       labeling_degeneracy::Integer = 1,
                                        orbit_size::Integer = 1) where {D,L}
         supercell_id >= 1 ||
             throw(ArgumentError("supercell_id must be ≥ 1, got $supercell_id"))
-        hnf_degeneracy >= 1 ||
-            throw(ArgumentError("hnf_degeneracy must be ≥ 1, got $hnf_degeneracy"))
-        labeling_degeneracy >= 1 ||
-            throw(ArgumentError("labeling_degeneracy must be ≥ 1, got $labeling_degeneracy"))
         orbit_size >= 1 ||
             throw(ArgumentError("orbit_size must be ≥ 1, got $orbit_size"))
-        new(Int(supercell_id), labeling,
-            Int(hnf_degeneracy), Int(labeling_degeneracy), Int(orbit_size))
+        new(Int(supercell_id), labeling, Int(orbit_size))
     end
 end
 
 # Outer constructor — D and L inferred from the labeling's type. For Vector{Int8}
 # (the chunk-5 default) the user provides D explicitly: EnumeratedStructure{3}(1, [Int8(0), Int8(1)]).
 EnumeratedStructure{D}(supercell_id::Integer, labeling::L,
-                       hnf_degeneracy::Integer = 1,
-                       labeling_degeneracy::Integer = 1,
                        orbit_size::Integer = 1) where {D,L} =
-    EnumeratedStructure{D,L}(supercell_id, labeling,
-                             hnf_degeneracy, labeling_degeneracy, orbit_size)
+    EnumeratedStructure{D,L}(supercell_id, labeling, orbit_size)
 
 """
     to_labeling(s::EnumeratedStructure) -> Vector{Int8}
@@ -114,30 +97,21 @@ julia> to_labeling(e[7])
 """
 to_labeling(s::EnumeratedStructure{D,Vector{Int8}}) where D = s.labeling
 
-# Equality + hashing — value semantics across all five fields.
+# Equality + hashing — value semantics across all three fields.
 Base.:(==)(a::EnumeratedStructure{D,L}, b::EnumeratedStructure{D,L}) where {D,L} =
     a.supercell_id == b.supercell_id &&
     a.labeling == b.labeling &&
-    a.hnf_degeneracy == b.hnf_degeneracy &&
-    a.labeling_degeneracy == b.labeling_degeneracy &&
     a.orbit_size == b.orbit_size
 function Base.hash(s::EnumeratedStructure, h::UInt)
     h = hash(s.supercell_id, h)
     h = hash(s.labeling, h)
-    h = hash(s.hnf_degeneracy, h)
-    h = hash(s.labeling_degeneracy, h)
     h = hash(s.orbit_size, h)
     return h
 end
 
-# Pretty printing. orbit_size is always shown (it's the load-bearing degeneracy
-# field downstream consumers actually use); the two placeholder degeneracy
-# fields are only shown when non-trivial.
 function Base.show(io::IO, s::EnumeratedStructure{D,L}) where {D,L}
-    deg = (s.hnf_degeneracy == 1 && s.labeling_degeneracy == 1) ? "" :
-          ", deg=(hnf=$(s.hnf_degeneracy), labeling=$(s.labeling_degeneracy))"
     print(io, "EnumeratedStructure{$D}(supercell #$(s.supercell_id), labeling=",
-              s.labeling, deg, ", orbit_size=$(s.orbit_size))")
+              s.labeling, ", orbit_size=$(s.orbit_size))")
 end
 
 

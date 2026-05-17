@@ -162,20 +162,20 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
         end
     end
 
-    # ---- Resolve supercells ----
-    hnfs = enumerate_hnfs(supercells, parent)
-    isempty(hnfs) && return Enumeration{D, Vector{Int8}}(
+    # ---- Resolve supercells (with degeneracies for Supercell.hnf_degeneracy) ----
+    hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent)
+    isempty(hnfs_with_degens) && return Enumeration{D, Vector{Int8}}(
         parent, sites, Supercell{D}[], EnumeratedStructure{D, Vector{Int8}}[])
 
     # ---- Algorithm bodies ----
     if algorithm == :exhaustive
-        return _enumerate_exhaustive(parent, sites, hnfs, k; include_superperiodic)
+        return _enumerate_exhaustive(parent, sites, hnfs_with_degens, k; include_superperiodic)
     elseif algorithm == :multinomial
-        return _enumerate_multinomial(parent, sites, hnfs, k, concentration,
+        return _enumerate_multinomial(parent, sites, hnfs_with_degens, k, concentration,
                                       partition_threshold, on_partition_overflow;
                                       include_superperiodic)
     else  # :recursive_stabilizer
-        return _enumerate_recursive_stabilizer(parent, sites, hnfs, k, concentration,
+        return _enumerate_recursive_stabilizer(parent, sites, hnfs_with_degens, k, concentration,
                                                 partition_threshold, on_partition_overflow;
                                                 include_superperiodic)
     end
@@ -200,12 +200,12 @@ end
 # ------------------------------------------------------------------------------
 
 function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
-                               hnfs::AbstractVector{HNF{D}}, k::Int;
+                               hnfs_with_degens::AbstractVector{Tuple{HNF{D}, Int}}, k::Int;
                                include_superperiodic::Bool = false) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
-    for hnf in hnfs
-        sc = Supercell(hnf, parent)
+    for (hnf, hnf_deg) in hnfs_with_degens
+        sc = Supercell(hnf, parent; hnf_degeneracy = hnf_deg)
         push!(supercells_list, sc)
         sc_id = length(supercells_list)
         # n_translations = n_cells (NOT n_D · n_cells) — super-periodicity is
@@ -218,7 +218,7 @@ function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
         for c in colorings
             osz = _orbit_size(sc.permutation_group, c)
             push!(structures, EnumeratedStructure{D, Vector{Int8}}(
-                sc_id, Int8.(c), 1, 1, osz))
+                sc_id, Int8.(c), osz))
         end
     end
     return Enumeration{D, Vector{Int8}}(parent, sites, supercells_list, structures)
@@ -229,12 +229,13 @@ end
 # ------------------------------------------------------------------------------
 
 function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
-                                hnfs::AbstractVector{HNF{D}}, k::Int,
+                                hnfs_with_degens::AbstractVector{Tuple{HNF{D}, Int}},
+                                k::Int,
                                 concentration::Union{Concentration, ConcentrationRange},
                                 partition_threshold::Int,
                                 on_partition_overflow::Symbol;
                                 include_superperiodic::Bool = false) where D
-    return _enumerate_per_concentration(parent, sites, hnfs, k, concentration,
+    return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
         partition_threshold, on_partition_overflow,
         (perm_group, mults) -> getUniqueColorings_multinomial(perm_group, mults;
                                                               include_superperiodic))
@@ -245,12 +246,13 @@ end
 # ------------------------------------------------------------------------------
 
 function _enumerate_recursive_stabilizer(parent::ParentLattice{D}, sites::Sites{D},
-                                          hnfs::AbstractVector{HNF{D}}, k::Int,
+                                          hnfs_with_degens::AbstractVector{Tuple{HNF{D}, Int}},
+                                          k::Int,
                                           concentration::Union{Concentration, ConcentrationRange},
                                           partition_threshold::Int,
                                           on_partition_overflow::Symbol;
                                           include_superperiodic::Bool = false) where D
-    return _enumerate_per_concentration(parent, sites, hnfs, k, concentration,
+    return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
         partition_threshold, on_partition_overflow,
         (perm_group, mults) -> getUniqueColorings_recursive_stabilizer(perm_group, mults;
                                                                        include_superperiodic))
@@ -263,7 +265,8 @@ end
 # ------------------------------------------------------------------------------
 
 function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
-                                       hnfs::AbstractVector{HNF{D}}, k::Int,
+                                       hnfs_with_degens::AbstractVector{Tuple{HNF{D}, Int}},
+                                       k::Int,
                                        concentration::Union{Concentration, ConcentrationRange},
                                        partition_threshold::Int,
                                        on_partition_overflow::Symbol,
@@ -272,8 +275,8 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
     supercells_list = Supercell{D}[]
     n_D = ndset(parent)
 
-    for hnf in hnfs
-        sc = Supercell(hnf, parent)
+    for (hnf, hnf_deg) in hnfs_with_degens
+        sc = Supercell(hnf, parent; hnf_degeneracy = hnf_deg)
         push!(supercells_list, sc)
         sc_id = length(supercells_list)
         n = volume(hnf)
@@ -312,7 +315,7 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
             for coloring in colorings
                 osz = _orbit_size(sc.permutation_group, coloring)
                 push!(structures, EnumeratedStructure{D, Vector{Int8}}(
-                    sc_id, coloring, 1, 1, osz))
+                    sc_id, coloring, osz))
             end
         end
     end
@@ -471,15 +474,15 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
     k = _validate_enumerate_inputs(parent, sites, concentration)
     n_D = ndset(parent)
 
-    hnfs = enumerate_hnfs(supercells, parent)
+    hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent)
 
     total = BigInt(0)
     by_volume_dict = Dict{Int, BigInt}()
     by_concentration_dict = Dict{Concentration, BigInt}()
     by_hnf = Tuple{HNF{D}, BigInt}[]
 
-    for hnf in hnfs
-        sc = Supercell(hnf, parent)
+    for (hnf, hnf_deg) in hnfs_with_degens
+        sc = Supercell(hnf, parent; hnf_degeneracy = hnf_deg)
         n = volume(hnf)
         n_total = n_D * n                # total sites = n_D · n
         snf_diag = (Int(sc.snf[1]), Int(sc.snf[2]), Int(sc.snf[3]))
