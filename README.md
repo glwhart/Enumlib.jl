@@ -1,5 +1,9 @@
 # Enumlib.jl
 
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://glwhart.github.io/Enumlib.jl/dev)
+[![CI](https://github.com/glwhart/Enumlib.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/glwhart/Enumlib.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/glwhart/Enumlib.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/glwhart/Enumlib.jl)
+
 Derivative-structure / superlattice enumeration in Julia. Generates the symmetry-distinct supercells and atomic colorings of a parent lattice — the building blocks for cluster-expansion fits, configuration sampling, and other alloy-modeling workflows that need a complete, deduplicated set of derivative structures.
 
 This package is a Julia successor to the Fortran [`enumlib`](https://github.com/msg-byu/enumlib) by Gus L. W. Hart and Rodney W. Forcade. The algorithms and conventions are the same; the implementation is from-scratch in Julia and integrates with the modern Julia ecosystem (`Pkg`, `Spacey`, `MinkowskiReduction`, `NormalForms`, etc.).
