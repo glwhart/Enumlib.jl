@@ -15,21 +15,33 @@
 #   - Direct (fractional) coordinates only; never Cartesian-mode.
 #   - species_symbols defaults to ["A", "B", "C", ...] (calling user can
 #     override; collaborator picks chemistry at DFT-prep time).
-#   - Concentration in header is the actual labeling's a:b:... counts.
+#   - Header carries a radius= field (5 sig figs) for size-based sorting;
+#     concentration is no longer in the header (redundant with the
+#     VASP-5+ species count line).
+#   - Supercell basis is Minkowski-reduced before being written to give
+#     downstream tools the most compact cell vectors for the lattice.
 #   - No permutation tracking; energy round-trips by enumlib_id only.
 
 # -- Header line format --------------------------------------------------------
 #
-#   # enumlib_id=<n> hnf=<i> concentration=<a:b:...> super_periodic=<bool>[ <extras>] energy_eV=
+#   # radius=<r> enumlib_id=<n> hnf=<i> super_periodic=<bool>[ <extras>] energy_eV=
 #
 # Notes:
+#   - radius is the average distance from the cell's 8 corners to its
+#     center, in cartesian units, formatted to 5 significant figures.
+#     Computed on the Minkowski-reduced supercell basis (the same basis
+#     written to lines 3..2+D of the POSCAR), so it's a meaningful
+#     measure of supercell compactness rather than an artifact of a
+#     skewed HNF choice.
 #   - enumlib_id is the position in `enumeration.structures` at write time.
 #   - hnf is the supercell_id field of the EnumeratedStructure.
-#   - concentration is the actual count multiplicities derived from the labeling.
 #   - super_periodic records the include_superperiodic kwarg used during
 #     enumerate(...) — needed so a reader knows which orbit policy generated this.
 #   - extras (optional) are user-supplied additional `key=value` pairs.
 #   - energy_eV= is *last* and starts empty; the calculator fills in a number.
+#
+#   Concentration is NOT in line 1: it's redundant with the per-species
+#   count line that VASP-5+ POSCARs already carry (line 4+D).
 
 """
     to_poscar(io::IO, structure::EnumeratedStructure{D,L},
@@ -71,18 +83,23 @@ julia> hnf_for_structure = e.supercells[e.structures[1].supercell_id].hnf;
 julia> to_poscar(io, e.structures[1], parent, hnf_for_structure;
                  super_periodic = false, enumlib_id = 1);
 
-julia> first(split(String(take!(io)), '\\n'), 1)
-1-element Vector{SubString{String}}:
- "# enumlib_id=1 hnf=1 concentration=1:1 super_periodic=false energy_eV="
+julia> line1 = first(split(String(take!(io)), '\\n'));
+
+julia> startswith(line1, "# radius=") && occursin(" enumlib_id=1 hnf=1 super_periodic=false energy_eV=", line1)
+true
 ```
 """
-function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
-                   parent::ParentLattice{D}, hnf::HNF{D};
-                   super_periodic::Bool,
-                   species_symbols::Vector{String} = String[],
-                   comment_extras::Vector{String} = String[],
-                   enumlib_id::Integer = 0,
-                   hnf_idx::Integer = structure.supercell_id) where {D,L}
+function to_poscar(
+    io::IO,
+    structure::EnumeratedStructure{D,L},
+    parent::ParentLattice{D},
+    hnf::HNF{D};
+    super_periodic::Bool,
+    species_symbols::Vector{String} = String[],
+    comment_extras::Vector{String} = String[],
+    enumlib_id::Integer = 0,
+    hnf_idx::Integer = structure.supercell_id,
+) where {D,L}
     coloring = to_labeling(structure)
     n = length(coloring)
 
@@ -102,36 +119,72 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
 
     # Validate per-color labelings are in 0..k-1 (catches misuse where a
     # supplied species_symbols is too short).
-    isempty(coloring) || maximum(coloring) < k ||
-        throw(ArgumentError(
-            "species_symbols has length $(length(species_symbols)) but the labeling " *
-            "uses color $(maximum(coloring)); supply at least $(Int(maximum(coloring))+1) symbols."))
+    isempty(coloring) ||
+        maximum(coloring) < k ||
+        throw(
+            ArgumentError(
+                "species_symbols has length $(length(species_symbols)) but the labeling " *
+                "uses color $(maximum(coloring)); supply at least $(Int(maximum(coloring))+1) symbols.",
+            ),
+        )
 
     # Default species symbols are ASCII letters: ["A", "B", ...]. The calling
     # user can override with real chemistry; the calculator can also override
     # before running DFT (the species line in the POSCAR is what their tool
     # reads).
-    species = isempty(species_symbols) ?
-        [string(Char(Int('A') + (i - 1))) for i in 1:k] :
+    species =
+        isempty(species_symbols) ? [string(Char(Int('A') + (i - 1))) for i = 1:k] :
         species_symbols
 
-    # Per-color counts; this IS the concentration.
+    # Per-color counts (written to line 4+D, which makes line 1's concentration
+    # field redundant — dropped 2026-05).
     counts = zeros(Int, k)
     for c in coloring
-        counts[Int(c) + 1] += 1
+        counts[Int(c)+1] += 1
     end
-    concentration_str = join(counts, ":")
+
+    # ---- Supercell basis: Mink-reduced + chirality-corrected -----------------
+    # The raw HNF basis A * H can be highly skewed (long axes, sharp angles).
+    # Minkowski reduction picks the most-compact equivalent basis vectors for
+    # the same lattice — better for VASP's k-point sampling and for any
+    # downstream tool that cares about supercell shape. We write the reduced
+    # basis to lines 3..2+D and reconvert atomic fractional coordinates
+    # accordingly so cartesian positions are unchanged.
+    #
+    # Right-handedness: VASP refuses to process POSCARs with a left-handed
+    # basis (det < 0). Enumlib's parent lattice can be left-handed (chunk 1.1
+    # relaxed the right-handedness check to non-singularity) and Mink reduction
+    # doesn't guarantee handedness, so we check after reducing and swap
+    # columns 1 and 2 if needed to flip the sign of det while preserving
+    # Cartesian positions. The matching position fix swaps the first two
+    # components of every fractional coordinate below.
+    A_super_raw = parent.A * hnf.matrix
+    A_super = minkReduce(A_super_raw)
+    chirality_swap = LinearAlgebra.det(A_super) < 0
+    if chirality_swap
+        A_super = A_super[:, [2, 1, 3]]
+    end
 
     # ---- Line 1: header comment ----
     # extras inserted between the fixed-key metadata and the energy_eV= slot,
     # so the energy slot is always last and trivially regex-extractable.
+    # Radius is placed first (right after `#`) so a `grep`/`sort` over a
+    # batch of POSCARs orders by supercell size at a glance.
+    radius = _average_corner_radius(A_super)
     extras_str = isempty(comment_extras) ? "" : " " * join(comment_extras, " ")
-    println(io, "# enumlib_id=", enumlib_id,
-                " hnf=", hnf_idx,
-                " concentration=", concentration_str,
-                " super_periodic=", super_periodic,
-                extras_str,
-                " energy_eV=")
+    println(
+        io,
+        "# radius=",
+        @sprintf("%.5g", radius),
+        " enumlib_id=",
+        enumlib_id,
+        " hnf=",
+        hnf_idx,
+        " super_periodic=",
+        super_periodic,
+        extras_str,
+        " energy_eV=",
+    )
 
     # ---- Line 2: scale factor (always 1.0) ----
     println(io, "1.0")
@@ -140,21 +193,8 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     # Julia stores basis with columns = lattice vectors (A_super[:, j] is the
     # j-th lattice vector). VASP reads each row of POSCAR as one lattice
     # vector. So we transpose: row j of the POSCAR is column j of A_super.
-    #
-    # Right-handedness: VASP refuses to process POSCARs with a left-handed
-    # basis (det < 0). Enumlib's parent lattice can be left-handed (chunk 1.1
-    # relaxed the right-handedness check to non-singularity). When that's the
-    # case, swap columns 1 and 2 of the supercell basis to flip the sign of
-    # det while preserving Cartesian positions; the matching position fix
-    # below swaps the first two components of every fractional coordinate.
-    # The Cartesian geometry VASP reads is identical to what Enumlib enumerated.
-    A_super = parent.A * hnf.matrix
-    chirality_swap = LinearAlgebra.det(A_super) < 0
-    if chirality_swap
-        A_super = A_super[:, [2, 1, 3]]
-    end
-    for j in 1:D
-        for i in 1:D
+    for j = 1:D
+        for i = 1:D
             print(io, @sprintf("%22.12f", A_super[i, j]))
         end
         println(io)
@@ -169,7 +209,7 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     # POTCAR by hand, which is inconvenient. Modern VASP handles zero counts
     # cleanly. (Earlier draft dropped them; reverted.)
     println(io, join(species[1:k], " "))
-    println(io, join((string(counts[i]) for i in 1:k), " "))
+    println(io, join((string(counts[i]) for i = 1:k), " "))
 
     # ---- Line 5+D: coordinate mode ----
     println(io, "Direct")
@@ -180,22 +220,29 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     # skips them). Within each color group, atoms are in supercell-site-index
     # order (`getPermG`'s convention).
     #
-    # If we swapped columns 1↔2 of A_super to fix chirality (above), the
-    # corresponding fractional positions must also have their first two
-    # coordinates swapped so the Cartesian positions stay invariant.
-    # For multilattice parents (n_D ≥ 2), positions cover n_D · n_cells sites
-    # in the dset-blocks layout matching the labeling. For single-lattice
-    # this degenerates to the n_cells case.
-    fractional_positions = supercell_fractional_positions(hnf, parent)
-    if chirality_swap
-        fractional_positions = [(p[2], p[1], p[3]) for p in fractional_positions]
+    # `supercell_fractional_positions` returns positions in the RAW
+    # (un-Mink-reduced) supercell-fractional system: cart_i = A_super_raw * fp_raw_i.
+    # The basis we wrote to lines 3..2+D is `A_super`, which is the
+    # Mink-reduced supercell (and possibly column-swapped for chirality).
+    # The conversion to the new basis is one matmul that absorbs both:
+    #     fp_new_i = inv(A_super) * A_super_raw * fp_raw_i  (mod 1)
+    # The mod-1 wrap keeps every position in the canonical [0,1)^D cell of
+    # the basis VASP will read. For multilattice parents (n_D ≥ 2), positions
+    # cover n_D · n_cells sites in the dset-blocks layout matching the
+    # labeling; for single-lattice this degenerates to the n_cells case.
+    raw_to_new = inv(A_super) * A_super_raw
+    raw_positions = supercell_fractional_positions(hnf, parent)
+    fractional_positions = NTuple{D,Float64}[]
+    for p in raw_positions
+        q = raw_to_new * collect(p)
+        push!(fractional_positions, ntuple(d -> mod(q[d], 1.0), D))
     end
-    for color_one_indexed in 1:k
+    for color_one_indexed = 1:k
         target_color = color_one_indexed - 1
-        for site in 1:n
+        for site = 1:n
             if Int(coloring[site]) == target_color
                 fp = fractional_positions[site]
-                for d in 1:D
+                for d = 1:D
                     print(io, @sprintf("%22.12f", fp[d]))
                 end
                 println(io)
@@ -204,6 +251,21 @@ function to_poscar(io::IO, structure::EnumeratedStructure{D,L},
     end
 
     return nothing
+end
+
+# Average distance from cell corners to cell center, in cartesian units.
+# `A` is a `D × D` basis matrix with lattice vectors as columns. The 3D
+# parallelepiped has 8 corners at `0, a, b, c, a+b, a+c, b+c, a+b+c`,
+# and the center is `(a+b+c)/2`. By inversion symmetry the 8 corners pair
+# up into 4 unique distances `|±a ± b ± c| / 2`, so the mean over all 8
+# equals the mean of those 4. Meaningful for compact (Minkowski-reduced)
+# bases; on highly skewed bases the average is dominated by the
+# long-axis corner and less informative.
+function _average_corner_radius(A::AbstractMatrix)
+    a = view(A, :, 1)
+    b = view(A, :, 2)
+    c = view(A, :, 3)
+    return (norm(a + b + c) + norm(a + b - c) + norm(a - b + c) + norm(-a + b + c)) / 8
 end
 
 """
@@ -253,20 +315,19 @@ julia> Enumlib.supercell_fractional_positions(h, p)
 function supercell_fractional_positions(hnf::HNF{3})
     F = NormalForms.snf(hnf.matrix)
     S, V = F.S, F.V
-    d = (Int(S[1,1]), Int(S[2,2]), Int(S[3,3]))
+    d = (Int(S[1, 1]), Int(S[2, 2]), Int(S[3, 3]))
     n = d[1] * d[2] * d[3]
     positions = Vector{NTuple{3,Float64}}(undef, n)
     idx = 0
     snf_frac = Vector{Float64}(undef, 3)
-    for i in 0:d[1]-1, j in 0:d[2]-1, k in 0:d[3]-1
+    for i = 0:(d[1]-1), j = 0:(d[2]-1), k = 0:(d[3]-1)
         idx += 1
         snf_frac[1] = i / d[1]
         snf_frac[2] = j / d[2]
         snf_frac[3] = k / d[3]
         sup_frac = V * snf_frac
-        positions[idx] = (mod(sup_frac[1], 1.0),
-                          mod(sup_frac[2], 1.0),
-                          mod(sup_frac[3], 1.0))
+        positions[idx] =
+            (mod(sup_frac[1], 1.0), mod(sup_frac[2], 1.0), mod(sup_frac[3], 1.0))
     end
     return positions
 end
@@ -281,14 +342,16 @@ function supercell_fractional_positions(hnf::HNF{3}, parent::ParentLattice{3})
     h_inv = inv(hnf.matrix)
     n_cells = length(cell_positions)
     positions = Vector{NTuple{3,Float64}}(undef, n_D * n_cells)
-    for α in 1:n_D
+    for α = 1:n_D
         dset_super = h_inv * parent.dset[α]   # supercell-fractional offset for this dset position
         offset = (α - 1) * n_cells
-        for g_idx in 1:n_cells
+        for g_idx = 1:n_cells
             cp = cell_positions[g_idx]
-            positions[offset + g_idx] = (mod(cp[1] + dset_super[1], 1.0),
-                                         mod(cp[2] + dset_super[2], 1.0),
-                                         mod(cp[3] + dset_super[3], 1.0))
+            positions[offset+g_idx] = (
+                mod(cp[1] + dset_super[1], 1.0),
+                mod(cp[2] + dset_super[2], 1.0),
+                mod(cp[3] + dset_super[3], 1.0),
+            )
         end
     end
     return positions
@@ -308,7 +371,13 @@ end
 Write every structure in `enumeration` to a single `.tar.gz` deliverable at `path`. Returns the actual tarball path written (may differ from `path` if `path` was a directory and the writer auto-named the file).
 
 The tarball contains:
-- `POSCAR.NNNNN` — one per structure, where N is zero-padded to fit `length(enumeration.structures)` (width = `max(2, ndigits(N))`). Each POSCAR's header line 1 carries `enumlib_id=NNNNN` matching the filename, plus an empty `energy_eV=` slot the calculator fills in.
+- `NNNNN_<radius>_<hnf>.POSCAR` — one per structure. The leading `NNNNN` is
+  zero-padded to fit `length(enumeration.structures)` (width = `max(2, ndigits(N))`)
+  so directory listings sort numerically. `<radius>` is the supercell's
+  average corner-to-center distance in cartesian units (5 sig figs), and
+  `<hnf>` is the HNF index (no padding). Each POSCAR's header line 1
+  carries the same `radius=` value and an `enumlib_id=NNNNN` matching the
+  filename's leading id, plus an empty `energy_eV=` slot the calculator fills in.
 - `enumeration.toml` — manifest mapping each filename to its structure metadata, plus a `[enumeration]` top-level section recording the parent lattice, species symbols, super-periodicity policy, etc.
 
 # Arguments
@@ -338,16 +407,21 @@ out = write_enumeration_archive("./batch1/", e;
 # out: "./batch1/enumlib_FCC_AgPt_n4_2026-05-08T14-30-00.tar.gz"
 ```
 """
-function write_enumeration_archive(path::AbstractString, enumeration::Enumeration{D,L};
-                                    super_periodic::Bool,
-                                    species_symbols::Vector{String} = String[],
-                                    label::AbstractString = "",
-                                    keep_directory::Bool = false) where {D,L}
+function write_enumeration_archive(
+    path::AbstractString,
+    enumeration::Enumeration{D,L};
+    super_periodic::Bool,
+    species_symbols::Vector{String} = String[],
+    label::AbstractString = "",
+    keep_directory::Bool = false,
+) where {D,L}
     n_structures = length(enumeration.structures)
-    n_structures > 0 ||
-        throw(ArgumentError(
+    n_structures > 0 || throw(
+        ArgumentError(
             "enumeration has zero structures; nothing to write. Check your " *
-            "VolumeRange / concentration constraints."))
+            "VolumeRange / concentration constraints.",
+        ),
+    )
 
     # Resolve output tarball path.
     out_path = if endswith(path, ".tar.gz") || endswith(path, ".tgz")
@@ -372,14 +446,17 @@ function write_enumeration_archive(path::AbstractString, enumeration::Enumeratio
         stem = replace(out_path, r"\.(tar\.gz|tgz)$" => "")
         isdir(stem) && rm(stem; recursive = true, force = true)
         mkpath(stem)
-        _build_enumeration_directory(stem, enumeration;
-                                     super_periodic, species_symbols)
+        _build_enumeration_directory(stem, enumeration; super_periodic, species_symbols)
         _tar_gzip_directory(stem, out_path)
     else
         # Temp dir — auto-cleaned after tarring.
         mktempdir() do temp_dir
-            _build_enumeration_directory(temp_dir, enumeration;
-                                         super_periodic, species_symbols)
+            _build_enumeration_directory(
+                temp_dir,
+                enumeration;
+                super_periodic,
+                species_symbols,
+            )
             _tar_gzip_directory(temp_dir, out_path)
         end
     end
@@ -388,61 +465,89 @@ function write_enumeration_archive(path::AbstractString, enumeration::Enumeratio
 end
 
 # Build a directory with one POSCAR per structure plus a TOML manifest.
-function _build_enumeration_directory(dir::AbstractString,
-                                       enumeration::Enumeration{D,L};
-                                       super_periodic::Bool,
-                                       species_symbols::Vector{String}) where {D,L}
+function _build_enumeration_directory(
+    dir::AbstractString,
+    enumeration::Enumeration{D,L};
+    super_periodic::Bool,
+    species_symbols::Vector{String},
+) where {D,L}
     n_structures = length(enumeration.structures)
     width = max(2, ndigits(n_structures))
 
     # Resolve k from species_symbols length if supplied; otherwise infer from
     # the maximum color seen across all structures (handles the rare case
     # where some structures use fewer colors than others).
-    inferred_k = isempty(species_symbols) ?
+    inferred_k =
+        isempty(species_symbols) ?
         maximum(maximum(to_labeling(s)) for s in enumeration.structures) + 1 :
         length(species_symbols)
     k = isempty(species_symbols) ? inferred_k : length(species_symbols)
 
     # Build manifest dict in parallel with writing POSCARs.
-    manifest = Dict{String, Any}()
-    manifest["enumeration"] = Dict{String, Any}(
+    manifest = Dict{String,Any}()
+    manifest["enumeration"] = Dict{String,Any}(
         "created_at" => Dates.format(Dates.now(), "yyyy-mm-ddTHH:MM:SS"),
         "n_structures" => n_structures,
         "n_supercells" => length(enumeration.supercells),
         "super_periodic" => super_periodic,
-        "species_symbols" => isempty(species_symbols) ?
-            [string(Char(Int('A') + (i - 1))) for i in 1:k] : species_symbols,
-        "parent_basis_columns" => [collect(enumeration.parent.A[:, j]) for j in 1:D],
+        "species_symbols" =>
+            isempty(species_symbols) ? [string(Char(Int('A') + (i - 1))) for i = 1:k] :
+            species_symbols,
+        "parent_basis_columns" => [collect(enumeration.parent.A[:, j]) for j = 1:D],
         "k" => k,
     )
-    structures_section = Dict{String, Any}()
+    structures_section = Dict{String,Any}()
 
     for (idx, structure) in enumerate(enumeration.structures)
         sc = enumeration.supercells[structure.supercell_id]
         hnf = sc.hnf
         labeling = to_labeling(structure)
-        # Compute concentration string from the labeling.
+        # Compute concentration string from the labeling. Kept in the manifest
+        # for filtering/grouping (e.g. `[s for (i, s) in manifest if s["concentration"] == "2:2"]`);
+        # no longer in line 1 of the POSCAR (redundant with the species line).
         counts = zeros(Int, k)
         for c in labeling
-            counts[Int(c) + 1] += 1
+            counts[Int(c)+1] += 1
         end
         concentration_str = join(counts, ":")
 
-        filename = "POSCAR." * lpad(string(idx), width, '0')
+        # Radius for the filename, computed exactly as in `to_poscar` (same
+        # Mink-reduced supercell basis, same `%.5g` formatting), so the name
+        # and the in-file header agree to the digit.
+        radius = _average_corner_radius(minkReduce(enumeration.parent.A * hnf.matrix))
+        radius_str = @sprintf("%.5g", radius)
+
+        # Filename: <padded_id>_<radius>_<hnf>.POSCAR. The id pads to a
+        # fixed width so directory listings sort numerically; the radius
+        # and hnf segments float on natural width.
+        filename = string(
+            lpad(string(idx), width, '0'),
+            "_",
+            radius_str,
+            "_",
+            structure.supercell_id,
+            ".POSCAR",
+        )
         filepath = joinpath(dir, filename)
         open(filepath, "w") do io
-            to_poscar(io, structure, enumeration.parent, hnf;
-                       super_periodic,
-                       species_symbols,
-                       enumlib_id = idx,
-                       hnf_idx = structure.supercell_id)
+            to_poscar(
+                io,
+                structure,
+                enumeration.parent,
+                hnf;
+                super_periodic,
+                species_symbols,
+                enumlib_id = idx,
+                hnf_idx = structure.supercell_id,
+            )
         end
 
-        structures_section[string(idx)] = Dict{String, Any}(
+        structures_section[string(idx)] = Dict{String,Any}(
             "hnf_idx" => structure.supercell_id,
             "concentration" => concentration_str,
+            "radius" => radius_str,
             "poscar_filename" => filename,
-            "hnf_matrix_columns" => [collect(hnf.matrix[:, j]) for j in 1:D],
+            "hnf_matrix_columns" => [collect(hnf.matrix[:, j]) for j = 1:D],
         )
     end
 
@@ -487,7 +592,7 @@ Returns a `Dict{Int, Float64}` mapping each filled-in `enumlib_id` to its energy
 
 Throws `ArgumentError` if any POSCAR's line 1 doesn't match the expected format (missing `enumlib_id=`, missing `energy_eV=`, or unparseable energy value).
 
-Hand-edit and shell-script workflows both work: collaborators can run e.g. `sed -i 's/energy_eV=\$/energy_eV=-123.45/' POSCAR.42` after their DFT job, then ship the directory or tarball back.
+Hand-edit and shell-script workflows both work: collaborators can run e.g. `sed -i 's/energy_eV=\$/energy_eV=-123.45/' 00042_*.POSCAR` after their DFT job, then ship the directory or tarball back.
 
 # Example
 
@@ -498,9 +603,12 @@ pairs = attach_results(enumeration, results)
 # Vector{Tuple{EnumeratedStructure, Float64}}, ready for CE fitting
 ```
 """
-function read_results(path::AbstractString;
-                     manifest_filename::AbstractString = "enumeration.toml")::Dict{Int, Float64}
-    if isfile(path) && (endswith(path, ".tar.gz") || endswith(path, ".tgz") || endswith(path, ".tar"))
+function read_results(
+    path::AbstractString;
+    manifest_filename::AbstractString = "enumeration.toml",
+)::Dict{Int,Float64}
+    if isfile(path) &&
+       (endswith(path, ".tar.gz") || endswith(path, ".tgz") || endswith(path, ".tar"))
         return mktempdir() do parent_dir
             extract_dir = joinpath(parent_dir, "extracted")
             _extract_archive(path, extract_dir)
@@ -509,9 +617,12 @@ function read_results(path::AbstractString;
     elseif isdir(path)
         return _read_results_from_directory(path; manifest_filename)
     else
-        throw(ArgumentError(
-            "read_results: '$path' is neither a tarball file (.tar.gz/.tgz/.tar) " *
-            "nor a directory"))
+        throw(
+            ArgumentError(
+                "read_results: '$path' is neither a tarball file (.tar.gz/.tgz/.tar) " *
+                "nor a directory",
+            ),
+        )
     end
 end
 
@@ -525,14 +636,15 @@ Throws `KeyError` if any ID in `results` is out of range `[1, length(enumeration
 
 A typed `EnrichedEnumeration` wrapper is intentionally NOT introduced here; the flat tuple list is the simplest interchange shape and the current consumer (JuCE.jl's CE fitter) expects it. Wrapping is v0.3+ polish if a richer view becomes useful.
 """
-function attach_results(enumeration::Enumeration{D,L},
-                        results::Dict{Int, Float64}) where {D,L}
+function attach_results(
+    enumeration::Enumeration{D,L},
+    results::Dict{Int,Float64},
+) where {D,L}
     n = length(enumeration.structures)
-    pairs = Tuple{EnumeratedStructure{D,L}, Float64}[]
+    pairs = Tuple{EnumeratedStructure{D,L},Float64}[]
     for (id, energy) in results
         if id < 1 || id > n
-            throw(KeyError(
-                "attach_results: structure_id $id is out of range [1, $n]"))
+            throw(KeyError("attach_results: structure_id $id is out of range [1, $n]"))
         end
         push!(pairs, (enumeration.structures[id], energy))
     end
@@ -578,22 +690,28 @@ function _extract_archive(archive_path::AbstractString, target_dir::AbstractStri
             Tar.extract(io, target_dir; copy_symlinks = false)
         end
     else
-        throw(ArgumentError(
-            "_extract_archive: unknown archive format for '$archive_path'; " *
-            "expected .tar.gz, .tgz, or .tar"))
+        throw(
+            ArgumentError(
+                "_extract_archive: unknown archive format for '$archive_path'; " *
+                "expected .tar.gz, .tgz, or .tar",
+            ),
+        )
     end
     return target_dir
 end
 
 # Walk every POSCAR in a directory, parse line 1 of each, return Dict{Int, Float64}.
-function _read_results_from_directory(dir::AbstractString;
-                                      manifest_filename::AbstractString = "enumeration.toml")::Dict{Int, Float64}
-    results = Dict{Int, Float64}()
+function _read_results_from_directory(
+    dir::AbstractString;
+    manifest_filename::AbstractString = "enumeration.toml",
+)::Dict{Int,Float64}
+    results = Dict{Int,Float64}()
     unfilled = Int[]
     n_seen = 0
 
     for filename in sort!(readdir(dir))
-        startswith(filename, "POSCAR") || continue
+        endswith(filename, ".POSCAR") || continue
+        startswith(filename, "._") && continue      # macOS resource fork sidecars
         filename == manifest_filename && continue   # not a POSCAR
         filepath = joinpath(dir, filename)
         isfile(filepath) || continue
@@ -603,9 +721,12 @@ function _read_results_from_directory(dir::AbstractString;
 
         # Parse enumlib_id from line 1.
         m_id = match(r"enumlib_id=(\d+)", line1)
-        m_id === nothing && throw(ArgumentError(
-            "$(filepath): line 1 does not contain `enumlib_id=N` " *
-            "(expected Enumlib-format POSCAR header). First line was:\n  $line1"))
+        m_id === nothing && throw(
+            ArgumentError(
+                "$(filepath): line 1 does not contain `enumlib_id=N` " *
+                "(expected Enumlib-format POSCAR header). First line was:\n  $line1",
+            ),
+        )
         id = parse(Int, m_id.captures[1])
 
         # Parse energy_eV slot from line 1. Permissive on the float format
@@ -613,9 +734,12 @@ function _read_results_from_directory(dir::AbstractString;
         # strict on the slot key being exactly `energy_eV=`.
         m_e = match(r"energy_eV\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)?", line1)
         if m_e === nothing
-            throw(ArgumentError(
-                "$(filepath): line 1 does not contain `energy_eV=` slot. " *
-                "First line was:\n  $line1"))
+            throw(
+                ArgumentError(
+                    "$(filepath): line 1 does not contain `energy_eV=` slot. " *
+                    "First line was:\n  $line1",
+                ),
+            )
         end
 
         if m_e.captures[1] === nothing || isempty(strip(m_e.captures[1]))
@@ -628,16 +752,20 @@ function _read_results_from_directory(dir::AbstractString;
         try
             energy = parse(Float64, energy_str)
         catch
-            throw(ArgumentError(
-                "$(filepath): could not parse energy_eV value '$energy_str' " *
-                "as a Float64. First line was:\n  $line1"))
+            throw(
+                ArgumentError(
+                    "$(filepath): could not parse energy_eV value '$energy_str' " *
+                    "as a Float64. First line was:\n  $line1",
+                ),
+            )
         end
         results[id] = energy
     end
 
     if !isempty(unfilled)
         @info "read_results: $(length(unfilled)) of $n_seen POSCARs had empty " *
-              "`energy_eV=` slot; skipped (calculator hasn't filled them in yet)" unfilled_ids = sort(unfilled)
+              "`energy_eV=` slot; skipped (calculator hasn't filled them in yet)" unfilled_ids =
+            sort(unfilled)
     end
 
     return results

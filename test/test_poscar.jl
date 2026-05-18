@@ -57,26 +57,52 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
-        to_poscar(io, e.structures[1], parent, hnf;
-                   super_periodic = false, enumlib_id = 7)
+        to_poscar(io, e.structures[1], parent, hnf; super_periodic = false, enumlib_id = 7)
         lines = split(String(take!(io)), '\n')
         line1 = lines[1]
-        # Exact fields present.
-        @test occursin(r"^# enumlib_id=7 ", line1)
+        # Exact fields present in the v2026-05 layout: radius first,
+        # then enumlib_id, hnf, super_periodic; concentration removed.
+        @test occursin(r"^# radius=[\d.eE+-]+ ", line1)
+        @test occursin(r" enumlib_id=7 ", line1)
         @test occursin(r" hnf=\d+ ", line1)
-        @test occursin(r" concentration=1:1 ", line1)
         @test occursin(r" super_periodic=false", line1)
+        @test !occursin("concentration=", line1)
         # energy_eV= is last and empty.
         @test endswith(line1, "energy_eV=")
+    end
+
+    @testset "header radius is computed on the Minkowski-reduced supercell" begin
+        # Radius = average of |±a ± b ± c|/2 with a, b, c the Mink-reduced
+        # supercell basis vectors (4 unique values by inversion symmetry).
+        # Verify against a direct computation.
+        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        hnf = e.supercells[e.structures[1].supercell_id].hnf
+        io = IOBuffer()
+        to_poscar(io, e.structures[1], parent, hnf; super_periodic = false)
+        line1 = first(split(String(take!(io)), '\n'))
+        m = match(r"# radius=([\d.eE+-]+) ", line1)
+        @test m !== nothing
+        reported = parse(Float64, m.captures[1])
+        A_super = Enumlib.minkReduce(parent.A * hnf.matrix)
+        a, b, c = A_super[:, 1], A_super[:, 2], A_super[:, 3]
+        expected =
+            (norm(a + b + c) + norm(a + b - c) + norm(a - b + c) + norm(-a + b + c)) / 8
+        # Reported is `%.5g`; 5 sig figs of expected should match exactly.
+        @test isapprox(reported, expected; atol = 10.0^(floor(log10(expected)) - 4))
     end
 
     @testset "header includes comment_extras between metadata and energy slot" begin
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
-        to_poscar(io, e.structures[1], parent, hnf;
-                   super_periodic = false,
-                   comment_extras = ["author=alice", "calc_id=run42"])
+        to_poscar(
+            io,
+            e.structures[1],
+            parent,
+            hnf;
+            super_periodic = false,
+            comment_extras = ["author=alice", "calc_id=run42"],
+        )
         line1 = first(split(String(take!(io)), '\n'))
         @test occursin("author=alice", line1)
         @test occursin("calc_id=run42", line1)
@@ -88,25 +114,28 @@ using Enumlib
         @test first(idx_extras) < first(idx_energy)
     end
 
-    @testset "concentration string is the actual labeling counts" begin
-        # At n=4 binary, structure 1 (the chunk-5 first labeling) has some
-        # specific count. Verify the concentration field matches.
+    @testset "per-species counts (concentration) shown on line 4+D, not line 1" begin
+        # Concentration is no longer in line 1 (redundant with the
+        # VASP-5+ species count line). It's still visible on line 4+D
+        # of the POSCAR (the "counts" line) — verify that line carries
+        # the actual per-color counts from the labeling.
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
-        for i in 1:min(5, length(e))
+        for i = 1:min(5, length(e))
             structure = e.structures[i]
             hnf = e.supercells[structure.supercell_id].hnf
             labeling = to_labeling(structure)
-            n = length(labeling)
-            # Compute expected counts.
             counts = zeros(Int, 2)
             for c in labeling
-                counts[Int(c) + 1] += 1
+                counts[Int(c)+1] += 1
             end
-            expected_conc = join(counts, ":")
+            expected_counts_line = join(counts, " ")
             io = IOBuffer()
             to_poscar(io, structure, parent, hnf; super_periodic = false)
-            line1 = first(split(String(take!(io)), '\n'))
-            @test occursin("concentration=$expected_conc ", line1)
+            lines = split(String(take!(io)), '\n')
+            # Line 1 must NOT contain concentration=.
+            @test !occursin("concentration=", lines[1])
+            # Line 4+D (D=3) is the counts line.
+            @test strip(lines[7]) == expected_counts_line
         end
     end
 
@@ -140,8 +169,8 @@ using Enumlib
 
         # Read back the written basis.
         A_back = zeros(3, 3)
-        for j in 1:3
-            row_vals = parse.(Float64, split(strip(lines[2 + j])))
+        for j = 1:3
+            row_vals = parse.(Float64, split(strip(lines[2+j])))
             @test length(row_vals) == 3
             A_back[:, j] = row_vals
         end
@@ -156,19 +185,30 @@ using Enumlib
         # stays stable. A monochromatic all-color-0 structure (achievable via
         # include_superperiodic=true) writes "A B\n2 0\n" — both species,
         # second count is zero.
-        e_full = enumerate(parent, sites; supercells = VolumeRange(2:2),
-                                          include_superperiodic = true)
+        e_full = enumerate(
+            parent,
+            sites;
+            supercells = VolumeRange(2:2),
+            include_superperiodic = true,
+        )
         # Find a monochromatic structure (labeling all 0s or all 1s).
-        mono = findfirst(s -> all(==(0), to_labeling(s)) || all(==(1), to_labeling(s)),
-                          e_full.structures)
+        mono = findfirst(
+            s -> all(==(0), to_labeling(s)) || all(==(1), to_labeling(s)),
+            e_full.structures,
+        )
         @test mono !== nothing
         structure = e_full.structures[mono]
         labeling = to_labeling(structure)
         hnf = e_full.supercells[structure.supercell_id].hnf
         io = IOBuffer()
-        to_poscar(io, structure, parent, hnf;
-                   super_periodic = true,
-                   species_symbols = ["A", "B"])
+        to_poscar(
+            io,
+            structure,
+            parent,
+            hnf;
+            super_periodic = true,
+            species_symbols = ["A", "B"],
+        )
         lines = split(String(take!(io)), '\n')
         species_tokens = split(strip(lines[6]))
         counts_tokens = split(strip(lines[7]))
@@ -196,9 +236,14 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
-        to_poscar(io, e.structures[1], parent, hnf;
-                   super_periodic = false,
-                   species_symbols = ["Ag", "Pt"])
+        to_poscar(
+            io,
+            e.structures[1],
+            parent,
+            hnf;
+            super_periodic = false,
+            species_symbols = ["Ag", "Pt"],
+        )
         lines = split(String(take!(io)), '\n')
         @test strip(lines[6]) == "Ag Pt"
     end
@@ -207,9 +252,14 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
-        @test_throws ArgumentError to_poscar(io, e.structures[1], parent, hnf;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag"])  # length 1, k = 2
+        @test_throws ArgumentError to_poscar(
+            io,
+            e.structures[1],
+            parent,
+            hnf;
+            super_periodic = false,
+            species_symbols = ["Ag"],
+        )  # length 1, k = 2
     end
 
     # ---- Coordinate mode + position grouping ----
@@ -232,7 +282,7 @@ using Enumlib
             n = length(labeling)
             counts = zeros(Int, 2)
             for c in labeling
-                counts[Int(c) + 1] += 1
+                counts[Int(c)+1] += 1
             end
             io = IOBuffer()
             to_poscar(io, structure, parent, hnf; super_periodic = false)
@@ -262,8 +312,8 @@ using Enumlib
     function _cart_positions_from_poscar(poscar_str::String, n::Int)
         lines = split(poscar_str, '\n')
         A_back = zeros(3, 3)
-        for j in 1:3
-            A_back[:, j] = parse.(Float64, split(strip(lines[2 + j])))
+        for j = 1:3
+            A_back[:, j] = parse.(Float64, split(strip(lines[2+j])))
         end
         position_lines = [strip(l) for l in lines[9:end] if !isempty(strip(l))]
         @assert length(position_lines) == n
@@ -280,14 +330,29 @@ using Enumlib
         k = isempty(coloring) ? 0 : Int(maximum(coloring)) + 1
         orig_frac = Enumlib.supercell_fractional_positions(hnf)
         cart = Vector{Vector{Float64}}()
-        for color in 0:k-1
-            for site in 1:n
+        for color = 0:(k-1)
+            for site = 1:n
                 if Int(coloring[site]) == color
                     push!(cart, A_super * collect(orig_frac[site]))
                 end
             end
         end
         return cart
+    end
+
+    # Canonical lattice representative of a cartesian point under the
+    # parent lattice: maps to parent-fractional coords mod 1, then rounds
+    # for comparison. Two cartesian points landing on the same parent
+    # lattice site (modulo translation) get equal canonical tuples.
+    # Coordinates within 1e-8 of 1.0 are wrapped to 0.0 so a point right
+    # at the cell boundary doesn't accidentally produce a distinct
+    # canonical tuple from its translated copy.
+    function _lattice_canon(cart::AbstractVector, A_parent::AbstractMatrix; digits = 8)
+        f = inv(A_parent) * cart
+        return ntuple(d -> begin
+            r = round(mod(f[d], 1.0); digits = digits)
+            r == 1.0 ? 0.0 : r
+        end, 3)
     end
 
     @testset "written basis is right-handed (default left-handed parent)" begin
@@ -309,9 +374,14 @@ using Enumlib
         for structure in e.structures
             hnf = e.supercells[structure.supercell_id].hnf
             io = IOBuffer()
-            to_poscar(io, structure, parent, hnf;
-                       super_periodic = false,
-                       species_symbols = ["Ag", "Pt"])
+            to_poscar(
+                io,
+                structure,
+                parent,
+                hnf;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+            )
             poscar = String(take!(io))
             n = length(to_labeling(structure))
             _, written_cart = _cart_positions_from_poscar(poscar, n)
@@ -323,9 +393,14 @@ using Enumlib
         end
     end
 
-    @testset "right-handed parent: basis written verbatim (no swap)" begin
-        # Construct an actually-right-handed FCC primitive by swapping
-        # columns 1↔2 of the default left-handed one. Now det > 0.
+    @testset "right-handed parent: basis is Mink-reduced and right-handed" begin
+        # Right-handed FCC primitive (cols 1↔2 of the default left-handed one).
+        # The written basis is `minkReduce(parent.A * hnf.matrix)` since the
+        # v2026-05 POSCAR writer always Mink-reduces; the basis is NOT
+        # verbatim `parent.A * hnf.matrix` in general. What MUST hold:
+        # (a) det > 0 (VASP-compatible right-handed cell), and (b) the
+        # lattice it defines is the same as the raw supercell lattice (i.e.
+        # det(A_back) ≈ |det(parent.A * hnf.matrix)|).
         using LinearAlgebra
         parent_rh = ParentLattice([0.5 0.5 0.0; 0.0 0.5 0.5; 0.5 0.0 0.5])
         @test det(parent_rh.A) > 0
@@ -337,9 +412,8 @@ using Enumlib
             to_poscar(io, structure, parent_rh, hnf; super_periodic = false)
             poscar = String(take!(io))
             A_back, _ = _cart_positions_from_poscar(poscar, length(to_labeling(structure)))
-            # No swap should have occurred — basis matches A_super exactly.
-            @test A_back ≈ parent_rh.A * hnf.matrix
             @test det(A_back) > 0
+            @test abs(det(A_back)) ≈ abs(det(parent_rh.A * hnf.matrix))
         end
     end
 
@@ -351,20 +425,28 @@ using Enumlib
         for (idx, structure) in enumerate(e.structures[1:min(5, length(e))])
             hnf = e.supercells[structure.supercell_id].hnf
             io = IOBuffer()
-            to_poscar(io, structure, parent, hnf;
-                       super_periodic = false,
-                       species_symbols = ["Ag", "Pt"],
-                       enumlib_id = idx)
+            to_poscar(
+                io,
+                structure,
+                parent,
+                hnf;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+                enumlib_id = idx,
+            )
             poscar = String(take!(io))
             n = length(to_labeling(structure))
             A_back, written_cart = _cart_positions_from_poscar(poscar, n)
             @test det(A_back) > 0   # always right-handed
-            # Cartesian positions match what the original geometry produces.
+            # Cartesian positions match what the original geometry produces,
+            # MODULO parent-lattice translations (Mink-reduction + mod-1
+            # wraparound can shift positions by a lattice vector while
+            # preserving the physical site set).
             orig_cart = _orig_cart_positions(structure, parent, hnf)
-            for (cw, co) in zip(written_cart, orig_cart)
-                @test cw ≈ co
-            end
-            # Species + counts + mode unchanged (chirality fix doesn't touch them).
+            written_canon = Set(_lattice_canon(c, parent.A) for c in written_cart)
+            orig_canon = Set(_lattice_canon(c, parent.A) for c in orig_cart)
+            @test written_canon == orig_canon
+            # Species + counts + mode unchanged.
             lines = split(poscar, '\n')
             species = split(strip(lines[6]))
             counts = parse.(Int, split(strip(lines[7])))
@@ -392,31 +474,41 @@ using Enumlib
             @test n_total == 4   # n_D · n = 2 · 2
 
             io = IOBuffer()
-            to_poscar(io, structure, parent_hcp, hnf;
-                       super_periodic = false,
-                       species_symbols = ["Ti", "V"],
-                       enumlib_id = idx)
+            to_poscar(
+                io,
+                structure,
+                parent_hcp,
+                hnf;
+                super_periodic = false,
+                species_symbols = ["Ti", "V"],
+                enumlib_id = idx,
+            )
             poscar = String(take!(io))
             lines = split(poscar, '\n')
 
-            # Header
-            @test startswith(lines[1], "# enumlib_id=$idx")
+            # Header: line 1 carries radius (first), enumlib_id, hnf,
+            # super_periodic, energy_eV — no concentration.
+            @test occursin("enumlib_id=$idx ", lines[1])
+            @test startswith(lines[1], "# radius=")
             @test occursin("energy_eV=", lines[1])
+            @test !occursin("concentration=", lines[1])
             # Species, counts, mode
             @test split(strip(lines[6])) == ["Ti", "V"]
             counts = parse.(Int, split(strip(lines[7])))
             @test sum(counts) == n_total
             @test strip(lines[8]) == "Direct"
 
-            # Round-trip: written basis × written fractionals == original
-            # Cartesian positions in color-grouped order. Right-handed parent
-            # so no chirality swap.
+            # Round-trip: written basis is right-handed, det matches the
+            # raw supercell, and the SET of cartesian sites equals the
+            # original set modulo parent-lattice translations (Mink
+            # reduction + mod-1 wraparound shifts individual positions
+            # by lattice vectors while preserving the physical configuration).
             A_back = zeros(3, 3)
-            for j in 1:3
-                A_back[:, j] = parse.(Float64, split(strip(lines[2 + j])))
+            for j = 1:3
+                A_back[:, j] = parse.(Float64, split(strip(lines[2+j])))
             end
             @test det(A_back) > 0
-            @test A_back ≈ parent_hcp.A * hnf.matrix
+            @test abs(det(A_back)) ≈ abs(det(parent_hcp.A * hnf.matrix))
 
             position_lines = [strip(l) for l in lines[9:end] if !isempty(strip(l))]
             @test length(position_lines) == n_total
@@ -428,16 +520,19 @@ using Enumlib
             @test length(orig_frac) == n_total
             k = Int(maximum(coloring)) + 1
             orig_cart = Vector{Vector{Float64}}()
-            for color in 0:k-1
-                for site in 1:n_total
+            for color = 0:(k-1)
+                for site = 1:n_total
                     if Int(coloring[site]) == color
                         push!(orig_cart, A_super * collect(orig_frac[site]))
                     end
                 end
             end
-            for (cw, co) in zip(written_cart, orig_cart)
-                @test cw ≈ co
-            end
+            # Compare AS SETS modulo parent-lattice translation. Species
+            # counts already verified above, so we don't need to track
+            # per-color sub-sets.
+            written_canon = Set(_lattice_canon(c, parent_hcp.A) for c in written_cart)
+            orig_canon = Set(_lattice_canon(c, parent_hcp.A) for c in orig_cart)
+            @test written_canon == orig_canon
         end
     end
 
@@ -455,9 +550,14 @@ using Enumlib
             @test length(coloring) == 4   # n_D · n = 2 · 2
 
             io = IOBuffer()
-            to_poscar(io, structure, parent_d, hnf;
-                       super_periodic = false,
-                       species_symbols = ["Si", "Ge"])
+            to_poscar(
+                io,
+                structure,
+                parent_d,
+                hnf;
+                super_periodic = false,
+                species_symbols = ["Si", "Ge"],
+            )
             poscar = String(take!(io))
             lines = split(poscar, '\n')
             position_lines = [strip(l) for l in lines[9:end] if !isempty(strip(l))]
@@ -472,10 +572,13 @@ using Enumlib
         e = enumerate(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
 
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ti", "V"],
-                                              label = "HCP_TiV_n2")
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ti", "V"],
+                label = "HCP_TiV_n2",
+            )
             @test isfile(out)
             @test endswith(out, ".tar.gz")
             @test filesize(out) > 0
@@ -512,10 +615,13 @@ using Enumlib
     @testset "write_enumeration_archive produces a valid tarball" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"],
-                                              label = "test_n4")
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+                label = "test_n4",
+            )
             @test isfile(out)
             @test endswith(out, ".tar.gz")
             @test occursin("test_n4", out)
@@ -527,18 +633,26 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"])
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+            )
             mktempdir() do extract_dir
                 run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
                 files = readdir(extract_dir)
                 @test "enumeration.toml" in files
-                poscar_files = filter(f -> startswith(f, "POSCAR."), files)
+                # New filename layout: <padded_id>_<radius>_<hnf>.POSCAR
+                poscar_files = filter(f -> endswith(f, ".POSCAR"), files)
                 @test length(poscar_files) == n
-                # Filenames are zero-padded with width=2 (since 19 < 100).
-                @test "POSCAR.01" in poscar_files
-                @test "POSCAR.$(lpad(n, 2, '0'))" in poscar_files
+                # Filenames start with the zero-padded id (width=2 since n < 100)
+                # and end with `.POSCAR`. The middle floating-point radius and
+                # hnf index vary per structure, so use a regex to match the shape.
+                pat = Regex("^01_[\\d.eE+-]+_\\d+\\.POSCAR\$")
+                @test any(occursin(pat, f) for f in poscar_files)
+                pat_last = Regex("^$(lpad(n, 2, '0'))_[\\d.eE+-]+_\\d+\\.POSCAR\$")
+                @test any(occursin(pat_last, f) for f in poscar_files)
             end
         end
     end
@@ -546,10 +660,13 @@ using Enumlib
     @testset "manifest TOML is well-formed and has [enumeration] + [structure.N]" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"],
-                                              label = "manifest_test")
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+                label = "manifest_test",
+            )
             mktempdir() do extract_dir
                 run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
                 manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
@@ -571,31 +688,39 @@ using Enumlib
                 @test haskey(structures_section, "1")
                 first_struct = structures_section["1"]
                 @test haskey(first_struct, "concentration")
+                @test haskey(first_struct, "radius")
                 @test haskey(first_struct, "hnf_idx")
                 @test haskey(first_struct, "poscar_filename")
                 @test haskey(first_struct, "hnf_matrix_columns")
-                @test first_struct["poscar_filename"] == "POSCAR.01"
+                # Filename has the new <padded_id>_<radius>_<hnf>.POSCAR shape.
+                @test occursin(
+                    r"^01_[\d.eE+-]+_\d+\.POSCAR$",
+                    first_struct["poscar_filename"],
+                )
             end
         end
     end
 
-    @testset "manifest concentration matches POSCAR header concentration" begin
+    @testset "manifest radius matches POSCAR header radius" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"])
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+            )
             mktempdir() do extract_dir
                 run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
                 manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
                 # For each structure: open the POSCAR; verify the header
-                # concentration matches the manifest entry.
+                # radius matches the manifest entry to the digit.
                 for (id_str, info) in manifest["structure"]
                     fname = info["poscar_filename"]
                     poscar_path = joinpath(extract_dir, fname)
                     line1 = open(readline, poscar_path)
-                    expected_conc = info["concentration"]
-                    @test occursin("concentration=$expected_conc ", line1)
+                    expected_radius = info["radius"]
+                    @test occursin("radius=$expected_radius ", line1)
                 end
             end
         end
@@ -605,8 +730,7 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             explicit_path = joinpath(tmp, "my_specific_name.tar.gz")
-            out = write_enumeration_archive(explicit_path, e;
-                                              super_periodic = false)
+            out = write_enumeration_archive(explicit_path, e; super_periodic = false)
             @test out == explicit_path
             @test isfile(explicit_path)
         end
@@ -615,9 +739,8 @@ using Enumlib
     @testset "auto-naming includes timestamp + label" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              label = "MyLabel")
+            out =
+                write_enumeration_archive(tmp, e; super_periodic = false, label = "MyLabel")
             base = basename(out)
             @test startswith(base, "enumlib_MyLabel_")
             @test endswith(base, ".tar.gz")
@@ -637,25 +760,34 @@ using Enumlib
     @testset "keep_directory leaves the assembled directory next to tarball" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
-            out = write_enumeration_archive(joinpath(tmp, "kd_test.tar.gz"), e;
-                                              super_periodic = false,
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                joinpath(tmp, "kd_test.tar.gz"),
+                e;
+                super_periodic = false,
+                keep_directory = true,
+            )
             @test isfile(out)
             kept_dir = joinpath(tmp, "kd_test")
             @test isdir(kept_dir)
             @test "enumeration.toml" in readdir(kept_dir)
-            poscar_files = filter(f -> startswith(f, "POSCAR."), readdir(kept_dir))
+            poscar_files = filter(f -> endswith(f, ".POSCAR"), readdir(kept_dir))
             @test length(poscar_files) == length(e)
         end
     end
 
     @testset "empty enumeration throws" begin
-        e_empty = Enumeration{3, Vector{Int8}}(parent, sites,
-                                                 Enumlib.Supercell{3}[],
-                                                 Enumlib.EnumeratedStructure{3, Vector{Int8}}[])
+        e_empty = Enumeration{3,Vector{Int8}}(
+            parent,
+            sites,
+            Enumlib.Supercell{3}[],
+            Enumlib.EnumeratedStructure{3,Vector{Int8}}[],
+        )
         mktempdir() do tmp
-            @test_throws ArgumentError write_enumeration_archive(tmp, e_empty;
-                                                                   super_periodic = false)
+            @test_throws ArgumentError write_enumeration_archive(
+                tmp,
+                e_empty;
+                super_periodic = false,
+            )
         end
     end
 
@@ -667,10 +799,11 @@ using Enumlib
     # directory of POSCARs. `energies` is a Dict mapping enumlib_id to energy.
     # POSCARs whose ID isn't in the dict get left empty (simulating an in-flight
     # batch where some calculations haven't finished yet).
-    function _fill_energy_slots!(dir::AbstractString, energies::Dict{Int, Float64})
+    function _fill_energy_slots!(dir::AbstractString, energies::Dict{Int,Float64})
         for fname in readdir(dir)
-            startswith(fname, "POSCAR.") || continue
-            m = match(r"POSCAR\.(\d+)", fname)
+            endswith(fname, ".POSCAR") || continue
+            # New filename layout: <padded_id>_<radius>_<hnf>.POSCAR
+            m = match(r"^(\d+)_[\d.eE+-]+_\d+\.POSCAR$", fname)
             m === nothing && continue
             id = parse(Int, m.captures[1])
             haskey(energies, id) || continue
@@ -691,14 +824,17 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"],
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+                keep_directory = true,
+            )
             extracted = replace(out, r"\.tar\.gz$" => "")
             @test isdir(extracted)
 
-            fake_energies = Dict(i => -100.0 + 0.01 * i for i in 1:n)
+            fake_energies = Dict(i => -100.0 + 0.01 * i for i = 1:n)
             _fill_energy_slots!(extracted, fake_energies)
 
             results = read_results(extracted)
@@ -711,11 +847,14 @@ using Enumlib
         n = length(e)
         mktempdir() do tmp
             # Write archive + keep dir, fill energies, repack to a fresh tarball.
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                keep_directory = true,
+            )
             extracted = replace(out, r"\.tar\.gz$" => "")
-            fake = Dict(i => -50.0 - 0.5 * i for i in 1:n)
+            fake = Dict(i => -50.0 - 0.5 * i for i = 1:n)
             _fill_energy_slots!(extracted, fake)
             # Repack
             filled_tar = joinpath(tmp, "filled.tar.gz")
@@ -733,12 +872,15 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                keep_directory = true,
+            )
             extracted = replace(out, r"\.tar\.gz$" => "")
             # Fill in only odd-numbered IDs.
-            partial = Dict{Int,Float64}(i => -i * 1.0 for i in 1:2:n)
+            partial = Dict{Int,Float64}(i => -i * 1.0 for i = 1:2:n)
             _fill_energy_slots!(extracted, partial)
 
             # @info should fire about the unfilled IDs; result Dict has only odd IDs.
@@ -746,21 +888,26 @@ using Enumlib
                 read_results(extracted)
             end
             @test results == partial
-            @test all(haskey(results, i) for i in 1:2:n)
-            @test !any(haskey(results, i) for i in 2:2:n)
+            @test all(haskey(results, i) for i = 1:2:n)
+            @test !any(haskey(results, i) for i = 2:2:n)
         end
     end
 
     @testset "read_results throws on malformed POSCAR header" begin
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                keep_directory = true,
+            )
             extracted = replace(out, r"\.tar\.gz$" => "")
             # Corrupt one POSCAR's line 1.
-            target = joinpath(extracted, first(filter(f -> startswith(f, "POSCAR."),
-                                                        readdir(extracted))))
+            target = joinpath(
+                extracted,
+                first(filter(f -> endswith(f, ".POSCAR"), readdir(extracted))),
+            )
             lines = readlines(target)
             lines[1] = "# this is not a valid Enumlib POSCAR header"
             open(target, "w") do io
@@ -775,12 +922,17 @@ using Enumlib
     @testset "read_results throws on unparseable energy value" begin
         e = enumerate(parent, sites; supercells = VolumeRange(2:2))
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                keep_directory = true,
+            )
             extracted = replace(out, r"\.tar\.gz$" => "")
-            target = joinpath(extracted, first(filter(f -> startswith(f, "POSCAR."),
-                                                        readdir(extracted))))
+            target = joinpath(
+                extracted,
+                first(filter(f -> endswith(f, ".POSCAR"), readdir(extracted))),
+            )
             lines = readlines(target)
             # Replace energy_eV= slot with a non-numeric value the regex picks up
             # but parse(Float64, ...) rejects. The regex matches `\d*\.?\d+...`
@@ -803,7 +955,7 @@ using Enumlib
             # Substitute: confirm the throw path by building a corrupted file
             # where line 1 has the right shape but `energy_eV=` slot points at
             # gibberish. We construct one manually.
-            corrupted_line1 = "# enumlib_id=1 hnf=1 concentration=1:1 super_periodic=false energy_eV=NaNonSense"
+            corrupted_line1 = "# radius=1.2345 enumlib_id=1 hnf=1 super_periodic=false energy_eV=NaNonSense"
             lines[1] = corrupted_line1
             open(target, "w") do io
                 for line in lines
@@ -828,7 +980,7 @@ using Enumlib
     @testset "attach_results pairs IDs to structures" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
-        results = Dict(i => -i * 1.0 for i in 1:n)
+        results = Dict(i => -i * 1.0 for i = 1:n)
         pairs = attach_results(e, results)
         @test length(pairs) == n
         # Each pair is (structure, energy); paired structure should be at the
@@ -850,7 +1002,7 @@ using Enumlib
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         # Provide energies for only odd IDs.
-        partial = Dict(i => -i * 1.0 for i in 1:2:n)
+        partial = Dict(i => -i * 1.0 for i = 1:2:n)
         pairs = @test_logs (:info, r"have no matching result") match_mode = :any begin
             attach_results(e, partial)
         end
@@ -865,31 +1017,38 @@ using Enumlib
     # 2:2 in n=4.
     @testset "Tutorial walkthrough: FCC AgPt n=4 2:2, full Phase 11 pipeline" begin
         # Step 1 — define parent + sites.
-        parent_t = ParentLattice([0.5 0.5 0.0;
-                                   0.5 0.0 0.5;
-                                   0.0 0.5 0.5])
+        parent_t = ParentLattice([
+            0.5 0.5 0.0;
+            0.5 0.0 0.5;
+            0.0 0.5 0.5
+        ])
         sites_t = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
         # Step 2 — count first.
         c = concentration_count([2, 2]; n_total = 4)
-        n_orbits = count_inequivalent(parent_t, sites_t;
-                                       supercells = VolumeRange(4:4),
-                                       concentration = c)
+        n_orbits = count_inequivalent(
+            parent_t,
+            sites_t;
+            supercells = VolumeRange(4:4),
+            concentration = c,
+        )
         @test n_orbits == 5    # chunk-6 reference
 
         # Step 3 — enumerate.
-        enum = enumerate(parent_t, sites_t;
-                          supercells = VolumeRange(4:4),
-                          concentration = c)
+        enum =
+            enumerate(parent_t, sites_t; supercells = VolumeRange(4:4), concentration = c)
         @test length(enum) == 5
 
         mktempdir() do batch_dir
             # Step 4 — write the archive.
-            out = write_enumeration_archive(batch_dir, enum;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"],
-                                              label = "FCC_AgPt_n4_2-2",
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                batch_dir,
+                enum;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+                label = "FCC_AgPt_n4_2-2",
+                keep_directory = true,
+            )
             @test isfile(out)
             @test occursin("FCC_AgPt_n4_2-2", basename(out))
             @test endswith(out, ".tar.gz")
@@ -898,8 +1057,12 @@ using Enumlib
             extracted = replace(out, r"\.tar\.gz$" => "")
             @test isdir(extracted)
             calculator_energies = Dict{Int,Float64}(
-                1 => -45.32, 2 => -45.41, 3 => -45.28,
-                4 => -45.39, 5 => -45.35)
+                1 => -45.32,
+                2 => -45.41,
+                3 => -45.28,
+                4 => -45.39,
+                5 => -45.35,
+            )
             _fill_energy_slots!(extracted, calculator_energies)
 
             # Repack to a "filled" tarball as the calculator would ship back.
@@ -925,18 +1088,25 @@ using Enumlib
     end
 
     @testset "End-to-end pipeline: enumerate → archive → fill → read → attach" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4),
-                                       concentration = concentration_count([2, 2]; n_total = 4))
+        e = enumerate(
+            parent,
+            sites;
+            supercells = VolumeRange(4:4),
+            concentration = concentration_count([2, 2]; n_total = 4),
+        )
         n = length(e)
         @test n == 5   # chunk-6 reference value for FCC binary n=4 50%
         mktempdir() do tmp
-            out = write_enumeration_archive(tmp, e;
-                                              super_periodic = false,
-                                              species_symbols = ["Ag", "Pt"],
-                                              label = "FCC_AgPt_n4_2-2",
-                                              keep_directory = true)
+            out = write_enumeration_archive(
+                tmp,
+                e;
+                super_periodic = false,
+                species_symbols = ["Ag", "Pt"],
+                label = "FCC_AgPt_n4_2-2",
+                keep_directory = true,
+            )
             extracted = replace(out, r"\.tar\.gz$" => "")
-            fake = Dict(i => -50.0 + 0.1 * i for i in 1:n)
+            fake = Dict(i => -50.0 + 0.1 * i for i = 1:n)
             _fill_energy_slots!(extracted, fake)
             # Read back from the directory.
             results = read_results(extracted)
