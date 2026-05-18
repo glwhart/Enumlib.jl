@@ -275,7 +275,7 @@ Captured via Fortran enumlib (`enum.x` built locally, `DYLD_LIBRARY_PATH` pointi
 
 Fortran encoding: `k = 2` (binary X), labels 2 and 3 are >= k → treated as inactive species.
 
-**Results (n = 1..4, full mode, drop super-periodics):**
+**Results (n = 1..7, full mode, drop super-periodics):**
 
 | (volume, hnf_degen) | configs |
 |---|---|
@@ -286,8 +286,16 @@ Fortran encoding: `k = 2` (binary X), labels 2 and 3 are >= k → treated as ina
 | (4, 3) | 1 |
 | (4, 4) | 12 |
 | (4, 5) | 1 |
+| (5, 5) | 26 |
+| (5, 10) | 2 |
+| (6, 2) | 10 |
+| (6, 6) | 60 |
+| (6, 12) | 10 |
+| (7, 7) | 86 |
+| (7, 14) | 14 |
+| (7, 21) | 4 |
 
-Per-volume totals: n=1: 2, n=2: 2, n=3: 6, n=4: 19. **Cumulative: 29.**
+Per-volume totals: n=1: 2, n=2: 2, n=3: 6, n=4: 19, n=5: 28, n=6: 80, n=7: 104. **Cumulative: 241.**
 
 ### 10.2 Full Heusler (X₂YZ, L2₁)
 
@@ -299,7 +307,7 @@ Per-volume totals: n=1: 2, n=2: 2, n=3: 6, n=4: 19. **Cumulative: 29.**
 
 Two X positions share the same allowed_labels — exercises Regime-C more thoroughly than half-Heusler (one X position).
 
-**Results (n = 1..4, full mode, drop super-periodics):**
+**Results (n = 1..5, full mode, drop super-periodics):**
 
 | (volume, hnf_degen) | configs |
 |---|---|
@@ -322,8 +330,12 @@ Two X positions share the same allowed_labels — exercises Regime-C more thorou
 | (4, 16) | 30 |
 | (4, 24) | 6 |
 | (4, 32) | 4 |
+| (5, 5) | 26 |
+| (5, 10) | 165 |
+| (5, 20) | 136 |
+| (5, 40) | 15 |
 
-Per-volume totals: n=1: 3, n=2: 7, n=3: 30, n=4: 156. **Cumulative: 196.**
+Per-volume totals: n=1: 3, n=2: 7, n=3: 30, n=4: 156, n=5: 342. **Cumulative: 538.**
 
 ### 10.3 Perovskite (ABO₃, cubic Pm-3m)
 
@@ -336,17 +348,26 @@ Per-volume totals: n=1: 3, n=2: 7, n=3: 30, n=4: 156. **Cumulative: 196.**
 
 `k = 4` (active species 0..3 spread across two substitutable sublattices); label 4 is inactive.
 
-**Results (n = 1..2):**
+**Results (n = 1..4, full mode, drop super-periodics):**
 
 | (volume, hnf_degen) | configs |
 |---|---|
 | (1, 1) | 4 |
 | (2, 2) | 12 |
 | (2, 4) | 3 |
+| (3, 3) | 36 |
+| (3, 6) | 12 |
+| (4, 1) | 33 |
+| (4, 3) | 10 |
+| (4, 4) | 124 |
+| (4, 5) | 3 |
+| (4, 7) | 1 |
+| (4, 8) | 100 |
+| (4, 11) | 1 |
+| (4, 16) | 24 |
+| (4, 24) | 5 |
 
-Per-volume totals: n=1: 4, n=2: 15. **Cumulative: 19.**
-
-(At n=3 perovskite expands rapidly — captured later when the implementation is in place to validate.)
+Per-volume totals: n=1: 4, n=2: 15, n=3: 48, n=4: 301. **Cumulative: 368.**
 
 ### 10.4 What the Julia test harness must reproduce
 
