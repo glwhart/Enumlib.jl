@@ -372,7 +372,8 @@ Write every structure in `enumeration` to a single `.tar.gz` deliverable at `pat
 
 The tarball contains:
 - `NNNNN_<radius>_<hnf>.POSCAR` — one per structure. The leading `NNNNN` is
-  zero-padded to fit `length(enumeration.structures)` (width = `max(2, ndigits(N))`)
+  zero-padded to fit `length(enumeration.structures)` (width = `max(5, ndigits(N))`,
+  so id-sorted directory listings stay numerically correct up to ~1M structures)
   so directory listings sort numerically. `<radius>` is the supercell's
   average corner-to-center distance in cartesian units (5 sig figs), and
   `<hnf>` is the HNF index (no padding). Each POSCAR's header line 1
@@ -472,7 +473,12 @@ function _build_enumeration_directory(
     species_symbols::Vector{String},
 ) where {D,L}
     n_structures = length(enumeration.structures)
-    width = max(2, ndigits(n_structures))
+    # Pad the leading id to at least 5 digits so `ls`/`sort` over the
+    # batch is numerically correct up to enumerations of ~1M structures.
+    # (At width=2 a run of 100+ structures gets mis-ordered: "100_..." sorts
+    # before "11_..." lexicographically.) Width scales naturally if the
+    # enumeration is larger than 10^5 structures.
+    width = max(5, ndigits(n_structures))
 
     # Resolve k from species_symbols length if supplied; otherwise infer from
     # the maximum color seen across all structures (handles the rare case

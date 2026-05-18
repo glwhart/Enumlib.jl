@@ -646,12 +646,13 @@ using Enumlib
                 # New filename layout: <padded_id>_<radius>_<hnf>.POSCAR
                 poscar_files = filter(f -> endswith(f, ".POSCAR"), files)
                 @test length(poscar_files) == n
-                # Filenames start with the zero-padded id (width=2 since n < 100)
-                # and end with `.POSCAR`. The middle floating-point radius and
-                # hnf index vary per structure, so use a regex to match the shape.
-                pat = Regex("^01_[\\d.eE+-]+_\\d+\\.POSCAR\$")
+                # Filenames start with the zero-padded id (width = max(5,
+                # ndigits(n)), so 5 here since n < 100000) and end with
+                # `.POSCAR`. The middle floating-point radius and hnf index
+                # vary per structure, so use a regex to match the shape.
+                pat = Regex("^00001_[\\d.eE+-]+_\\d+\\.POSCAR\$")
                 @test any(occursin(pat, f) for f in poscar_files)
-                pat_last = Regex("^$(lpad(n, 2, '0'))_[\\d.eE+-]+_\\d+\\.POSCAR\$")
+                pat_last = Regex("^$(lpad(n, 5, '0'))_[\\d.eE+-]+_\\d+\\.POSCAR\$")
                 @test any(occursin(pat_last, f) for f in poscar_files)
             end
         end
@@ -693,8 +694,9 @@ using Enumlib
                 @test haskey(first_struct, "poscar_filename")
                 @test haskey(first_struct, "hnf_matrix_columns")
                 # Filename has the new <padded_id>_<radius>_<hnf>.POSCAR shape.
+                # Leading id is zero-padded to width = max(5, ndigits(n)).
                 @test occursin(
-                    r"^01_[\d.eE+-]+_\d+\.POSCAR$",
+                    r"^00001_[\d.eE+-]+_\d+\.POSCAR$",
                     first_struct["poscar_filename"],
                 )
             end
