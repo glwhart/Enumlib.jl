@@ -264,42 +264,28 @@ Estimated wall-clock: one focused session for 6.5b, one or two for 6.5a (Fortran
 
 ## 10. Fortran reference corpus (locked 2026-05-18)
 
-Captured via Fortran enumlib (`enum.x` built locally, `DYLD_LIBRARY_PATH` pointing at gcc 14 libgfortran). Each case below has its `struct_enum.in` checked into `/tmp/enumlib_workspace/`. The `struct_enum.out` row format provides per-structure `(supercell_volume, hnf_degen, lab_degen)` tuples. Below I summarize the **(volume, hnf_degeneracy) → configuration count** distribution — this is the load-bearing signature for cross-validation.
+Captured via Fortran enumlib (`enum.x` built locally, `DYLD_LIBRARY_PATH` pointing at gcc 14 libgfortran). Each case's `struct_enum.in` lives at `/tmp/enumlib_workspace/struct_enum.in.<case>`; outputs preserved as `/tmp/enumlib_workspace/struct_enum.out.<case>`.
+
+Full per-structure signatures (case, volume, hnf_degeneracy, orbit_size, count) are checked in at **`test/data/chunk6.5_fortran_corpus.csv`** — 168 lines covering 160+ distinct (volume, hnf_degen, orbit_size) tuples across the five cases. The Julia test harness loads that file and asserts equality of the multiset signature.
+
+**[Revision 2026-05-18, column-index fix]** The first §10 draft used Fortran's `struct_enum.out` column 4 as `hnf_degen`, but the actual Fortran format-string output is `Tcnt, Hcnt+iHNF, hnf_degen, lab_degen, lab_degen*hnf_degen, Scnt, n` — so column 3 is `hnf_degen` and column 4 is `lab_degen` (orbit_size). The CSV corpus uses the corrected mapping; the per-volume totals below are unchanged (those come from the run-summary table, not the per-row data).
+
+Per-case summary (per-volume totals + cumulative):
 
 ### 10.1 Half-Heusler (XYZ, C1b)
 
-**Setup.** FCC primitive parent. 3-atom dset:
+FCC primitive parent. 3-atom dset:
 - d₁ = (0, 0, 0), labels {0, 1} (binary X-substitution)
 - d₂ = (1/4, 1/4, 1/4), label {2} (inactive Y)
 - d₃ = (3/4, 3/4, 3/4), label {3} (inactive Z)
 
 Fortran encoding: `k = 2` (binary X), labels 2 and 3 are >= k → treated as inactive species.
 
-**Results (n = 1..7, full mode, drop super-periodics):**
-
-| (volume, hnf_degen) | configs |
-|---|---|
-| (1, 1) | 2 |
-| (2, 2) | 2 |
-| (3, 3) | 6 |
-| (4, 1) | 5 |
-| (4, 3) | 1 |
-| (4, 4) | 12 |
-| (4, 5) | 1 |
-| (5, 5) | 26 |
-| (5, 10) | 2 |
-| (6, 2) | 10 |
-| (6, 6) | 60 |
-| (6, 12) | 10 |
-| (7, 7) | 86 |
-| (7, 14) | 14 |
-| (7, 21) | 4 |
-
-Per-volume totals: n=1: 2, n=2: 2, n=3: 6, n=4: 19, n=5: 28, n=6: 80, n=7: 104. **Cumulative: 241.**
+Per-volume totals (n=1..7, full mode, drop super-periodics): **2, 2, 6, 19, 28, 80, 104. Cumulative: 241.**
 
 ### 10.2 Full Heusler (X₂YZ, L2₁)
 
-**Setup.** FCC primitive parent. 4-atom dset:
+FCC primitive parent. 4-atom dset:
 - d₁ = (0, 0, 0), labels {0, 1} (binary X-substitution, position 1)
 - d₂ = (1/2, 1/2, 1/2), labels {0, 1} (binary X-substitution, position 2 — *same allowed_labels*)
 - d₃ = (1/4, 1/4, 1/4), label {2} (inactive Y)
@@ -307,39 +293,11 @@ Per-volume totals: n=1: 2, n=2: 2, n=3: 6, n=4: 19, n=5: 28, n=6: 80, n=7: 104. 
 
 Two X positions share the same allowed_labels — exercises Regime-C more thoroughly than half-Heusler (one X position).
 
-**Results (n = 1..5, full mode, drop super-periodics):**
-
-| (volume, hnf_degen) | configs |
-|---|---|
-| (1, 1) | 2 |
-| (1, 2) | 1 |
-| (2, 1) | 2 |
-| (2, 2) | 2 |
-| (2, 4) | 3 |
-| (3, 3) | 6 |
-| (3, 6) | 21 |
-| (3, 12) | 3 |
-| (4, 1) | 7 |
-| (4, 3) | 12 |
-| (4, 4) | 9 |
-| (4, 5) | 2 |
-| (4, 7) | 3 |
-| (4, 8) | 81 |
-| (4, 11) | 1 |
-| (4, 12) | 1 |
-| (4, 16) | 30 |
-| (4, 24) | 6 |
-| (4, 32) | 4 |
-| (5, 5) | 26 |
-| (5, 10) | 165 |
-| (5, 20) | 136 |
-| (5, 40) | 15 |
-
-Per-volume totals: n=1: 3, n=2: 7, n=3: 30, n=4: 156, n=5: 342. **Cumulative: 538.**
+Per-volume totals (n=1..5, full mode, drop super-periodics): **3, 7, 30, 156, 342. Cumulative: 538.**
 
 ### 10.3 Perovskite (ABO₃, cubic Pm-3m)
 
-**Setup.** Simple cubic parent. 5-atom dset:
+Simple cubic parent. 5-atom dset:
 - d₁ = (0, 0, 0), labels {0, 1} (binary A-substitution, e.g., Sr↔Ba)
 - d₂ = (1/2, 1/2, 1/2), labels {2, 3} (binary B-substitution, e.g., Ti↔Zr)
 - d₃ = (1/2, 1/2, 0), label {4} (inactive O)
@@ -348,32 +306,37 @@ Per-volume totals: n=1: 3, n=2: 7, n=3: 30, n=4: 156, n=5: 342. **Cumulative: 53
 
 `k = 4` (active species 0..3 spread across two substitutable sublattices); label 4 is inactive.
 
-**Results (n = 1..4, full mode, drop super-periodics):**
+Per-volume totals (n=1..4, full mode, drop super-periodics): **4, 15, 48, 301. Cumulative: 368.**
 
-| (volume, hnf_degen) | configs |
-|---|---|
-| (1, 1) | 4 |
-| (2, 2) | 12 |
-| (2, 4) | 3 |
-| (3, 3) | 36 |
-| (3, 6) | 12 |
-| (4, 1) | 33 |
-| (4, 3) | 10 |
-| (4, 4) | 124 |
-| (4, 5) | 3 |
-| (4, 7) | 1 |
-| (4, 8) | 100 |
-| (4, 11) | 1 |
-| (4, 16) | 24 |
-| (4, 24) | 5 |
+### 10.4 Wurtzite (binary X-substitution, B4-derived)
 
-Per-volume totals: n=1: 4, n=2: 15, n=3: 48, n=4: 301. **Cumulative: 368.**
+Hexagonal (P6₃mc) primitive parent (a, a, c with c/a = √(8/3)). 4-atom dset:
+- d₁ = (0, 0, 0), labels {0, 1} (binary cation, e.g., Zn↔Cd)
+- d₂ = (1/3, 2/3, 1/2), labels {0, 1} (binary cation — *same allowed_labels*, related to d₁ by the 6₃ screw)
+- d₃ = (0, 0, 3/8), label {2} (inactive anion, e.g., S)
+- d₄ = (1/3, 2/3, 7/8), label {2} (inactive anion — same as d₃)
 
-### 10.4 What the Julia test harness must reproduce
+Topology: similar to full Heusler (two equivalent X positions with same allowed_labels) but on a **non-cubic, non-symmorphic** parent. The 6₃ screw axis relating d₁ and d₂ is genuinely different from FCC's lattice-translation relating full-Heusler's two X positions — exercises a different path through the R50.2a dset-permutation precompute. Notably, the parent symmetry is so reduced (P6₃mc, only 12 ops, no inversion) that *every* HNF is its own symmetry class — all per-row `hnf_degeneracy = 1` (visible in the corpus CSV).
+
+Per-volume totals (n=1..3, full mode, drop super-periodics): **4, 42, 260. Cumulative: 306.**
+
+### 10.5 Zinc-blende (both-sublattice binary substitution)
+
+FCC primitive parent. 2-atom dset:
+- d₁ = (0, 0, 0), labels {0, 1} (binary cation, e.g., Zn↔Cd)
+- d₂ = (1/4, 1/4, 1/4), labels {2, 3} (binary anion, e.g., S↔Se)
+
+Topology: minimal "every sublattice active" Regime-C case — *no fixed sublattices anywhere*. Differs from perovskite (3 fixed O sublattices), half-Heusler (2 fixed sublattices), and full Heusler (2 fixed sublattices). Catches bugs where the algorithm accidentally relies on having at least one inactive position. `k = 4` with each sublattice using a disjoint pair of allowed labels.
+
+Per-volume totals (n=1..4, full mode, drop super-periodics): **4, 11, 52, 290. Cumulative: 357.**
+
+### 10.6 What the Julia test harness must reproduce
 
 For each case, the Julia tests should assert:
 
-1. **Cumulative total** matches the Fortran value.
+1. **Cumulative total** matches the Fortran value (the per-case bold numbers above).
 2. **Per-volume `by_volume`** breakdown from `count_inequivalent(...; breakdown = true)` matches.
-3. **(volume, hnf_degeneracy) signature** — the multiset of `(volume(sc), sc.hnf_degeneracy, configs_on_sc)` triples across `e.supercells` matches the Fortran tables above. This is the deep cross-check; it catches HNF-class-size bugs, per-supercell-stabilizer bugs, and accidental over/under-counting that summed totals would hide.
+3. **Full (volume, hnf_degeneracy, orbit_size) signature multiset** matches what's in `test/data/chunk6.5_fortran_corpus.csv`. For each `EnumeratedStructure` in the Julia output, compute `(volume(e.supercells[s.supercell_id]), e.supercells[s.supercell_id].hnf_degeneracy, s.orbit_size)`, then assert the multiset of these triples (counted with multiplicity) equals what the CSV says. This is the deep cross-check; it catches HNF-class-size bugs, per-supercell-stabilizer bugs, label-rotation bugs, and orbit-size bugs that summed totals would hide.
 4. **Cross-algorithm equality** (once both 6.5a and 6.5b are in): `Set(to_labeling.(e_a)) == Set(to_labeling.(e_b))`.
+
+The five cases together span 160+ distinct `(volume, hnf_degen, orbit_size)` tuples — a rich enough signature surface that even subtle ordering or canonicalization bugs should fail at least one tuple.
