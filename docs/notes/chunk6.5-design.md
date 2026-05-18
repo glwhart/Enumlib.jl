@@ -250,12 +250,109 @@ Estimated wall-clock: one focused session for 6.5b, one or two for 6.5a (Fortran
 
 **[Revision 2026-05-18]** Before any code lands:
 
-1. Build three `struct_enum.in` files for the headline cases (half-Heusler, full Heusler, perovskite) at supercell volumes 1..4 (or 1..6 where tractable).
+1. Build three `struct_enum.in` files for the headline cases (half-Heusler, full Heusler, perovskite) at supercell volumes 1..4 (or 1..6 where tractable). **Done — at `/tmp/enumlib_workspace/struct_enum.in.{halfHeusler,fullHeusler,perovskite}` on the dev machine.**
 2. Run Fortran `enum.x` on each, capture:
    - Per-volume total counts.
    - Per-HNF breakdowns (the `struct_enum.out` row-per-canonical-HNF format).
    - The `lab_degen × hnf_degen` columns for each row (so cross-validating the degeneracy-tracking R33 + Supercell.hnf_degeneracy plumbing too).
-3. Lock the numbers in this design doc as a §10 "Fortran reference corpus" section.
+   
+   **Done — outputs preserved at `/tmp/enumlib_workspace/struct_enum.out.{halfHeusler,fullHeusler,perovskite}`.**
+3. Lock the numbers in this design doc — see §10 below.
 4. *Then* implement 6.5b (extended `:recursive_stabilizer`), cross-checking against the locked numbers.
 5. Then 6.5a (`:multinomial_restricted`), cross-checking against both the locked numbers and 6.5b's output (set-equality).
 6. Add bench Section 5.
+
+## 10. Fortran reference corpus (locked 2026-05-18)
+
+Captured via Fortran enumlib (`enum.x` built locally, `DYLD_LIBRARY_PATH` pointing at gcc 14 libgfortran). Each case below has its `struct_enum.in` checked into `/tmp/enumlib_workspace/`. The `struct_enum.out` row format provides per-structure `(supercell_volume, hnf_degen, lab_degen)` tuples. Below I summarize the **(volume, hnf_degeneracy) → configuration count** distribution — this is the load-bearing signature for cross-validation.
+
+### 10.1 Half-Heusler (XYZ, C1b)
+
+**Setup.** FCC primitive parent. 3-atom dset:
+- d₁ = (0, 0, 0), labels {0, 1} (binary X-substitution)
+- d₂ = (1/4, 1/4, 1/4), label {2} (inactive Y)
+- d₃ = (3/4, 3/4, 3/4), label {3} (inactive Z)
+
+Fortran encoding: `k = 2` (binary X), labels 2 and 3 are >= k → treated as inactive species.
+
+**Results (n = 1..4, full mode, drop super-periodics):**
+
+| (volume, hnf_degen) | configs |
+|---|---|
+| (1, 1) | 2 |
+| (2, 2) | 2 |
+| (3, 3) | 6 |
+| (4, 1) | 5 |
+| (4, 3) | 1 |
+| (4, 4) | 12 |
+| (4, 5) | 1 |
+
+Per-volume totals: n=1: 2, n=2: 2, n=3: 6, n=4: 19. **Cumulative: 29.**
+
+### 10.2 Full Heusler (X₂YZ, L2₁)
+
+**Setup.** FCC primitive parent. 4-atom dset:
+- d₁ = (0, 0, 0), labels {0, 1} (binary X-substitution, position 1)
+- d₂ = (1/2, 1/2, 1/2), labels {0, 1} (binary X-substitution, position 2 — *same allowed_labels*)
+- d₃ = (1/4, 1/4, 1/4), label {2} (inactive Y)
+- d₄ = (3/4, 3/4, 3/4), label {3} (inactive Z)
+
+Two X positions share the same allowed_labels — exercises Regime-C more thoroughly than half-Heusler (one X position).
+
+**Results (n = 1..4, full mode, drop super-periodics):**
+
+| (volume, hnf_degen) | configs |
+|---|---|
+| (1, 1) | 2 |
+| (1, 2) | 1 |
+| (2, 1) | 2 |
+| (2, 2) | 2 |
+| (2, 4) | 3 |
+| (3, 3) | 6 |
+| (3, 6) | 21 |
+| (3, 12) | 3 |
+| (4, 1) | 7 |
+| (4, 3) | 12 |
+| (4, 4) | 9 |
+| (4, 5) | 2 |
+| (4, 7) | 3 |
+| (4, 8) | 81 |
+| (4, 11) | 1 |
+| (4, 12) | 1 |
+| (4, 16) | 30 |
+| (4, 24) | 6 |
+| (4, 32) | 4 |
+
+Per-volume totals: n=1: 3, n=2: 7, n=3: 30, n=4: 156. **Cumulative: 196.**
+
+### 10.3 Perovskite (ABO₃, cubic Pm-3m)
+
+**Setup.** Simple cubic parent. 5-atom dset:
+- d₁ = (0, 0, 0), labels {0, 1} (binary A-substitution, e.g., Sr↔Ba)
+- d₂ = (1/2, 1/2, 1/2), labels {2, 3} (binary B-substitution, e.g., Ti↔Zr)
+- d₃ = (1/2, 1/2, 0), label {4} (inactive O)
+- d₄ = (1/2, 0, 1/2), label {4} (inactive O)
+- d₅ = (0, 1/2, 1/2), label {4} (inactive O)
+
+`k = 4` (active species 0..3 spread across two substitutable sublattices); label 4 is inactive.
+
+**Results (n = 1..2):**
+
+| (volume, hnf_degen) | configs |
+|---|---|
+| (1, 1) | 4 |
+| (2, 2) | 12 |
+| (2, 4) | 3 |
+
+Per-volume totals: n=1: 4, n=2: 15. **Cumulative: 19.**
+
+(At n=3 perovskite expands rapidly — captured later when the implementation is in place to validate.)
+
+### 10.4 What the Julia test harness must reproduce
+
+For each case, the Julia tests should assert:
+
+1. **Cumulative total** matches the Fortran value.
+2. **Per-volume `by_volume`** breakdown from `count_inequivalent(...; breakdown = true)` matches.
+3. **(volume, hnf_degeneracy) signature** — the multiset of `(volume(sc), sc.hnf_degeneracy, configs_on_sc)` triples across `e.supercells` matches the Fortran tables above. This is the deep cross-check; it catches HNF-class-size bugs, per-supercell-stabilizer bugs, and accidental over/under-counting that summed totals would hide.
+4. **Cross-algorithm equality** (once both 6.5a and 6.5b are in): `Set(to_labeling.(e_a)) == Set(to_labeling.(e_b))`.
