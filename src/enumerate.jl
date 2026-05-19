@@ -111,8 +111,15 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
     if algorithm == :auto
         if concentration === nothing
             algorithm = :exhaustive
+        elseif ndset(parent) >= 2 && !_sites_are_uniform(sites)
+            # Regime C — only :recursive_stabilizer handles per-site
+            # restrictions today (chunk 6.5b). When :multinomial_restricted
+            # lands (6.5a), the :auto dispatch can pick between them based
+            # on bitmap-vs-tree fit, mirroring the Regime-B logic below.
+            algorithm = :recursive_stabilizer
         else
-            # Pick :multinomial vs :recursive_stabilizer by predicted bitmap.
+            # Regime B (or single-lattice) with concentration. Pick
+            # :multinomial vs :recursive_stabilizer by predicted bitmap.
             # Tree streams (no bitmap) so it's the right choice when the
             # multinomial bitmap would exceed memory_budget × 0.8.
             algorithm = _multinomial_bitmap_fits(parent, supercells, concentration,
@@ -136,6 +143,17 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
             "unknown algorithm `:$algorithm`. Supported: :exhaustive (no " *
             "concentration), :multinomial / :recursive_stabilizer (with concentration), " *
             ":auto (default)."))
+    end
+
+    # Regime-C dispatch: only :recursive_stabilizer supports per-site
+    # restrictions (chunk 6.5b). :multinomial would need the chunk-6.5a
+    # restricted variant — reject explicitly so the user doesn't get
+    # incorrect counts from the unrestricted bitmap.
+    if algorithm == :multinomial && ndset(parent) >= 2 && !_sites_are_uniform(sites)
+        throw(ArgumentError(
+            "algorithm = :multinomial doesn't support per-site `allowed_labels` " *
+            "(Regime C). Use `algorithm = :recursive_stabilizer` (chunk 6.5b) or " *
+            "wait for `:multinomial_restricted` (chunk 6.5a)."))
     end
 
     # Validation: concentration-requiring algorithms.
@@ -237,8 +255,11 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
                                 include_superperiodic::Bool = false) where D
     return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
         partition_threshold, on_partition_overflow,
-        (perm_group, mults) -> getUniqueColorings_multinomial(perm_group, mults;
-                                                              include_superperiodic))
+        # site_mask is ignored: :multinomial doesn't yet support per-site
+        # restrictions (queued for chunk 6.5a). The Regime-C dispatch in
+        # `enumerate(...)` won't route here when site_mask is non-trivial.
+        (perm_group, mults, _site_mask, n_cells) -> getUniqueColorings_multinomial(
+            perm_group, mults; include_superperiodic, n_translations = n_cells))
 end
 
 # ------------------------------------------------------------------------------
@@ -254,14 +275,65 @@ function _enumerate_recursive_stabilizer(parent::ParentLattice{D}, sites::Sites{
                                           include_superperiodic::Bool = false) where D
     return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
         partition_threshold, on_partition_overflow,
-        (perm_group, mults) -> getUniqueColorings_recursive_stabilizer(perm_group, mults;
-                                                                       include_superperiodic))
+        (perm_group, mults, site_mask, n_cells) -> getUniqueColorings_recursive_stabilizer(
+            perm_group, mults; include_superperiodic, site_mask, n_translations = n_cells))
+end
+
+# ------------------------------------------------------------------------------
+# Site-mask helpers (chunk 6.5 — Regime C support).
+#
+# `_sites_are_uniform`: true iff every dset position carries the same
+# `allowed_labels`. Single-site Regime A and uniform-multilattice Regime B are
+# both "uniform" — no site_mask needed in those cases.
+#
+# `_build_site_mask`: construct the `BitMatrix(n_total, k)` mask for the given
+# `Sites` and supercell. Position layout matches the dset-blocks convention
+# used everywhere else: site index `(α-1)*n_cells + cell_idx` belongs to dset
+# block `α`. `mask[i, c+1] = true` iff species `c` is allowed at dset block α.
+# ------------------------------------------------------------------------------
+
+_sites_are_uniform(sites::Sites) =
+    all(s.allowed_labels == sites.list[1].allowed_labels for s in sites.list)
+
+function _build_site_mask(sites::Sites, n_cells::Int, k::Int)
+    n_D = length(sites.list)
+    mask = falses(n_D * n_cells, k)
+    for α in 1:n_D
+        allowed = sites.list[α].allowed_labels
+        offset = (α - 1) * n_cells
+        for c in allowed
+            (0 <= c < k) || continue          # outside the active-species range
+            for cell in 1:n_cells
+                mask[offset + cell, c + 1] = true
+            end
+        end
+    end
+    return mask
+end
+
+# Filter a supercell perm group to those permutations that preserve the
+# site_mask — i.e., σ ∈ filtered iff `mask[σ[i], :] == mask[i, :]` for all i.
+# The parent space group can include ops that swap dset positions with different
+# allowed_labels (e.g., perovskite's 48 ops include swaps that map an A-site
+# position to a B-site position when the dset positions are related by parent
+# symmetry); those ops aren't symmetries of the labeled configuration in
+# Regime C, so they must be dropped from the effective enumeration group.
+#
+# For Regime B (uniform allowed_labels per dset block), every perm preserves
+# the (constant) mask — the filter is a no-op. For Regime A (single dset
+# block), trivially no-op.
+function _filter_perm_group_by_mask(perm_group::AbstractVector,
+                                    site_mask::BitMatrix)
+    return [σ for σ in perm_group
+            if all(view(site_mask, σ[i], :) == view(site_mask, i, :)
+                   for i in eachindex(σ))]
 end
 
 # ------------------------------------------------------------------------------
 # Shared HNF + per-concentration sweep used by :multinomial and
-# :recursive_stabilizer. Caller passes a `coloring_fn(perm_group, mults)` that
-# returns Vector{Vector{Int8}} for a single (supercell, multiplicity vector).
+# :recursive_stabilizer. Caller passes a `coloring_fn(perm_group, mults, site_mask)`
+# that returns Vector{Vector{Int8}} for a single (supercell, multiplicity vector).
+# `site_mask` is `BitMatrix(n_total, k)` for Regime C, or `nothing` otherwise.
 # ------------------------------------------------------------------------------
 
 function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
@@ -275,12 +347,29 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
     supercells_list = Supercell{D}[]
     n_D = ndset(parent)
 
+    # Site mask for Regime C — built once per (sites, n_total) since the
+    # dset-block site layout determines which colors are allowed at which
+    # positions. For uniform Regime A / Regime B sites, this returns nothing
+    # (every position permits every color); the algorithms treat nothing as
+    # "no restriction." See chunk6.5-design.md §3.2.
+    site_mask_uniform = _sites_are_uniform(sites)
+
     for (hnf, hnf_deg) in hnfs_with_degens
         sc = Supercell(hnf, parent; hnf_degeneracy = hnf_deg)
         push!(supercells_list, sc)
         sc_id = length(supercells_list)
         n = volume(hnf)
         n_total = n_D * n   # total supercell sites = n_D · n
+        site_mask = site_mask_uniform ? nothing : _build_site_mask(sites, n, k)
+
+        # Regime C: drop perms that swap dset positions with different
+        # allowed_labels. The parent space group can map e.g. an A-site
+        # position to a B-site position when those positions are related by
+        # parent symmetry — fine for Regime B (uniform labels) but not a
+        # symmetry of the labeled configuration in Regime C. Same filtered
+        # group must be used downstream in `_orbit_size`.
+        effective_perm_group = site_mask === nothing ? sc.permutation_group :
+                               _filter_perm_group_by_mask(sc.permutation_group, site_mask)
 
         # Resolve the concentration(s) to enumerate at this supercell volume.
         # Multiplicities live on n_D · n sites; single-lattice falls out as the
@@ -311,9 +400,9 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
 
         for c in concs
             mults = multiplicities(c, n_total)
-            colorings = coloring_fn(sc.permutation_group, mults)
+            colorings = coloring_fn(effective_perm_group, mults, site_mask, n)
             for coloring in colorings
-                osz = _orbit_size(sc.permutation_group, coloring)
+                osz = _orbit_size(effective_perm_group, coloring)
                 push!(structures, EnumeratedStructure{D, Vector{Int8}}(
                     sc_id, coloring, osz))
             end
@@ -365,34 +454,51 @@ function _validate_enumerate_inputs(parent::ParentLattice{D}, sites::Sites{D},
                 "(R51 convenience constructor)."))
         end
         # Regime B vs C: check whether all sites carry the same allowed_labels.
-        labels_uniform = all(s.allowed_labels == sites.list[1].allowed_labels
-                             for s in sites.list)
-        if labels_uniform
-            # Regime B: uniform multilattice. R50.2b (2026-05-15) flipped this from
-            # "throw R50.2-pending" to "fall through." The post-cascade validation
-            # below uses sites.list[1] as the representative — sound for regime B
-            # because all sites carry identical allowed_labels. The multilattice
-            # permutation group is built correctly by the parent-aware getPermG
-            # method (R50.2b) consuming the R50.2a-precomputed (π, v_i).
-        else
-            throw(ArgumentError(
-                "Multilattice with per-site `allowed_labels` (heterogeneous sublattices) " *
-                "requires the multinomial-restricted algorithm — chunk 6.5. " *
-                "For uniform sublattices (same allowed_labels at every dset position), " *
-                "use a `Sites(parent, [...])` with one shared label set."))
-        end
+        # Both are admitted post-R50.2b (Regime B) and chunk 6.5b (Regime C).
+        # The downstream validation differs: for Regime B the species count
+        # comes from sites.list[1]; for Regime C it's the union across all
+        # dset positions. Sub-cascade below.
     end
 
-    site = sites.list[1]
-    is_active(site) || throw(ArgumentError(
-        "the only site is inactive (`length(allowed_labels) == 1`); nothing to enumerate."))
+    if !(ndset(parent) >= 2 && !_sites_are_uniform(sites))
+        # Regime A or Regime B — uniform sites; sites.list[1] is representative.
+        site = sites.list[1]
+        is_active(site) || throw(ArgumentError(
+            "the only site is inactive (`length(allowed_labels) == 1`); nothing to enumerate."))
 
-    allowed = sort(collect(site.allowed_labels))
-    k = length(allowed)
-    if allowed != collect(0:k-1)
-        throw(ArgumentError(
-            "zero-indexed dense allowed_labels required (`{0, 1, ..., k-1}`). " *
-            "Got `$(site.allowed_labels)`. Sparse / non-zero-indexed labels — chunk 6.5."))
+        allowed = sort(collect(site.allowed_labels))
+        k = length(allowed)
+        if allowed != collect(0:k-1)
+            throw(ArgumentError(
+                "zero-indexed dense allowed_labels required (`{0, 1, ..., k-1}`). " *
+                "Got `$(site.allowed_labels)`. Sparse / non-zero-indexed labels — chunk 6.5."))
+        end
+    else
+        # Regime C — heterogeneous sublattices (chunk 6.5b). Species count is
+        # the union of all dset positions' allowed_labels. Reject if any
+        # position uses labels outside `0..k-1` (dense, zero-indexed) or if no
+        # position is active.
+        union_labels = reduce(union, (s.allowed_labels for s in sites.list))
+        any(is_active, sites.list) || throw(ArgumentError(
+            "every dset position is inactive; nothing to enumerate."))
+        allowed = sort(collect(union_labels))
+        k = length(allowed)
+        if allowed != collect(0:k-1)
+            throw(ArgumentError(
+                "Regime C requires the union of per-site allowed_labels to be " *
+                "dense zero-indexed (`{0, 1, ..., k-1}`). Got `$union_labels`. " *
+                "Renumber the species so every label in 0..k-1 appears on at " *
+                "least one dset position."))
+        end
+        # Regime C requires a concentration to be supplied (the algorithms that
+        # handle per-site restrictions all need fixed multiplicities).
+        if concentration === nothing
+            throw(ArgumentError(
+                "Multilattice with per-site `allowed_labels` (Regime C — " *
+                "heterogeneous sublattices) requires a `concentration` kwarg. " *
+                "Unrestricted enumeration on heterogeneous sublattices isn't " *
+                "supported; pass a `Concentration` or `ConcentrationRange`."))
+        end
     end
 
     if concentration isa Concentration

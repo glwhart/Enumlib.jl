@@ -340,3 +340,46 @@ For each case, the Julia tests should assert:
 4. **Cross-algorithm equality** (once both 6.5a and 6.5b are in): `Set(to_labeling.(e_a)) == Set(to_labeling.(e_b))`.
 
 The five cases together span 160+ distinct `(volume, hnf_degen, orbit_size)` tuples — a rich enough signature surface that even subtle ordering or canonicalization bugs should fail at least one tuple.
+
+## 11. Implementation status (2026-05-19)
+
+**Chunk 6.5b (extended `:recursive_stabilizer`) — committed as `_descend!` extension + `_filter_perm_group_by_mask` + site-aware `_location_vector`. Cross-validation against the §10 corpus:**
+
+| Case          | n range | Julia vs Fortran  |
+|---------------|---------|-------------------|
+| perovskite    | 1..4    | **PASS** (all)    |
+| zincblende    | 1..4    | **PASS** (all)    |
+| halfHeusler*  | 1..7    | **PASS** (all)    |
+| fullHeusler*  | 1..5    | **PASS** (all)    |
+| halfHeusler   | 1..7    | PASS 1..5, FAIL 6..7 (Julia=85,112 vs Fortran=80,104) |
+| fullHeusler   | 1..5    | PASS n=1, FAIL n=2..5 |
+| wurtzite      | 1..3    | FAIL (separate space-group bug, see below) |
+
+`*` denotes "inactive sublattices relabeled to share the same label" — for half-Heusler, `Y={2}` and `Z={2}` (both inactive, originally `{2}` and `{3}` per design); for full Heusler, similarly.
+
+### 11.1 The two pre-fix bugs
+
+1. **Super-periodicity check assumed `pG[1..n_total]` were translations.** For multilattice (`n_total = n_D · n_cells`), the translation subgroup has only `n_cells` elements. Iterating past `n_cells` walked into the rotation × translation block and mis-flagged rotation-fixed labelings as super-periodic, *dropping* legitimate canonical labelings. Fixed by adding `n_translations` kwarg to both `getUniqueColorings_multinomial` and `getUniqueColorings_recursive_stabilizer` and wiring through `n_cells = volume(hnf)` per-supercell.
+
+2. **`_location_vector` ranked positions in the unfiltered set; the branching index ranked in the site-mask-filtered set.** The two encodings disagreed at depth `d` whenever inactive sublattices were interleaved with active ones — making the canonicality check compare incommensurate ranks and let equivalent labelings through as canonical duplicates. Fixed by threading `site_mask` into `_location_vector` so its slot enumeration matches `_descend!`'s branching.
+
+### 11.2 The remaining "distinct-inactive-labels" discrepancy
+
+`halfHeusler` and `fullHeusler` per the §10 design use **distinct** labels on the inactive Y and Z sublattices (`Y={2}`, `Z={3}`). Fortran encodes these as `k=2` (binary X only), with labels 2 and 3 treated as inactive species *markers* — Fortran's symmetry analysis lets parent ops that swap Y↔Z count as valid symmetries because inactive labels don't enter the configurational entropy.
+
+Julia's current Regime-C model treats `{0,1,2,3}` as four active species with per-site allowed-labels constraints. The `_filter_perm_group_by_mask` filter then *correctly* drops the Y↔Z swap (since it maps label-2-only sites to label-3-only sites, and vice versa — those would produce labelings outside the mask).
+
+The two semantics agree when:
+- All inactive sublattices that are related by parent symmetry share the same label (perovskite, zincblende, halfHeusler*/fullHeusler* with the relabel).
+
+They disagree when:
+- The parent has ops that swap inactive sublattices with different fixed labels (halfHeusler/fullHeusler as originally specified).
+
+**Open decision (queued for user input):**
+- (a) Reframe the corpus: use the same label for "physically equivalent" inactive sublattices (matches the relabeled-`*` rows above; we lose the ability to *write* distinct inactive markers but enumeration is mathematically equivalent to Fortran).
+- (b) Implement Fortran-style "project enumeration to active sublattices only, lift inactive labels at output time" (a larger change; mirrors Fortran exactly).
+- (c) Accept the divergence and document it as a Julia-specific semantic (mathematically valid, just different from Fortran).
+
+### 11.3 Wurtzite — separate space-group bug
+
+`p.space_group` for the shifted-wurtzite parent yields `|G| = 4` instead of the expected 12 (P6₃mc has 12 ops). The 4 ops Spacey returns include some that swap d₁↔d₂ — but those aren't actual P6₃mc symmetries on this dset. Diagnosis is Spacey-side (chunk-1 / R50.2a precompute is wrong for non-symmorphic hexagonal cases), not chunk-6.5b. Tracking separately.

@@ -206,7 +206,8 @@ end
 """
     getUniqueColorings_multinomial(perm_group::AbstractVector,
                                    multiplicities::AbstractVector{<:Integer};
-                                   include_superperiodic = false) :: Vector{Vector{Int8}}
+                                   include_superperiodic = false,
+                                   n_translations = sum(multiplicities)) :: Vector{Vector{Int8}}
 
 Symmetry-inequivalent colorings at fixed concentration. Crossing-out algorithm over the multinomial-hash space — the chunk-6 analog of `getUniqueColorings(k, perm_group)` from chunk 5.
 
@@ -214,23 +215,25 @@ Iterates over all `C = multinomial(n; multiplicities)` valid colorings (each at 
 
 By default (`include_superperiodic = false`), drops super-periodic colorings — those fixed by some non-identity pure translation. Pass `true` to keep them and return the full Burnside orbit space (research.md §5.2.1). Note: at asymmetric concentrations (e.g., 15:17 in n=32), super-periodic structures are number-theoretically empty, so the kwarg is a no-op there.
 
+`n_translations` is the size of the supercell's pure-translation subgroup — `perm_group[1..n_translations]` is identity-rotation × translations (`getPermG`'s convention). The super-periodicity check only iterates this prefix. For single-lattice this equals `n = sum(multiplicities)` (and the default preserves the legacy single-lattice call); for multilattice the caller must pass `n_translations = n_cells = n / n_D` (chunk 6.5b — fixed the silent over-iteration into the rotation × translation block that mis-flagged rotation-fixed labelings as super-periodic).
+
 For chunk-6 sizes (Ag-Pt at 15:17 in n=32 → C ≈ 5.7E8 → 71 MB bitmap), this fits in memory comfortably. For larger cases the bitmap won't fit in `typemax(Int)` and `enumerate(...)` redirects to the recursive-stabilizer tree (chunk 8). The enumeration resource check (chunk 7) catches the overflow before allocation.
 """
 function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVector{<:Integer};
-                                        include_superperiodic::Bool = false)
+                                        include_superperiodic::Bool = false,
+                                        n_translations::Int = sum(multiplicities))
     C = multinomial_count(multiplicities)
     C <= typemax(Int) ||
         throw(ArgumentError(
             "multinomial coefficient $(C) exceeds typemax(Int) — this enumeration " *
             "needs the recursive-stabilizer (Morgan 2017) algorithm, planned for chunk 8."))
     C_int = Int(C)
-    n = sum(multiplicities)
 
-    # `perm_group` is structured as (rotation × translation), with the first
-    # element the identity and the next n-1 elements the non-identity translations
-    # (per `getPermG`'s construction in src/Enumlib.jl). A coloring fixed by any
-    # non-identity translation is super-periodic — its true period is shorter than
-    # the supercell, so it's already enumerated as a smaller-supercell derivative
+    # `perm_group` is structured as (rotation × translation), with `perm_group[1..n_translations]`
+    # being identity-rotation × translations (per `getPermG`'s sorted/unique-then-compose
+    # construction in src/Enumlib.jl — identity rotation sorts smallest). A coloring fixed
+    # by any non-identity pure translation is super-periodic — its true period is shorter
+    # than the supercell, so it's already enumerated as a smaller-supercell derivative
     # structure and we must drop it (Hart-Forcade 2008 step 5d). Skipped when
     # include_superperiodic = true.
     visited = trues(C_int)
@@ -241,9 +244,9 @@ function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVect
 
         if !include_superperiodic
             # Super-periodicity check: if any non-identity translation fixes this
-            # coloring, drop it. The non-identity translations are perm_group[2:n].
+            # coloring, drop it. The non-identity translations are perm_group[2:n_translations].
             is_super_periodic = false
-            for ig in 2:n
+            for ig in 2:n_translations
                 ig <= length(perm_group) || break
                 permuted = coloring[perm_group[ig]]
                 if permuted == coloring

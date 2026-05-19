@@ -42,7 +42,7 @@ By default Pólya returns the **aperiodic** orbit count — orbits whose stabili
 
 The HF 2008/2012 algorithms were originally stated for single-lattice (Bravais) parents. HF 2009 extended them to multilattices where every dset position carries the same allowed labels ("uniform sublattices"). Enumlib's R50.2 series implemented HF 2009 — same code paths as the single-lattice case, with the permutation group built on `n_D · n` sites instead of `n`. See [enumerate-multilattice](../how-to/enumerate-multilattice.md) for the user-facing recipe.
 
-The **heterogeneous** multilattice case (different allowed labels per dset position — perovskite-style) needs the **multinomial-restricted** algorithm and is queued for chunk 6.5.
+The **heterogeneous** multilattice case (different allowed labels per dset position — perovskite-style) is supported via the **recursive-stabilizer** algorithm with a site-mask filter, shipped in chunk 6.5b. Requires a `concentration` kwarg (unrestricted heterogeneous enumeration isn't defined). The faster **multinomial-restricted** variant for this regime is still queued for chunk 6.5a; `:auto` picks `:recursive_stabilizer` for Regime C today. See [enumerate-multilattice](../how-to/enumerate-multilattice.md#heterogeneous-sublattices-regime-c) for the user-facing recipe.
 
 ## Reference derivative-structure counts
 
