@@ -1,7 +1,7 @@
 name = "Enumlib"
 uuid = "ae9d64bb-ee6e-4818-9249-167913fc9296"
-authors = ["Gus Hart <gus.hart@gmail.com>"]
 version = "0.1.0"
+authors = ["Gus Hart <gus.hart@gmail.com>"]
 
 [deps]
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
@@ -21,8 +21,8 @@ CodecZlib = "0.7"
 Combinatorics = "1"
 DataStructures = "0.18"
 NormalForms = "0.1"
-Spacey = "0.8"
-julia = "1.10"
+Spacey = "0.9"
+julia = "1.11"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

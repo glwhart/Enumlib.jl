@@ -19,8 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         julia-version:
-          - '1.10'    # LTS
-          - '1.11'    # current stable
+          - '1.11'    # current stable; Spacey 0.9 requires ≥ 1.11.6
         os:
           - ubuntu-latest
           - macos-latest
