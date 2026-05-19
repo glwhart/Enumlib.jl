@@ -41,7 +41,59 @@ Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
   equivalencies: (none)
 ```
 
-**Coverage today:** `enumerate(...)` handles both single-site Bravais parents *and* uniform multilattices (the HCP / Diamond / etc. case where every dset position shares the same `allowed_labels`). The per-position **heterogeneous** case (perovskite-style — different labels per sublattice) is queued as chunk 6.5; the builder works today, but `enumerate(...)` rejects it pending the multinomial-restricted algorithm.
+**Coverage today:** `enumerate(...)` handles both single-site Bravais parents *and* uniform multilattices (the HCP / Diamond / etc. case where every dset position shares the same `allowed_labels`). The per-position **heterogeneous** case (perovskite-style — different labels per sublattice) is also supported via the `:recursive_stabilizer` algorithm with a site-mask filter (chunk 6.5b); it requires a `concentration` kwarg. See [enumerate-multilattice](enumerate-multilattice.md#heterogeneous-sublattices-regime-c) for the worked example.
+
+## Atomic-symbol labels
+
+Anywhere the integer-label form `[0, 1]` is accepted, you can also pass atomic symbols like `[:Al, :Ga]`. Internally the integers are still what the enumerator manipulates; the symbols are recorded on the `Sites` for display, for read-back after enumeration, and as the default `species_symbols` when writing POSCARs.
+
+```jldoctest sites_recipe
+julia> sites = Sites([
+           Site([0.0, 0.0, 0.0],     [:Al, :Ga]),
+           Site([0.25, 0.25, 0.25],  [:As]),
+       ]);
+
+julia> species_symbols(sites)
+3-element Vector{Symbol}:
+ :Al
+ :Ga
+ :As
+```
+
+The integer↔symbol mapping is built **first-seen across the list, in declaration order**: the first new symbol seen becomes label 0, the next new symbol becomes label 1, etc. Above: `Al`→0, `Ga`→1, `As`→2.
+
+The same symbol form works on the parent-based fast paths:
+
+```jldoctest sites_recipe
+julia> Sites(p_fcc, [:Al, :Ga])               # single-site, uniform
+Sites{3} with 1 site (1 active, 1 canonical equivalence class)
+  site 1: [0.0, 0.0, 0.0]    species {:Al, :Ga}
+  equivalencies: (none)
+
+julia> Sites(p_hcp, [[:Al, :Ga], [:As]])      # per-position, multilattice
+Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
+  site 1: [0.0, 0.0, 0.0]    species {:Al, :Ga}
+  site 2: [0.3333, 0.6667, 0.5]    species {:As}    [inactive]
+  equivalencies: (none)
+```
+
+After enumeration, [`to_atom_labeling`](@ref) gives you the labeling back as atomic symbols:
+
+```julia
+e = enumerate(p_fcc, Sites(p_fcc, [:Al, :Ga]); supercells = VolumeRange(2:2))
+to_atom_labeling(e[1], sites)    # → Vector{Symbol} like [:Al, :Ga]
+```
+
+When you write POSCARs via [`write_enumeration_archive`](@ref), the symbol mapping is automatically used as `species_symbols=` — no need to pass it explicitly:
+
+```julia
+sites = Sites(p_fcc, [:Al, :Ga])
+e = enumerate(p_fcc, sites; supercells = VolumeRange(2:2))
+write_enumeration_archive("batch", e; super_periodic = false)
+# Each POSCAR's species line reads "Al Ga", picked up from the Sites mapping.
+```
+
+Mixing integer labels with symbol labels in the **same** `Sites` is rejected with an `ArgumentError` — pick one style per `Sites`. If you have integer-labeled `Site`s but want a symbol mapping for downstream display / POSCAR output, pass `species_symbols = [:Al, :Ga, ...]` as a kwarg to the `Sites` constructor.
 
 ## The longer path — building from individual `Site`s
 
@@ -107,6 +159,6 @@ The enumerator only assigns independent labels to the **active canonical** sites
 
 ## See also
 
-- Reference: [`Site`](@ref), [`Sites`](@ref), [`equate!`](@ref), [`is_active`](@ref), [`is_inactive`](@ref), [`canonical`](@ref), [`active_canonical_sites`](@ref), [`n_active`](@ref), [`n_canonical`](@ref), [`n_effective`](@ref).
+- Reference: [`Site`](@ref), [`Sites`](@ref), [`SymbolSite`](@ref), [`equate!`](@ref), [`is_active`](@ref), [`is_inactive`](@ref), [`canonical`](@ref), [`active_canonical_sites`](@ref), [`n_active`](@ref), [`n_canonical`](@ref), [`n_effective`](@ref), [`species_symbols`](@ref), [`to_atom_labeling`](@ref).
 - How-to: [Construct a parent lattice](construct-a-parent-lattice.md) — done first; [Select supercells](select-supercells.md) — the next step.
 - Explanation: [Concentration and multiplicity](../explanation/concentration-and-multiplicity.md).

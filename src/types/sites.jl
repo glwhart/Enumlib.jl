@@ -40,20 +40,34 @@ julia> n_effective(s)  # active AND canonical = 1
 mutable struct Sites{D}
     list::Vector{Site{D}}
     equiv::IntDisjointSets       # over indices 1:length(list)
+    # `species_symbols[i + 1]` is the atomic symbol for integer label `i`
+    # (1-based indexing into a 0-indexed label space). `nothing` when the
+    # Sites was constructed with integer labels and no explicit mapping —
+    # downstream code falls back to printing labels as integers and
+    # `to_poscar(...)` requires an explicit `species_symbols=` kwarg as
+    # before.
+    species_symbols::Union{Nothing,Vector{Symbol}}
     # Note: only `equiv` is mutable — through `equate!` calls during construction.
     # The `list` is treated as immutable by convention; we don't expose mutators.
 
     # Variant 1: incremental — every site starts in its own singleton class.
-    function Sites{D}(list::AbstractVector{Site{D}}) where D
+    function Sites{D}(
+        list::AbstractVector{Site{D}};
+        species_symbols::Union{Nothing,AbstractVector{Symbol}}=nothing,
+    ) where D
         isempty(list) && throw(ArgumentError("Sites must contain at least one site"))
-        new(collect(list), IntDisjointSets(length(list)))
+        syms = _validated_species_symbols(list, species_symbols)
+        new(collect(list), IntDisjointSets(length(list)), syms)
     end
 
     # Variant 2: upfront partition — validate, then build the Union-Find by unioning
     # each class's members. Sites not appearing in any class stay in their own
     # singleton class.
-    function Sites{D}(list::AbstractVector{Site{D}},
-                      classes::AbstractVector{<:AbstractVector{<:Integer}}) where D
+    function Sites{D}(
+        list::AbstractVector{Site{D}},
+        classes::AbstractVector{<:AbstractVector{<:Integer}};
+        species_symbols::Union{Nothing,AbstractVector{Symbol}}=nothing,
+    ) where D
         isempty(list) && throw(ArgumentError("Sites must contain at least one site"))
         n = length(list)
         seen = falses(n)
@@ -73,13 +87,124 @@ mutable struct Sites{D}
                 union!(eq, class[1], class[i])
             end
         end
-        new(collect(list), eq)
+        syms = _validated_species_symbols(list, species_symbols)
+        new(collect(list), eq, syms)
     end
 end
 
+# Validate species_symbols against the labels actually used across the sites.
+# Returns a `Vector{Symbol}` (a copy of the user's input) or `nothing`.
+function _validated_species_symbols(
+    list::AbstractVector{<:Site}, species_symbols::Union{Nothing,AbstractVector{Symbol}}
+)
+    species_symbols === nothing && return nothing
+    syms = Vector{Symbol}(species_symbols)
+    # Find the max label used; species_symbols must have an entry for every
+    # label index 0..max_label (Option A: dense, length = max_label + 1).
+    max_label = -1
+    for site in list
+        for lbl in site.allowed_labels
+            max_label = max(max_label, Int(lbl))
+        end
+    end
+    needed = max_label + 1
+    length(syms) == needed || throw(
+        ArgumentError(
+            "species_symbols has length $(length(syms)) but Sites uses labels " *
+            "0..$max_label (needs exactly $needed entries — dense mapping per " *
+            "Option A; pad unused indices with a placeholder symbol if needed).",
+        ),
+    )
+    return syms
+end
+
 # Outer constructors infer D from the site list's element type.
-Sites(list::AbstractVector{Site{D}}) where D = Sites{D}(list)
-Sites(list::AbstractVector{Site{D}}, classes) where D = Sites{D}(list, classes)
+Sites(list::AbstractVector{Site{D}}; kwargs...) where D = Sites{D}(list; kwargs...)
+Sites(list::AbstractVector{Site{D}}, classes; kwargs...) where D =
+    Sites{D}(list, classes; kwargs...)
+
+# ------------------------------------------------------------------------------
+# Symbol-labeled construction — fold a Vector{SymbolSite{D}} into integer-
+# labeled Site{D}s plus a first-seen species_symbols mapping.
+# ------------------------------------------------------------------------------
+
+"""
+    Sites(list::AbstractVector{SymbolSite{D}})
+    Sites(list::AbstractVector{SymbolSite{D}}, classes)
+
+Construct a `Sites` from a list of `SymbolSite`s (produced by
+`Site(position, syms::AbstractVector{Symbol})`). Builds the integer↔symbol
+mapping in **first-seen order**: the first symbol encountered when walking
+`list` becomes label 0, the next new symbol becomes label 1, and so on. The
+resulting `Sites.species_symbols` is a dense `Vector{Symbol}` of length
+`k = (max label + 1)`.
+
+# Example
+```jldoctest sites_symbols
+julia> sites = Sites([
+           Site([0.0, 0.0, 0.0],     [:Al, :Ga]),
+           Site([0.25, 0.25, 0.25],  [:As]),
+       ]);
+
+julia> species_symbols(sites)
+3-element Vector{Symbol}:
+ :Al
+ :Ga
+ :As
+```
+
+A `Vector` mixing `Site{D}` and `SymbolSite{D}` (or symbol labels with
+integer labels) throws `ArgumentError`. Pick one labeling style per
+`Sites`.
+"""
+function Sites(list::AbstractVector{SymbolSite{D}}) where D
+    int_sites, syms = _fold_symbol_sites(list)
+    return Sites{D}(int_sites; species_symbols=syms)
+end
+
+function Sites(
+    list::AbstractVector{SymbolSite{D}},
+    classes::AbstractVector{<:AbstractVector{<:Integer}},
+) where D
+    int_sites, syms = _fold_symbol_sites(list)
+    return Sites{D}(int_sites, classes; species_symbols=syms)
+end
+
+# Walk a Vector{SymbolSite{D}}, building (Vector{Site{D}}, Vector{Symbol})
+# pair via first-seen assignment of integer labels.
+function _fold_symbol_sites(list::AbstractVector{SymbolSite{D}}) where D
+    seen = Dict{Symbol,Int}()   # symbol → 0-indexed integer label
+    syms = Symbol[]
+    int_sites = Site{D}[]
+    for ss in list
+        int_labels = Int[]
+        for sym in ss.allowed_symbols
+            idx = get(seen, sym, -1)
+            if idx == -1
+                push!(syms, sym)
+                idx = length(syms) - 1   # 0-indexed
+                seen[sym] = idx
+            end
+            push!(int_labels, idx)
+        end
+        push!(int_sites, Site{D}(ss.position, BitSet(int_labels)))
+    end
+    return int_sites, syms
+end
+
+# Reject lists that mix integer Sites and SymbolSites — pick one or the other.
+# The eltype on a mixed array is Any (or some common supertype); catch the
+# heterogeneous case with an explicit dispatch.
+function Sites(list::AbstractVector)
+    throw(
+        ArgumentError(
+            "Sites: mixed integer-labeled `Site` and symbol-labeled " *
+            "`SymbolSite` entries in one list. Pick one labeling style — " *
+            "either `Site(pos, [0, 1, ...])` everywhere, or " *
+            "`Site(pos, [:Al, :Ga, ...])` everywhere.",
+        ),
+    )
+end
 
 # ------------------------------------------------------------------------------
 # Convenience constructors from a ParentLattice (R51, 2026-05-14).
@@ -163,6 +288,70 @@ function Sites(parent::ParentLattice{D},
 end
 
 Sites(parent::ParentLattice; k::Integer) = Sites(parent, 0:k-1)
+
+# Symbol-label variants of the parent-based convenience constructors.
+# Same shapes as the integer / BitSet variants above, just with atomic
+# symbols. Internally builds SymbolSites and folds them via the regular
+# Sites(::Vector{SymbolSite{D}}) path so the first-seen ordering matches
+# what the per-Site Sites constructor would produce.
+
+"""
+    Sites(parent::ParentLattice{D}, labels::AbstractVector{Symbol})
+
+Uniform atomic-symbol labels across every dset position. Equivalent to
+`Sites([Site(pos, labels) for pos in parent.dset])` but reads more
+naturally for multilattice parents.
+
+```jldoctest
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites(p, [:Al, :Ga]);
+
+julia> species_symbols(sites)
+2-element Vector{Symbol}:
+ :Al
+ :Ga
+```
+"""
+Sites(parent::ParentLattice{D}, labels::AbstractVector{Symbol}) where D =
+    Sites([SymbolSite{D}(pos, labels) for pos in parent.dset])
+
+"""
+    Sites(parent::ParentLattice{D},
+          labels_per_position::AbstractVector{<:AbstractVector{Symbol}})
+
+Per-position atomic-symbol labels: `labels_per_position[i]` lists the
+allowed species at dset position `i`. Length must equal `ndset(parent)`.
+
+```jldoctest
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+
+julia> p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);
+
+julia> sites = Sites(p, [[:Al, :Ga], [:As]]);
+
+julia> species_symbols(sites)
+3-element Vector{Symbol}:
+ :Al
+ :Ga
+ :As
+```
+"""
+function Sites(
+    parent::ParentLattice{D},
+    labels_per_position::AbstractVector{<:AbstractVector{Symbol}},
+) where D
+    n = length(parent.dset)
+    length(labels_per_position) == n || throw(
+        ArgumentError(
+            "per-position labels has length $(length(labels_per_position)) " *
+            "but ndset(parent) = $n",
+        ),
+    )
+    return Sites([
+        SymbolSite{D}(pos, lbl) for (pos, lbl) in zip(parent.dset, labels_per_position)
+    ])
+end
 
 """
     equate!(sites::Sites, i::Integer, j::Integer) -> Sites
@@ -262,17 +451,93 @@ Count of *active canonical* sites — the actual dimension of the labeling space
 """
 n_effective(s::Sites) = length(active_canonical_sites(s))
 
+"""
+    species_symbols(sites::Sites) -> Union{Nothing, Vector{Symbol}}
+
+Return the atomic-symbol mapping carried by `sites`, or `nothing` if the
+Sites was constructed with integer labels and no explicit mapping.
+
+The returned vector is dense and 0-indexed by label: `species_symbols(s)[i + 1]`
+is the symbol for integer label `i`. Length equals `k`, the number of
+distinct labels across the sites.
+
+```jldoctest sites_symbols_acc
+julia> sites = Sites([
+           Site([0.0, 0.0, 0.0], [:Al, :Ga]),
+           Site([0.25, 0.25, 0.25], [:As]),
+       ]);
+
+julia> species_symbols(sites)
+3-element Vector{Symbol}:
+ :Al
+ :Ga
+ :As
+
+julia> integer_sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+
+julia> species_symbols(integer_sites) === nothing
+true
+```
+"""
+species_symbols(s::Sites) = s.species_symbols
+
+"""
+    to_atom_labeling(structure, sites::Sites) -> Vector{Symbol}
+
+Translate an integer labeling (`to_labeling(structure) :: Vector{Int8}`)
+to its atomic-symbol equivalent using `sites.species_symbols`. Throws
+`ArgumentError` if `sites` has no symbol mapping.
+
+This is the natural read-back for users who constructed Sites with atomic
+symbols and want the post-enumeration labeling in those symbols rather
+than as raw integer labels.
+
+```jldoctest sites_to_atom_labeling
+julia> using Enumlib
+
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites(p, [:Al, :Ga]);
+
+julia> e = enumerate(p, sites; supercells = VolumeRange(1:1));
+
+julia> to_atom_labeling(e[1], sites)
+1-element Vector{Symbol}:
+ :Al
+```
+"""
+function to_atom_labeling(structure, sites::Sites)
+    syms = species_symbols(sites)
+    syms === nothing && throw(
+        ArgumentError(
+            "to_atom_labeling: Sites has no species_symbols mapping. " *
+            "Construct Sites with atomic symbols (e.g. `Site(pos, [:Al, :Ga])`) " *
+            "or pass `species_symbols=[:Al, :Ga, ...]` to the Sites constructor.",
+        ),
+    )
+    labeling = to_labeling(structure)
+    return [syms[Int(l) + 1] for l in labeling]
+end
+
 # Pretty printing — per the working agreement, prefer clear-and-complete over terse.
 # Format: header line with summary counts; one line per site with position + species
 # + optional `[inactive]` tag; final line listing non-trivial equivalence classes.
+# When `species_symbols` is present, allowed-label sets are rendered with the
+# atomic symbols (`{:Al, :Ga}`) rather than the raw integer indices.
 function Base.show(io::IO, s::Sites{D}) where D
     n = length(s.list)
     nact = n_active(s)
     ncanon = n_canonical(s)
+    syms = s.species_symbols
     println(io, "Sites{$D} with $n site$(n==1 ? "" : "s") ",
                 "($nact active, $ncanon canonical equivalence class$(ncanon==1 ? "" : "es"))")
     for (i, site) in enumerate(s.list)
-        species_str = "{" * join(sort(collect(site.allowed_labels)), ", ") * "}"
+        labels_sorted = sort(collect(site.allowed_labels))
+        species_str = if syms === nothing
+            "{" * join(labels_sorted, ", ") * "}"
+        else
+            "{" * join((string(":", syms[Int(l) + 1]) for l in labels_sorted), ", ") * "}"
+        end
         inactive_tag = is_inactive(site) ? "    [inactive]" : ""
         println(io, "  site $i: ", round.(site.position, digits=4),
                     "    species ", species_str, inactive_tag)

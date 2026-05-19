@@ -12,6 +12,7 @@ using Spacey
 # Pkg.test() exercises everything (chunk 1 → 6 plus the legacy corpus below).
 include("test_parent_lattice.jl")
 include("test_sites.jl")
+include("test_atomic_labels.jl")
 include("test_hnf.jl")
 include("test_supercell_selection.jl")
 include("test_enumerate.jl")

@@ -424,6 +424,17 @@ function write_enumeration_archive(
         ),
     )
 
+    # If the caller didn't pass species_symbols AND the Sites carries an
+    # atomic-symbol mapping (Sites was constructed with `[:Al, :Ga, :As]`-
+    # style labels), default species_symbols from that mapping. Explicit
+    # species_symbols= kwarg always wins.
+    if isempty(species_symbols)
+        sym_mapping = Enumlib.species_symbols(enumeration.sites)
+        if sym_mapping !== nothing
+            species_symbols = [String(s) for s in sym_mapping]
+        end
+    end
+
     # Resolve output tarball path.
     out_path = if endswith(path, ".tar.gz") || endswith(path, ".tgz")
         # User provided an exact filename.

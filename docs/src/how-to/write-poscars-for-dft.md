@@ -53,6 +53,10 @@ archive_path = write_enumeration_archive("ag-pt-4-4-n8", e)
 # → "ag-pt-4-4-n8_2026-05-14_103045.tar.gz" (timestamp auto-appended)
 ```
 
+### Species symbols
+
+If your `Sites` was constructed with atomic-symbol labels (`Sites(p, [:Ag, :Pt])`, see [Describe substitution sites](describe-substitution-sites.md#atomic-symbol-labels)), `write_enumeration_archive` picks up the mapping automatically — POSCAR line 6 reads `Ag Pt` without any extra kwarg. For integer-labeled Sites, pass `species_symbols = ["Ag", "Pt"]` explicitly. An explicit kwarg always wins over the Sites-derived default.
+
 Ship the tarball to your collaborator. They unpack it, run their DFT/MLIP jobs, fill in the `energy_eV=` slot on each POSCAR's header line, and re-tar (or send back the directory).
 
 ## Reading energies back

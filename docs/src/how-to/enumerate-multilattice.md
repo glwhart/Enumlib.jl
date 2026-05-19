@@ -149,10 +149,11 @@ A common real-world case: only **one** sublattice is being substituted, the othe
 Supply a `concentration` kwarg and Enumlib enumerates only the colorings consistent with the per-site allowed labels. (Internally it uses the `:recursive_stabilizer` algorithm, filtering colorings as it walks the tree to drop any that put a forbidden species on a restricted sublattice.)
 
 The example below is zincblende AlₓGa₁₋ₓAs: FCC parent with a 2-atom
-dset (cation + anion at the diamond-structure positions). Three
-distinct integer labels keep Al, Ga, and As cleanly apart in the
-enumeration — `{Al = 0, Ga = 1}` on the cation sublattice and `{As = 2}`
-on the anion sublattice:
+dset (cation + anion at the diamond-structure positions). With atomic-
+symbol labels the chemistry is right there in the code — the cation
+sublattice carries `{:Al, :Ga}` and the anion sublattice is fixed to
+`{:As}`. The `Sites` constructor builds the integer mapping
+(`:Al → 0, :Ga → 1, :As → 2`) in first-seen order for you:
 
 ```jldoctest mlat_recipe_c
 julia> using Enumlib
@@ -162,13 +163,20 @@ julia> fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0];
 julia> p = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]]);
 
 julia> sites_het = Sites([
-           Site([0.0,  0.0,  0.0 ], [0, 1]),   # cation sublattice — Al(0) or Ga(1)
-           Site([0.25, 0.25, 0.25], [2]),      # anion sublattice — As(2), fixed
+           Site([0.0,  0.0,  0.0 ], [:Al, :Ga]),   # cation sublattice
+           Site([0.25, 0.25, 0.25], [:As]),        # anion sublattice — fixed
        ]);
+
+julia> species_symbols(sites_het)
+3-element Vector{Symbol}:
+ :Al
+ :Ga
+ :As
 
 julia> # n = 2 supercell has 4 sites = 2 cations + 2 anions. For
        # Al₁Ga₁As₂ at n=2, ask for 1 Al, 1 Ga, 2 As across the
-       # 4-atom labeling:
+       # 4-atom labeling (concentration is per-label-index, so the
+       # mapping above determines the order):
        c = concentration_count([1, 1, 2]; n_total = 4);
 
 julia> length(enumerate(p, sites_het; supercells = VolumeRange(2:2), concentration = c))
@@ -177,9 +185,12 @@ julia> length(enumerate(p, sites_het; supercells = VolumeRange(2:2), concentrati
 
 The two inequivalent configurations are the two distinct ways to place
 one Al + one Ga on the two cation positions of this `n = 2` supercell
-(the anions are always As). For POSCAR output you'd pass
-`species_symbols = ["Al", "Ga", "As"]` to map labels 0, 1, 2 onto real
-atomic symbols.
+(the anions are always As). [`to_atom_labeling(struc, sites_het)`](@ref)
+gives the labelings back as `Vector{Symbol}` after enumeration. When you
+write POSCARs via [`write_enumeration_archive`](@ref), the symbol mapping
+flows through automatically — no need to repeat `species_symbols=` at
+the POSCAR call site. The integer-label form `[0, 1]` / `[2]` is still
+accepted if you prefer it; see [Describe substitution sites](describe-substitution-sites.md#atomic-symbol-labels).
 
 Without `concentration`, Regime C throws an `ArgumentError`: "Multilattice with per-site `allowed_labels` (Regime C — heterogeneous sublattices) requires a `concentration` kwarg." That's the gate working as designed — unrestricted enumeration on heterogeneous sublattices isn't a defined problem; you need a fixed composition to enumerate around.
 

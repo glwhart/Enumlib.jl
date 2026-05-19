@@ -43,6 +43,64 @@ Site(position::AbstractVector{<:Real}, allowed_labels::BitSet) =
 Site(position::AbstractVector{<:Real}, allowed) =
     Site(position, BitSet(allowed))
 
+# ------------------------------------------------------------------------------
+# Atomic-label convenience — Site(pos, [:Al, :Ga]) returns a SymbolSite which
+# the Sites constructor folds into integer-labeled Site{D}s plus a per-Sites
+# species_symbols mapping. Lets users write atomic symbols at construction time
+# while the enumeration kernels keep operating on integer labels.
+# ------------------------------------------------------------------------------
+
+"""
+    SymbolSite{D}
+
+Intermediate type for constructing [`Sites`](@ref) with atomic-symbol labels.
+Holds a `position` and a `Vector{Symbol}` of allowed species (e.g.
+`[:Al, :Ga]`). The integer↔symbol mapping is established when the
+`SymbolSite` is folded into a `Sites` collection — the `Sites` constructor
+walks the list in order and assigns the first-seen symbol to label 0, the
+second-seen to label 1, etc.
+
+Users typically don't construct a `SymbolSite` directly. It's the return
+type of `Site(position, syms::AbstractVector{Symbol})`:
+
+```julia
+Site([0.0, 0.0, 0.0], [:Al, :Ga])    # → SymbolSite{3}, not Site{3}
+```
+
+See [`Sites`](@ref) for how a `Vector{SymbolSite{D}}` becomes a fully-
+populated `Sites` with `species_symbols`.
+"""
+struct SymbolSite{D}
+    position::Vector{Float64}
+    allowed_symbols::Vector{Symbol}
+
+    function SymbolSite{D}(
+        position::AbstractVector{<:Real}, allowed_symbols::AbstractVector{Symbol}
+    ) where D
+        length(position) == D || throw(
+            ArgumentError(
+                "position must have length $D, got $(length(position))"
+            ),
+        )
+        isempty(allowed_symbols) &&
+            throw(ArgumentError("allowed_symbols must be non-empty"))
+        new(Vector{Float64}(position), Vector{Symbol}(allowed_symbols))
+    end
+end
+
+# Infer D from position length.
+SymbolSite(position::AbstractVector{<:Real}, allowed_symbols::AbstractVector{Symbol}) =
+    SymbolSite{length(position)}(position, allowed_symbols)
+
+# `Site(pos, [:Al, :Ga])` dispatches here and returns a SymbolSite instead of a
+# Site{D}. The Sites constructor reconciles the SymbolSites into Site{D}s plus
+# the integer↔symbol mapping. This is a deliberate type-of-result switch: it
+# means `Site` is the user-facing constructor name for both integer and symbol
+# labels, but the symbol case carries enough information for Sites to build
+# the mapping without per-call boilerplate.
+Site(position::AbstractVector{<:Real}, allowed::AbstractVector{Symbol}) =
+    SymbolSite(position, allowed)
+
 """
     is_inactive(s::Site) -> Bool
 

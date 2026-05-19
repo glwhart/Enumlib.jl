@@ -12,6 +12,7 @@ ndset
 n_nonzero_translations
 lattice_rotations
 Site
+SymbolSite
 Sites
 is_active
 is_inactive
@@ -21,4 +22,6 @@ active_canonical_sites
 n_active
 n_canonical
 n_effective
+species_symbols
+to_atom_labeling
 ```

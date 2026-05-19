@@ -23,10 +23,11 @@ export
     basis, dset, space_group, ndset, n_nonzero_translations,
     lattice_rotations,
     # v0.2 type catalog (chunk 2)
-    Site, Sites,
+    Site, Sites, SymbolSite,
     is_active, is_inactive,
     equate!, canonical, active_canonical_sites,
     n_active, n_canonical, n_effective,
+    species_symbols, to_atom_labeling,
     # v0.2 type catalog (chunk 3)
     HNF, Supercell,
     volume,
