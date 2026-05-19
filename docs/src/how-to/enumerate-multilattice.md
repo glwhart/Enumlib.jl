@@ -1,6 +1,6 @@
 # Enumerate on a multilattice parent (HCP, diamond, ...)
 
-When the parent isn't a single-site Bravais lattice, it carries a **dset** — two or more basis sites per primitive cell. HCP (2 atoms), diamond (2 atoms), zincblende (2 atoms), perovskite ABO₃ (5 atoms), etc. Two cases:
+When the parent isn't a single-site Bravais lattice, it carries a **dset** — two or more basis sites per primitive cell. For example, HCP (2 atoms/cell), diamond (2 atoms), zincblende (2 atoms), perovskite ABO₃ (5 atoms), etc. Two cases:
 
 - **Uniform sublattices** (every dset position carries the same allowed labels). Shipped in R50.2 (v0.2-era) via the HF 2009 multilattice extension. Unrestricted enumeration via [`enumerate(parent, sites; supercells)`] just works.
 - **Heterogeneous sublattices** (different allowed labels per dset position — perovskite-style A-site cation mixing while B-site stays fixed, etc.). Shipped in chunk 6.5b via the `:recursive_stabilizer` algorithm with a site-mask filter. Requires a [`Concentration`](@ref) or [`ConcentrationRange`](@ref) kwarg (unrestricted heterogeneous enumeration isn't supported — Regime C only makes sense at fixed concentration).
@@ -46,23 +46,35 @@ julia> [length(enumerate(p, sites; supercells = VolumeRange(n:n))) for n in 1:6]
 
 ## Count without enumerating
 
-[`count_inequivalent`](@ref) gives the same numbers via Pólya / Burnside; useful as a sanity check or for sizing a request before running it:
+[`count_inequivalent`](@ref) gives the same numbers via Pólya / Burnside; useful as a sanity check or for sizing a request before running it. Same shape as the `enumerate` calls above:
 
 ```jldoctest mlat_recipe
 julia> count_inequivalent(p, sites; supercells = VolumeRange(1:4))
 333
+
+julia> [count_inequivalent(p, sites; supercells = VolumeRange(n:n)) for n in 1:6]
+6-element Vector{BigInt}:
+    3
+   10
+   50
+  270
+  651
+ 4793
 ```
 
-## Diamond — FCC + 2-atom dset
+## Boron-doped diamond — FCC + 2-atom dset
 
-Same recipe; only the parent changes:
+A real-world Regime B example: B-doped diamond. Diamond is the FCC parent
+with a 2-atom dset; in B-doped diamond, **both** sublattices can carry
+either C or B (they're crystallographically equivalent and synthesis
+puts B on either one), so the uniform-sublattice constructor applies.
 
 ```jldoctest mlat_recipe
 julia> fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0];
 
 julia> p_d = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]]);
 
-julia> s_d = Sites(p_d, [0, 1]);
+julia> s_d = Sites(p_d, [0, 1]);   # label 0 = C, label 1 = B (uniform on both sublattices)
 
 julia> [length(enumerate(p_d, s_d; supercells = VolumeRange(n:n))) for n in 1:4]
 4-element Vector{Int64}:
@@ -72,15 +84,21 @@ julia> [length(enumerate(p_d, s_d; supercells = VolumeRange(n:n))) for n in 1:4]
  171
 ```
 
+The `Sites` API uses integer labels (`0`, `1`, ...) — atomic symbols
+like `"C"` and `"B"` are attached at POSCAR output time via
+[`to_poscar`](@ref)'s `species_symbols=["C", "B"]` kwarg, not in the
+`Sites` constructor. The integer label is what the enumerator
+manipulates; the chemistry mapping is a presentation concern.
+
 ## Site-ordering convention (so labelings make sense)
 
-The labeling vector on a multilattice supercell has length `n_D · n`, where `n_D = ndset(parent)` and `n = volume(hnf)`. Sites are ordered in **dset blocks**: positions `1..n` are the `n` Bravais sites at dset position 1; positions `n+1..2n` are the same Bravais sites at dset position 2; and so on. This matches the convention used by the supercell permutation group.
+The labeling vector (list of which atoms on which sites) on a multilattice supercell has length `n_D · n`, where `n_D = ndset(parent)` and `n = volume(hnf)`. Sites are ordered in **dset blocks**: positions `1..n` are the `n` Bravais sites at dset position 1; positions `n+1..2n` are the same Bravais sites at dset position 2; and so on. This matches the convention used by the supercell permutation group.
 
-So for HCP at `n = 2` (4-site labeling), labeling `[0, 0, 1, 1]` means "dset position 1 is pure species 0, dset position 2 is pure species 1" — an A-B layered structure.
+So for HCP at `n = 2` (4-site labeling), labeling `[0, 0, 1, 1]` means **every** atom on dset position 1 is species 0 and **every** atom on dset position 2 is species 1, regardless of which `n = 2` HNF the supercell uses. The geometric layering (along c, in-plane, etc.) depends on the specific HNF; the species assignment to sublattices doesn't.
 
 ## Write POSCARs for DFT
 
-[`to_poscar`](@ref) and [`write_enumeration_archive`](@ref) both work without modification — the writer follows the same dset-blocks ordering above when emitting the `Direct` coordinates block.
+[`to_poscar`](@ref) and [`write_enumeration_archive`](@ref) emit the atomic positions in the same dset-blocks order as the labeling above — sublattice-1 atoms first, then sublattice-2, etc. The POSCAR's per-species count line (line 4+D) groups atoms by species across the whole supercell, so the file is valid VASP regardless of which sublattices each species lives on.
 
 ```julia
 using Enumlib
@@ -126,27 +144,42 @@ Four atoms: dset block 1 positions (the two Bravais sites at origin) then dset b
 
 ## Heterogeneous sublattices (Regime C)
 
-When the dset positions carry **different** allowed labels — perovskite A-site mixing, single-sublattice substitution in a multilattice host, etc. — supply a `concentration` kwarg. The dispatcher routes through `:recursive_stabilizer` with a site-mask filter (chunk 6.5b).
+A common real-world case: only **one** sublattice is being substituted, the others are fixed by chemistry. Two-sublattice examples — zincblende Alₓ Ga₁₋ₓ As, NbS₂ doped with Fe on the Nb sublattice, half-Heuslers. Three-sublattice (perovskite ABO₃) — A-site or B-site mixing while the other cation + the three oxygens stay put.
+
+Supply a `concentration` kwarg and Enumlib enumerates only the colorings consistent with the per-site allowed labels. (Internally it uses the `:recursive_stabilizer` algorithm, filtering colorings as it walks the tree to drop any that put a forbidden species on a restricted sublattice.)
+
+The example below is zincblende AlₓGa₁₋ₓAs: FCC parent with a 2-atom
+dset (cation + anion at the diamond-structure positions). Three
+distinct integer labels keep Al, Ga, and As cleanly apart in the
+enumeration — `{Al = 0, Ga = 1}` on the cation sublattice and `{As = 2}`
+on the anion sublattice:
 
 ```jldoctest mlat_recipe_c
 julia> using Enumlib
 
-julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+julia> fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0];
 
-julia> p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);
+julia> p = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]]);
 
 julia> sites_het = Sites([
-           Site([0.0, 0.0, 0.0],         [0, 1]),   # sublattice 1: binary
-           Site([1/3, 2/3, 1/2],         [0]),      # sublattice 2: fixed
+           Site([0.0,  0.0,  0.0 ], [0, 1]),   # cation sublattice — Al(0) or Ga(1)
+           Site([0.25, 0.25, 0.25], [2]),      # anion sublattice — As(2), fixed
        ]);
 
-julia> # 4-site supercell at n=2; concentration is per-color counts over the
-       # full labeling (sublattice-2 fixed positions count toward species 0):
-       c = concentration_count([3, 1]; n_total = 4);
+julia> # n = 2 supercell has 4 sites = 2 cations + 2 anions. For
+       # Al₁Ga₁As₂ at n=2, ask for 1 Al, 1 Ga, 2 As across the
+       # 4-atom labeling:
+       c = concentration_count([1, 1, 2]; n_total = 4);
 
 julia> length(enumerate(p, sites_het; supercells = VolumeRange(2:2), concentration = c))
-3
+2
 ```
+
+The two inequivalent configurations are the two distinct ways to place
+one Al + one Ga on the two cation positions of this `n = 2` supercell
+(the anions are always As). For POSCAR output you'd pass
+`species_symbols = ["Al", "Ga", "As"]` to map labels 0, 1, 2 onto real
+atomic symbols.
 
 Without `concentration`, Regime C throws an `ArgumentError`: "Multilattice with per-site `allowed_labels` (Regime C — heterogeneous sublattices) requires a `concentration` kwarg." That's the gate working as designed — unrestricted enumeration on heterogeneous sublattices isn't a defined problem; you need a fixed composition to enumerate around.
 
