@@ -1,6 +1,9 @@
 # Enumerate on a multilattice parent (HCP, diamond, ...)
 
-When the parent isn't a single-site Bravais lattice, it carries a **dset** — two or more basis sites per primitive cell. HCP (2 atoms), diamond (2 atoms), zincblende (2 atoms), perovskite ABO₃ (5 atoms), etc. The R50.2 enablement (v0.2-era) makes `enumerate(...)` produce derivative structures end-to-end on multilattice parents where every dset position carries the **same** allowed labels ("uniform sublattices"). Heterogeneous sublattices (different labels per dset position — perovskite-style) are queued as chunk 6.5; see the [substitution-sites how-to](describe-substitution-sites.md) for the rejected-today path.
+When the parent isn't a single-site Bravais lattice, it carries a **dset** — two or more basis sites per primitive cell. HCP (2 atoms), diamond (2 atoms), zincblende (2 atoms), perovskite ABO₃ (5 atoms), etc. Two cases:
+
+- **Uniform sublattices** (every dset position carries the same allowed labels). Shipped in R50.2 (v0.2-era) via the HF 2009 multilattice extension. Unrestricted enumeration via [`enumerate(parent, sites; supercells)`] just works.
+- **Heterogeneous sublattices** (different allowed labels per dset position — perovskite-style A-site cation mixing while B-site stays fixed, etc.). Shipped in chunk 6.5b via the `:recursive_stabilizer` algorithm with a site-mask filter. Requires a [`Concentration`](@ref) or [`ConcentrationRange`](@ref) kwarg (unrestricted heterogeneous enumeration isn't supported — Regime C only makes sense at fixed concentration).
 
 ## Setup — HCP binary
 
@@ -121,12 +124,39 @@ Direct
 
 Four atoms: dset block 1 positions (the two Bravais sites at origin) then dset block 2 positions (the two Bravais sites offset by the dset's second entry).
 
+## Heterogeneous sublattices (Regime C)
+
+When the dset positions carry **different** allowed labels — perovskite A-site mixing, single-sublattice substitution in a multilattice host, etc. — supply a `concentration` kwarg. The dispatcher routes through `:recursive_stabilizer` with a site-mask filter (chunk 6.5b).
+
+```jldoctest mlat_recipe_c
+julia> using Enumlib
+
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
+
+julia> p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);
+
+julia> sites_het = Sites([
+           Site([0.0, 0.0, 0.0],         [0, 1]),   # sublattice 1: binary
+           Site([1/3, 2/3, 1/2],         [0]),      # sublattice 2: fixed
+       ]);
+
+julia> # 4-site supercell at n=2; concentration is per-color counts over the
+       # full labeling (sublattice-2 fixed positions count toward species 0):
+       c = concentration_count([3, 1]; n_total = 4);
+
+julia> length(enumerate(p, sites_het; supercells = VolumeRange(2:2), concentration = c))
+3
+```
+
+Without `concentration`, Regime C throws an `ArgumentError`: "Multilattice with per-site `allowed_labels` (Regime C — heterogeneous sublattices) requires a `concentration` kwarg." That's the gate working as designed — unrestricted enumeration on heterogeneous sublattices isn't a defined problem; you need a fixed composition to enumerate around.
+
 ## When the gate rejects your inputs
 
 Two regime-discrimination errors you may hit:
 
-- **`Sites` length ≠ `ndset(parent)`.** With `ndset(p) = 2` you need a 2-entry `Sites`. The shorthand `Sites(p, [0, 1])` constructs one per dset position automatically.
-- **Heterogeneous `allowed_labels`** (different labels per dset position — e.g., binary on site 1, fixed on site 2). Rejected today with an `ArgumentError` directing you to chunk 6.5. The uniform case (every dset position carries the same `allowed_labels`) is what R50.2 enables.
+- **`Sites` length ≠ `ndset(parent)`.** With `ndset(p) = 2` you need a 2-entry `Sites`. The shorthand `Sites(p, [0, 1])` constructs one per dset position automatically (uniform case only).
+- **Heterogeneous `allowed_labels` without `concentration`.** As above — supply a `Concentration` or `ConcentrationRange`.
+- **`algorithm = :multinomial_restricted`.** Reserved for chunk 6.5a; throws until that ships. Use `:recursive_stabilizer` (or `:auto`, which picks it automatically for Regime C).
 
 ## See also
 
