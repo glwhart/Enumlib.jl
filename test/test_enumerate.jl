@@ -156,15 +156,126 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         end
     end
 
-    # ---- Multilattice — regime C (heterogeneous sublattices, chunk 6.5) ----
-    @testset "enumerate — regime C (heterogeneous multilattice) errors" begin
+    # ---- Multilattice — regime C (heterogeneous sublattices, chunk 6.5b) ----
+    # Chunk 6.5b (2026-05-19) flipped Regime C from "errors with planning message"
+    # to "errors only without concentration; works with one". The :recursive_stabilizer
+    # algorithm now handles the site-mask filter; :multinomial still errors (queued
+    # for chunk 6.5a as :multinomial_restricted).
+    @testset "enumerate — regime C gating" begin
         a = 1.0; c = sqrt(8/3)
         A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
         parent = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
         # First sublattice binary, second sublattice fixed — different allowed_labels.
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
                        Site([1/3, 2/3, 1/2], [0])])
+        # No concentration → ArgumentError (Regime C requires concentration).
         @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(2:2))
+        # k = species union = {0, 1} (d₂'s {0} is a subset of d₁'s {0, 1}). At n=2,
+        # n_total = 2·2 = 4 sites; d₂'s pair contributes 2 atoms of label 0 forced,
+        # leaving d₁'s 2 sites for the binary choice. Pick 2 each species.
+        cc = concentration_count([3, 1]; n_total = 4)
+        # :multinomial on Regime C → ArgumentError (queued for chunk 6.5a).
+        @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(2:2),
+                                              concentration = cc, algorithm = :multinomial)
+        # With concentration and :auto → succeeds via :recursive_stabilizer.
+        e = enumerate(parent, sites; supercells = VolumeRange(2:2), concentration = cc)
+        @test length(e) >= 0          # smoke: doesn't throw
+    end
+
+    # ---- Multilattice — Regime C Fortran corpus (chunk 6.5b, 2026-05-19) ----
+    # Cross-validation against the locked Fortran corpus at
+    # test/data/chunk6.5_fortran_corpus.csv. Covers the cases where Julia and
+    # Fortran's Regime-C semantics agree:
+    #   • perovskite (all inactive O sublattices share label {4})
+    #   • zinc-blende (no inactive sublattices; both active with disjoint labels)
+    #   • half-Heusler and full-Heusler with inactive Y and Z relabeled to the
+    #     same label {2} (i.e., the "physically equivalent" interpretation that
+    #     Fortran's k=2 convention encodes for inactive markers)
+    #
+    # The distinct-Y={2}, Z={3} cases diverge from Fortran (Julia treats them as
+    # distinct active species; Fortran conflates them as inactive markers). See
+    # chunk6.5-design.md §11 for the open decision on how to resolve. Skipped in
+    # this testset to keep it gating-clean.
+    @testset "enumerate — regime C Fortran corpus" begin
+        # half-Heusler with Y=Z={2}, binary X-substitution at d₁.
+        @testset "half-Heusler (Y=Z={2})" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0, 0.0, 0.0],
+                               [0.25, 0.25, 0.25],
+                               [0.75, 0.75, 0.75]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                           Site([0.25, 0.25, 0.25], [2]),
+                           Site([0.75, 0.75, 0.75], [2])])
+            expected = [2, 2, 6, 19, 28, 80, 104]   # n = 1..7
+            for n in 1:7
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:3])
+                e = enumerate(p, sites; supercells = VolumeRange(n:n),
+                              concentration = cr, partition_threshold = 1_000_000,
+                              skip_resource_check = true)
+                @test length(e) == expected[n]
+            end
+        end
+
+        # full-Heusler with Y=Z={2}, X at d₂ and d₄ (standard 8c Wyckoff).
+        @testset "full-Heusler (Y=Z={2})" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0, 0.0, 0.0],
+                               [0.25, 0.25, 0.25],
+                               [0.5, 0.5, 0.5],
+                               [0.75, 0.75, 0.75]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [2]),
+                           Site([0.25, 0.25, 0.25], [0, 1]),
+                           Site([0.5, 0.5, 0.5], [2]),
+                           Site([0.75, 0.75, 0.75], [0, 1])])
+            expected = [3, 7, 30, 156, 342]   # n = 1..5
+            for n in 1:5
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:3])
+                e = enumerate(p, sites; supercells = VolumeRange(n:n),
+                              concentration = cr, partition_threshold = 1_000_000,
+                              skip_resource_check = true)
+                @test length(e) == expected[n]
+            end
+        end
+
+        # Perovskite ABO₃ — A binary, B binary, three O fixed (same label).
+        @testset "perovskite ABO₃" begin
+            p = ParentLattice([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],
+                              [[0.0, 0.0, 0.0],
+                               [0.5, 0.5, 0.5],
+                               [0.5, 0.5, 0.0],
+                               [0.5, 0.0, 0.5],
+                               [0.0, 0.5, 0.5]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                           Site([0.5, 0.5, 0.5], [2, 3]),
+                           Site([0.5, 0.5, 0.0], [4]),
+                           Site([0.5, 0.0, 0.5], [4]),
+                           Site([0.0, 0.5, 0.5], [4])])
+            expected = [4, 15, 48, 301]   # n = 1..4
+            for n in 1:4
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:5])
+                e = enumerate(p, sites; supercells = VolumeRange(n:n),
+                              concentration = cr, partition_threshold = 1_000_000,
+                              skip_resource_check = true)
+                @test length(e) == expected[n]
+            end
+        end
+
+        # Zinc-blende — every sublattice active with disjoint labels.
+        @testset "zinc-blende" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0, 0.0, 0.0],
+                               [0.25, 0.25, 0.25]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                           Site([0.25, 0.25, 0.25], [2, 3])])
+            expected = [4, 11, 52, 290]   # n = 1..4
+            for n in 1:4
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:4])
+                e = enumerate(p, sites; supercells = VolumeRange(n:n),
+                              concentration = cr, partition_threshold = 1_000_000,
+                              skip_resource_check = true)
+                @test length(e) == expected[n]
+            end
+        end
     end
 
     # ---- Multilattice — dset/Sites length mismatch ----

@@ -99,14 +99,13 @@ using Enumlib
         end
         unique!(pg)
 
+        # Chunk 6.5b refactor (2026-05-19): super-periodicity moved out of the
+        # inner functions. Both algorithms now return every canonical orbit;
+        # cross-validation just compares those counts.
         for mults in [[2, 3, 4], [4, 3, 2], [3, 3, 3]]
-            for sp in (false, true)
-                cnt_rs = length(Enumlib.getUniqueColorings_recursive_stabilizer(
-                            pg, mults; include_superperiodic = sp))
-                cnt_m = length(Enumlib.getUniqueColorings_multinomial(
-                            pg, mults; include_superperiodic = sp))
-                @test cnt_rs == cnt_m
-            end
+            cnt_rs = length(Enumlib.getUniqueColorings_recursive_stabilizer(pg, mults))
+            cnt_m  = length(Enumlib.getUniqueColorings_multinomial(pg, mults))
+            @test cnt_rs == cnt_m
         end
     end
 

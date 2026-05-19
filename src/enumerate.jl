@@ -213,6 +213,22 @@ function _orbit_size(perm_group::AbstractVector, coloring::AbstractVector)
     return length(perm_group) ÷ stab_count
 end
 
+# Super-periodicity check: a coloring is super-periodic iff some non-identity
+# *pure translation* fixes it. By the `getPermG` convention, `perm_group[1..n_cells]`
+# is identity-rotation × the supercell's translation subgroup (identity sorts first),
+# so we walk that prefix. Used as the single post-filter for both :multinomial and
+# :recursive_stabilizer — chunk 6.5b moved the per-algorithm checks here so n_cells
+# (the multilattice-correct translation count) is in scope at call time.
+function _is_super_periodic(coloring::AbstractVector, perm_group::AbstractVector,
+                            n_cells::Int)
+    for ig in 2:min(n_cells, length(perm_group))
+        if coloring[perm_group[ig]] == coloring
+            return true
+        end
+    end
+    return false
+end
+
 # ------------------------------------------------------------------------------
 # :exhaustive algorithm body — chunk 5's logic, factored out.
 # ------------------------------------------------------------------------------
@@ -254,12 +270,11 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
                                 on_partition_overflow::Symbol;
                                 include_superperiodic::Bool = false) where D
     return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
-        partition_threshold, on_partition_overflow,
+        partition_threshold, on_partition_overflow, include_superperiodic,
         # site_mask is ignored: :multinomial doesn't yet support per-site
         # restrictions (queued for chunk 6.5a). The Regime-C dispatch in
         # `enumerate(...)` won't route here when site_mask is non-trivial.
-        (perm_group, mults, _site_mask, n_cells) -> getUniqueColorings_multinomial(
-            perm_group, mults; include_superperiodic, n_translations = n_cells))
+        (perm_group, mults, _site_mask) -> getUniqueColorings_multinomial(perm_group, mults))
 end
 
 # ------------------------------------------------------------------------------
@@ -274,9 +289,9 @@ function _enumerate_recursive_stabilizer(parent::ParentLattice{D}, sites::Sites{
                                           on_partition_overflow::Symbol;
                                           include_superperiodic::Bool = false) where D
     return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
-        partition_threshold, on_partition_overflow,
-        (perm_group, mults, site_mask, n_cells) -> getUniqueColorings_recursive_stabilizer(
-            perm_group, mults; include_superperiodic, site_mask, n_translations = n_cells))
+        partition_threshold, on_partition_overflow, include_superperiodic,
+        (perm_group, mults, site_mask) -> getUniqueColorings_recursive_stabilizer(
+            perm_group, mults; site_mask))
 end
 
 # ------------------------------------------------------------------------------
@@ -342,6 +357,7 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
                                        concentration::Union{Concentration, ConcentrationRange},
                                        partition_threshold::Int,
                                        on_partition_overflow::Symbol,
+                                       include_superperiodic::Bool,
                                        coloring_fn) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
@@ -400,8 +416,16 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
 
         for c in concs
             mults = multiplicities(c, n_total)
-            colorings = coloring_fn(effective_perm_group, mults, site_mask, n)
+            colorings = coloring_fn(effective_perm_group, mults, site_mask)
             for coloring in colorings
+                # Super-periodicity filter (chunk 6.5b refactor): drop colorings
+                # fixed by a non-identity pure translation. `effective_perm_group[1..n]`
+                # is identity-rotation × the supercell's n_cells = n translations
+                # (per getPermG's sorted construction). Single source of truth for
+                # both :multinomial and :recursive_stabilizer.
+                if !include_superperiodic && _is_super_periodic(coloring, effective_perm_group, n)
+                    continue
+                end
                 osz = _orbit_size(effective_perm_group, coloring)
                 push!(structures, EnumeratedStructure{D, Vector{Int8}}(
                     sc_id, coloring, osz))

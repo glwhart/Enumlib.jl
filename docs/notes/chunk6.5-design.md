@@ -359,7 +359,7 @@ The five cases together span 160+ distinct `(volume, hnf_degen, orbit_size)` tup
 
 ### 11.1 The two pre-fix bugs
 
-1. **Super-periodicity check assumed `pG[1..n_total]` were translations.** For multilattice (`n_total = n_D · n_cells`), the translation subgroup has only `n_cells` elements. Iterating past `n_cells` walked into the rotation × translation block and mis-flagged rotation-fixed labelings as super-periodic, *dropping* legitimate canonical labelings. Fixed by adding `n_translations` kwarg to both `getUniqueColorings_multinomial` and `getUniqueColorings_recursive_stabilizer` and wiring through `n_cells = volume(hnf)` per-supercell.
+1. **Super-periodicity check assumed `pG[1..n_total]` were translations.** For multilattice (`n_total = n_D · n_cells`), the translation subgroup has only `n_cells` elements. Iterating past `n_cells` walked into the rotation × translation block and mis-flagged rotation-fixed labelings as super-periodic, *dropping* legitimate canonical labelings. **Final fix (per user 2026-05-19 review):** pulled super-periodicity *out* of `getUniqueColorings_multinomial` and `getUniqueColorings_recursive_stabilizer` entirely — those are now pure-enumeration functions returning every canonical orbit. Post-filter (`_is_super_periodic`) sits in `_enumerate_per_concentration` where `n_cells = volume(hnf)` is in scope. One implementation of the super-periodicity logic instead of two, fewer kwargs on the inner functions, no new "lift n_cells through three call layers" plumbing.
 
 2. **`_location_vector` ranked positions in the unfiltered set; the branching index ranked in the site-mask-filtered set.** The two encodings disagreed at depth `d` whenever inactive sublattices were interleaved with active ones — making the canonicality check compare incommensurate ranks and let equivalent labelings through as canonical duplicates. Fixed by threading `site_mask` into `_location_vector` so its slot enumeration matches `_descend!`'s branching.
 
@@ -375,11 +375,12 @@ The two semantics agree when:
 They disagree when:
 - The parent has ops that swap inactive sublattices with different fixed labels (halfHeusler/fullHeusler as originally specified).
 
-**Open decision (queued for user input):**
-- (a) Reframe the corpus: use the same label for "physically equivalent" inactive sublattices (matches the relabeled-`*` rows above; we lose the ability to *write* distinct inactive markers but enumeration is mathematically equivalent to Fortran).
-- (b) Implement Fortran-style "project enumeration to active sublattices only, lift inactive labels at output time" (a larger change; mirrors Fortran exactly).
-- (c) Accept the divergence and document it as a Julia-specific semantic (mathematically valid, just different from Fortran).
+**Resolution (user 2026-05-19): option (c).** Accept Julia's stricter semantic — label 2 at Y is physically different from label 3 at Y (they're distinct atomic species, not interchangeable markers), so a parent op that swaps Y↔Z is not a symmetry of the labeled configuration. The Fortran convention of "labels ≥ k are inactive markers, swappable" loses physical specificity; Julia's convention preserves it.
+
+The cross-validation corpus accordingly uses the relabeled-`*` rows (e.g., halfHeusler with `Y=Z={2}`) — that's what `test/data/chunk6.5_fortran_corpus.csv` and the testset in `test_enumerate.jl` already encode. The distinct-label Fortran-spec rows are no longer load-bearing for correctness.
 
 ### 11.3 Wurtzite — separate space-group bug
 
-`p.space_group` for the shifted-wurtzite parent yields `|G| = 4` instead of the expected 12 (P6₃mc has 12 ops). The 4 ops Spacey returns include some that swap d₁↔d₂ — but those aren't actual P6₃mc symmetries on this dset. Diagnosis is Spacey-side (chunk-1 / R50.2a precompute is wrong for non-symmorphic hexagonal cases), not chunk-6.5b. Tracking separately.
+`p.space_group` for the shifted-wurtzite parent yields `|G| = 4` instead of the expected 12 (P6₃mc has 12 ops). The 4 ops Spacey returns include some that swap d₁↔d₂ — but those aren't actual P6₃mc symmetries on this dset. Diagnosis is Spacey-side (chunk-1 / R50.2a precompute is wrong for non-symmorphic hexagonal cases), not chunk-6.5b.
+
+**Tracked on the Spacey repo** — written up in detail with a minimal reproducer at `docs/notes/spacey-wurtzite-bug.md` (Spacey.jl, queued for a separate session).

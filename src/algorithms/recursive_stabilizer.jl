@@ -15,25 +15,19 @@
 
 """
     getUniqueColorings_recursive_stabilizer(perm_group, multiplicities;
-                                             include_superperiodic = false,
-                                             site_mask = nothing,
-                                             n_translations = sum(multiplicities)) -> Vector{Vector{Int8}}
+                                             site_mask = nothing) -> Vector{Vector{Int8}}
 
 Symmetry-inequivalent colorings at fixed concentration via the Morgan 2017 tree-search-with-shrinking-stabilizers algorithm. Internal driver — un-exported in chunk 13b.1; users reach this algorithm via `enumerate(parent, sites; algorithm = :recursive_stabilizer, ...)`. The chunk-6 analog (`Enumlib.getUniqueColorings_multinomial`) and this one are the two parallel concentration-restricted enumerators.
 
 For high configurational freedom (large n, k ≥ 3), the tree is asymptotically faster than chunk-6's bitmap algorithm — Morgan 2017 Fig. 5 shows ~100× speedup at FCC ternary n=20. For small n, chunk-6's bitmap may still be faster (no per-level overhead); `:auto` dispatch in `enumerate(...)` picks based on the chunk-7.5 enumeration resource check (`estimate_cost`).
 
-By default (`include_superperiodic = false`), drops super-periodic colorings — those fixed by some non-identity pure translation. See `research.md` §4.4 (Morgan 2017 algorithm digest) and §5.2.1 (super-periodicity policy).
+Returns every canonical labeling (one per orbit under `perm_group`). Super-periodic filtering is the caller's job (see `Enumlib._enumerate_per_concentration`) — the algorithm itself has no notion of "pure translation"; that's a property of the supercell's translation subgroup, which lives in the caller's scope where `n_cells = volume(hnf)` is in scope. Pulling super-periodicity out of here also lets us share one implementation across `:multinomial` and `:recursive_stabilizer`.
 
 The optional `site_mask` kwarg (`BitMatrix(n, k)`) is the chunk-6.5 (2026-05-18) extension for per-site restricted allowed labels (Regime C). When `nothing` (default), every position can carry every color — behavior is unchanged from chunk 8. When supplied, the tree branching at each depth filters `unfilled_positions` to those where `site_mask[pos, depth+1]` is true; if too few allowed positions remain to satisfy the multiplicity for the current color, the branch is pruned.
-
-`n_translations` is the size of the supercell's pure-translation subgroup — `perm_group[1..n_translations]` is identity-rotation × translations. The super-periodicity check only iterates this prefix. For single-lattice this equals `n = sum(multiplicities)` (default); for multilattice the caller must pass `n_translations = n_cells = n / n_D` (chunk 6.5b — fixed silent over-iteration that mis-flagged rotation-fixed labelings as super-periodic).
 """
 function getUniqueColorings_recursive_stabilizer(perm_group,
                                                   multiplicities::AbstractVector{<:Integer};
-                                                  include_superperiodic::Bool = false,
-                                                  site_mask::Union{Nothing, BitMatrix} = nothing,
-                                                  n_translations::Int = sum(multiplicities))
+                                                  site_mask::Union{Nothing, BitMatrix} = nothing)
     n = sum(multiplicities)
     k = length(multiplicities)
     n == length(perm_group[1]) ||
@@ -51,8 +45,7 @@ function getUniqueColorings_recursive_stabilizer(perm_group,
     partial = fill(Int8(-1), n)        # -1 means "unfilled"
     current_loc = Int[]
     _descend!(output, partial, perm_group, current_loc,
-              multiplicities, 0, n, k, perm_group, include_superperiodic, site_mask,
-              n_translations)
+              multiplicities, 0, n, k, site_mask)
     return output
 end
 
@@ -63,12 +56,12 @@ end
 # When supplied, position `pos` can carry color `c` only if `site_mask[pos, c+1]`
 # is true. The branching at each depth filters unfilled positions accordingly.
 function _descend!(output, partial, parent_stab, current_loc,
-                   multiplicities, depth, n, k, full_group, include_superperiodic,
-                   site_mask::Union{Nothing, BitMatrix},
-                   n_translations::Int)
+                   multiplicities, depth, n, k,
+                   site_mask::Union{Nothing, BitMatrix})
     if depth == k - 1
-        # Last color is determined by what's left. Materialize the leaf and
-        # apply the super-periodicity check.
+        # Last color is determined by what's left. Materialize the leaf.
+        # Super-periodicity is the caller's responsibility (it needs
+        # n_cells, which we don't have here).
         full_partial = copy(partial)
         for pos in 1:n
             if full_partial[pos] == -1
@@ -81,21 +74,6 @@ function _descend!(output, partial, parent_stab, current_loc,
                 full_partial[pos] = Int8(k - 1)
             end
         end
-
-        # Super-periodicity: drop if any non-identity translation fixes it.
-        # The first `n_translations` elements of full_group are the pure-translation
-        # subgroup (identity rotation × translations, per getPermG's sorted/composed
-        # construction). For single-lattice n_translations == n; for multilattice
-        # n_translations = n_cells < n_total. Non-identity translations are
-        # full_group[2:n_translations].
-        if !include_superperiodic
-            for ig in 2:min(n_translations, length(full_group))
-                if full_partial[full_group[ig]] == full_partial
-                    return  # super-periodic; drop
-                end
-            end
-        end
-
         push!(output, full_partial)
         return
     end
@@ -115,8 +93,7 @@ function _descend!(output, partial, parent_stab, current_loc,
         # No positions for this color — descend without placing.
         push!(current_loc, 0)
         _descend!(output, partial, parent_stab, current_loc,
-                  multiplicities, depth + 1, n, k, full_group, include_superperiodic, site_mask,
-                  n_translations)
+                  multiplicities, depth + 1, n, k, site_mask)
         pop!(current_loc)
         return
     end
@@ -152,8 +129,7 @@ function _descend!(output, partial, parent_stab, current_loc,
             # fix the new partial.
             new_stab = _stabilize_partial(parent_stab, partial)
             _descend!(output, partial, new_stab, current_loc,
-                      multiplicities, depth + 1, n, k, full_group, include_superperiodic, site_mask,
-                      n_translations)
+                      multiplicities, depth + 1, n, k, site_mask)
         end
 
         # Backtrack: un-place the color, pop loc.
