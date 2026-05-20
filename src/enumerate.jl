@@ -166,9 +166,17 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     k = _validate_enumerate_inputs(parent, sites, concentration)
 
+    # ---- Label-equivalence-aware effective parent (chunk 6.5c) ----
+    # Sub-set parent.space_group / dset_perms / dset_shifts to ops whose
+    # action respects the Sites' per-position allowed_labels classes. Regime
+    # A/B short-circuits to the original `parent` object (byte-identical
+    # behavior); Regime C may return a freshly-built filtered ParentLattice.
+    # The user's original `parent` is never mutated.
+    parent_eff = _effective_parent(parent, sites)
+
     # ---- Enumeration resource check (chunk 7.5) ----
     if !skip_resource_check
-        estimate = estimate_cost(parent, sites; supercells, concentration,
+        estimate = estimate_cost(parent_eff, sites; supercells, concentration,
                                  algorithm, include_superperiodic)
         if estimate.peak_memory_bytes > memory_budget
             if on_overflow === :error
@@ -181,21 +189,25 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
     end
 
     # ---- Resolve supercells (with degeneracies for Supercell.hnf_degeneracy) ----
-    hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent)
+    hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent_eff)
     isempty(hnfs_with_degens) && return Enumeration{D, Vector{Int8}}(
         parent, sites, Supercell{D}[], EnumeratedStructure{D, Vector{Int8}}[])
 
     # ---- Algorithm bodies ----
+    # Pass `parent_eff` for Supercell construction (it consults `dset_perms` /
+    # `dset_shifts` via `getPermG`), but the returned `Enumeration` stores the
+    # user's original `parent` — that's the object they handed us.
     if algorithm == :exhaustive
-        return _enumerate_exhaustive(parent, sites, hnfs_with_degens, k; include_superperiodic)
+        return _enumerate_exhaustive(parent_eff, sites, hnfs_with_degens, k;
+                                     include_superperiodic, user_parent = parent)
     elseif algorithm == :multinomial
-        return _enumerate_multinomial(parent, sites, hnfs_with_degens, k, concentration,
+        return _enumerate_multinomial(parent_eff, sites, hnfs_with_degens, k, concentration,
                                       partition_threshold, on_partition_overflow;
-                                      include_superperiodic)
+                                      include_superperiodic, user_parent = parent)
     else  # :recursive_stabilizer
-        return _enumerate_recursive_stabilizer(parent, sites, hnfs_with_degens, k, concentration,
+        return _enumerate_recursive_stabilizer(parent_eff, sites, hnfs_with_degens, k, concentration,
                                                 partition_threshold, on_partition_overflow;
-                                                include_superperiodic)
+                                                include_superperiodic, user_parent = parent)
     end
 end
 
@@ -235,7 +247,8 @@ end
 
 function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
                                hnfs_with_degens::AbstractVector{Tuple{HNF{D}, Int}}, k::Int;
-                               include_superperiodic::Bool = false) where D
+                               include_superperiodic::Bool = false,
+                               user_parent::ParentLattice{D} = parent) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
     for (hnf, hnf_deg) in hnfs_with_degens
@@ -255,7 +268,7 @@ function _enumerate_exhaustive(parent::ParentLattice{D}, sites::Sites{D},
                 sc_id, Int8.(c), osz))
         end
     end
-    return Enumeration{D, Vector{Int8}}(parent, sites, supercells_list, structures)
+    return Enumeration{D, Vector{Int8}}(user_parent, sites, supercells_list, structures)
 end
 
 # ------------------------------------------------------------------------------
@@ -268,13 +281,15 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
                                 concentration::Union{Concentration, ConcentrationRange},
                                 partition_threshold::Int,
                                 on_partition_overflow::Symbol;
-                                include_superperiodic::Bool = false) where D
+                                include_superperiodic::Bool = false,
+                                user_parent::ParentLattice{D} = parent) where D
     return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
         partition_threshold, on_partition_overflow, include_superperiodic,
         # site_mask is ignored: :multinomial doesn't yet support per-site
         # restrictions (queued for chunk 6.5a). The Regime-C dispatch in
         # `enumerate(...)` won't route here when site_mask is non-trivial.
-        (perm_group, mults, _site_mask) -> getUniqueColorings_multinomial(perm_group, mults))
+        (perm_group, mults, _site_mask) -> getUniqueColorings_multinomial(perm_group, mults);
+        user_parent)
 end
 
 # ------------------------------------------------------------------------------
@@ -287,11 +302,13 @@ function _enumerate_recursive_stabilizer(parent::ParentLattice{D}, sites::Sites{
                                           concentration::Union{Concentration, ConcentrationRange},
                                           partition_threshold::Int,
                                           on_partition_overflow::Symbol;
-                                          include_superperiodic::Bool = false) where D
+                                          include_superperiodic::Bool = false,
+                                          user_parent::ParentLattice{D} = parent) where D
     return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
         partition_threshold, on_partition_overflow, include_superperiodic,
         (perm_group, mults, site_mask) -> getUniqueColorings_recursive_stabilizer(
-            perm_group, mults; site_mask))
+            perm_group, mults; site_mask);
+        user_parent)
 end
 
 # ------------------------------------------------------------------------------
@@ -326,22 +343,101 @@ function _build_site_mask(sites::Sites, n_cells::Int, k::Int)
     return mask
 end
 
-# Filter a supercell perm group to those permutations that preserve the
-# site_mask — i.e., σ ∈ filtered iff `mask[σ[i], :] == mask[i, :]` for all i.
-# The parent space group can include ops that swap dset positions with different
-# allowed_labels (e.g., perovskite's 48 ops include swaps that map an A-site
-# position to a B-site position when the dset positions are related by parent
-# symmetry); those ops aren't symmetries of the labeled configuration in
-# Regime C, so they must be dropped from the effective enumeration group.
+# Per-supercell safety net (chunk 6.5b). Filter a supercell perm group to
+# those permutations that preserve the site_mask — i.e., σ ∈ filtered iff
+# `mask[σ[i], :] == mask[i, :]` for all i.
 #
-# For Regime B (uniform allowed_labels per dset block), every perm preserves
-# the (constant) mask — the filter is a no-op. For Regime A (single dset
-# block), trivially no-op.
+# Chunk 6.5c moved the *actual* Regime-C fix one layer earlier (see
+# `_effective_parent` below): drops label-violating ops from the parent space
+# group *before* `getPermG`'s `unique!()` dedup, so they never reach this
+# stage. With that fix the filter is idempotent on our corpus — it has no
+# work to do. We keep it as a cheap safety net (defense-in-depth) against
+# any future divergence between dset-class equivalence and site-mask
+# preservation.
+#
+# Historically (chunk 6.5b alone) this was the only Regime-C filter, but it's
+# *insufficient* for cases like wurtzite where the over-symmetric parent ops
+# survive `getPermG`'s `unique!()` by merging into the same site-permutation
+# as a legitimate op — the merged result passes the mask check and can't be
+# distinguished. Chunk 6.5c fixes that at the source.
 function _filter_perm_group_by_mask(perm_group::AbstractVector,
                                     site_mask::BitMatrix)
     return [σ for σ in perm_group
             if all(view(site_mask, σ[i], :) == view(site_mask, i, :)
                    for i in eachindex(σ))]
+end
+
+# ------------------------------------------------------------------------------
+# Label-equivalence-aware effective parent (chunk 6.5c, 2026-05-19).
+#
+# `ParentLattice` builds its cached `space_group` by calling Spacey with
+# uniform types (`ones(Int, length(ds))`) — correct for Regime A and Regime B,
+# but over-symmetric for Regime C: it returns every isometry that preserves
+# the position set, including ops that swap dset positions across
+# `allowed_labels` classes. Those ops aren't symmetries of the labeled
+# configuration; if they reach `getPermG`, its `unique!()` step can merge
+# them with legitimate ops in a way that's no longer distinguishable
+# post-hoc (the wurtzite mismatch in chunk 6.5b's initial commit).
+#
+# At `enumerate(...)` entry (and `count_inequivalent` / `estimate_cost`) we
+# have `Sites` in scope, so we can sub-set the parent's space group to
+# label-respecting ops only. `_effective_parent(parent, sites)` returns the
+# original `parent` object unchanged when no ops would be dropped (Regime
+# A/B fast path, byte-identical to the pre-6.5c behavior), or a fresh
+# `ParentLattice{D}` built via the internal direct-fields constructor when
+# filtering is needed.
+# ------------------------------------------------------------------------------
+
+# Class id per dset position: positions sharing `allowed_labels` get the same
+# id, assigned in first-seen order. `length(sites.list) == ndset(parent)` is
+# guaranteed by the validation gate that runs before this helper is called.
+function _dset_equivalence_classes(sites::Sites)
+    classes = Int[]
+    seen = Dict{BitSet, Int}()
+    next_id = 0
+    for s in sites.list
+        id = get(seen, s.allowed_labels, -1)
+        if id == -1
+            next_id += 1
+            seen[s.allowed_labels] = next_id
+            id = next_id
+        end
+        push!(classes, id)
+    end
+    return classes
+end
+
+# True iff the dset permutation π maps every position to one in the same
+# equivalence class (so the op is a symmetry of the labeled configuration).
+_dset_perm_preserves_classes(π::AbstractVector{<:Integer},
+                             classes::AbstractVector{<:Integer}) =
+    all(classes[π[i]] == classes[i] for i in eachindex(π))
+
+function _effective_parent(parent::ParentLattice{D}, sites::Sites{D}) where D
+    # Regime A: only one dset position; nothing to filter, every op trivially
+    # class-preserving. Skip the work and return the parent verbatim — this
+    # is byte-identical to pre-6.5c behavior, and downstream `===` checks
+    # observe the no-op.
+    ndset(parent) == 1 && return parent
+
+    classes = _dset_equivalence_classes(sites)
+    # Regime B: every dset position shares allowed_labels → one class → every
+    # op trivially class-preserving. Same fast-path return.
+    all(c == classes[1] for c in classes) && return parent
+
+    # Regime C: filter. Walk parent.dset_perms, keep ops whose π preserves
+    # classes; sub-set space_group / dset_perms / dset_shifts in parallel.
+    keep_idx = [op_idx for (op_idx, π) in enumerate(parent.dset_perms)
+                if _dset_perm_preserves_classes(π, classes)]
+    # If the filter retained every op (e.g., the parent symmetry happens to
+    # respect the labels with no help needed), short-circuit to the same
+    # parent object — still byte-identical to pre-6.5c.
+    length(keep_idx) == length(parent.space_group) && return parent
+
+    return ParentLattice{D}(parent.A, parent.dset,
+                            parent.space_group[keep_idx],
+                            parent.dset_perms[keep_idx],
+                            parent.dset_shifts[keep_idx])
 end
 
 # ------------------------------------------------------------------------------
@@ -358,7 +454,8 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
                                        partition_threshold::Int,
                                        on_partition_overflow::Symbol,
                                        include_superperiodic::Bool,
-                                       coloring_fn) where D
+                                       coloring_fn;
+                                       user_parent::ParentLattice{D} = parent) where D
     structures = EnumeratedStructure{D, Vector{Int8}}[]
     supercells_list = Supercell{D}[]
     n_D = ndset(parent)
@@ -433,7 +530,7 @@ function _enumerate_per_concentration(parent::ParentLattice{D}, sites::Sites{D},
         end
     end
 
-    return Enumeration{D, Vector{Int8}}(parent, sites, supercells_list, structures)
+    return Enumeration{D, Vector{Int8}}(user_parent, sites, supercells_list, structures)
 end
 
 """
@@ -602,9 +699,12 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
                             include_superperiodic::Bool = false,
                             breakdown::Bool = false) where D
     k = _validate_enumerate_inputs(parent, sites, concentration)
-    n_D = ndset(parent)
+    # Chunk 6.5c: label-equivalence-aware effective parent. No-op for Regime
+    # A/B (returns the user's parent verbatim); filters for Regime C.
+    parent_eff = _effective_parent(parent, sites)
+    n_D = ndset(parent_eff)
 
-    hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent)
+    hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent_eff)
 
     total = BigInt(0)
     by_volume_dict = Dict{Int, BigInt}()
@@ -612,7 +712,7 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
     by_hnf = Tuple{HNF{D}, BigInt}[]
 
     for (hnf, hnf_deg) in hnfs_with_degens
-        sc = Supercell(hnf, parent; hnf_degeneracy = hnf_deg)
+        sc = Supercell(hnf, parent_eff; hnf_degeneracy = hnf_deg)
         n = volume(hnf)
         n_total = n_D * n                # total sites = n_D · n
         snf_diag = (Int(sc.snf[1]), Int(sc.snf[2]), Int(sc.snf[3]))
@@ -715,6 +815,9 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
                        algorithm::Symbol = :auto,
                        include_superperiodic::Bool = false) where D
     k = _validate_enumerate_inputs(parent, sites, concentration)
+    # Chunk 6.5c: same label-equivalence-aware effective parent that
+    # `enumerate(...)` uses. No-op for Regime A/B.
+    parent_eff = _effective_parent(parent, sites)
 
     # Resolve algorithm (same logic as enumerate's :auto dispatch).
     # Note: estimate_cost doesn't have memory_budget context, so :auto here
@@ -723,7 +826,7 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
         if concentration === nothing
             :exhaustive
         else
-            _multinomial_bitmap_fits(parent, supercells, concentration,
+            _multinomial_bitmap_fits(parent_eff, supercells, concentration,
                                      default_memory_budget()) ?
                 :multinomial : :recursive_stabilizer
         end
@@ -756,15 +859,15 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     end
 
     # Resolve the HNF list (deferred work — same call enumerate makes).
-    hnfs = enumerate_hnfs(supercells, parent)
-    n_D = ndset(parent)
+    hnfs = enumerate_hnfs(supercells, parent_eff)
+    n_D = ndset(parent_eff)
 
     # Total count via the chunk-7 machinery.
-    total_count = count_inequivalent(parent, sites; supercells, concentration,
+    total_count = count_inequivalent(parent_eff, sites; supercells, concentration,
                                      include_superperiodic)
 
     # Peak memory.
-    peak_memory = _predict_peak_memory(hnfs, parent, k, concentration, chosen, total_count)
+    peak_memory = _predict_peak_memory(hnfs, parent_eff, k, concentration, chosen, total_count)
 
     # Selection kind.
     selection_kind = supercells isa VolumeRange ? :volume_range :

@@ -381,6 +381,19 @@ The cross-validation corpus accordingly uses the relabeled-`*` rows (e.g., halfH
 
 ### 11.3 Wurtzite — separate space-group bug
 
-`p.space_group` for the shifted-wurtzite parent yields `|G| = 4` instead of the expected 12 (P6₃mc has 12 ops). The 4 ops Spacey returns include some that swap d₁↔d₂ — but those aren't actual P6₃mc symmetries on this dset. Diagnosis is Spacey-side (chunk-1 / R50.2a precompute is wrong for non-symmorphic hexagonal cases), not chunk-6.5b.
+**Updated 2026-05-19 after the chunk 6.5c investigation.** Earlier this section claimed Spacey was returning |G| = 4 for the shifted-wurtzite parent. That was a confused observation — Spacey actually returns |G| = 24 when called with uniform types (correct, since uniform-types wurtzite has 24 isometries preserving the position set), and |G| = 12 when called with cation/anion-distinguished types (the actual P6₃mc symmetry of the labeled structure).
 
-**Tracked on the Spacey repo** — written up in detail with a minimal reproducer at `docs/notes/spacey-wurtzite-bug.md` (Spacey.jl, queued for a separate session).
+The fix landed as chunk 6.5c: `_effective_parent(parent, sites)` derives a per-dset-position equivalence class from `sites.list[α].allowed_labels`, then sub-sets `parent.space_group` / `dset_perms` / `dset_shifts` to ops whose `dset_perm[i]` lands in the same class as `i` for every `i`. For wurtzite that filter takes 24 → 12 (matching P6₃mc).
+
+### 11.4 Chunk 6.5c outcome
+
+**What 6.5c fixes:** the effective parent that `Supercell` / `getPermG` see in Regime C is now label-equivalence-aware. The previously-trusted per-supercell `_filter_perm_group_by_mask` (chunk 6.5b) was *insufficient* for the wurtzite-class of cases where the over-symmetric ops merge with legitimate ops during `getPermG`'s `unique!()` step, but it *was* sufficient for the perovskite/zincblende/Heusler corpus (those cases produce distinct over-symmetric site-permutations that the mask filter correctly catches). 6.5c is a prerequisite for chunk 6.5a (`:multinomial_restricted`): the bitmap algorithm consumes the same per-supercell perm group and would be bitten by the same root cause without the parent-level fix.
+
+**Observable changes after 6.5c:**
+- For Regime A and Regime B inputs, `_effective_parent(parent, sites) === parent` (literal object identity — no allocation, no behavior change). Existing single-lattice and Regime-B Fortran-corpus testsets pass byte-for-byte.
+- For Regime C corpus cases where the chunk 6.5b mask filter was already sufficient (perovskite, zincblende, half/full-Heusler with Y=Z={2}), counts are unchanged — the parent-level filter and the mask filter both arrive at the same effective per-supercell group.
+- For wurtzite, `parent.space_group` is still 24 ops as Spacey computes it (the user's parent is never mutated), but `_effective_parent(parent, sites).space_group` is 12. Julia's wurtzite enumeration at n=1..3 returns 3/10/58, *not* the Fortran corpus's 4/42/260.
+
+**Why wurtzite still diverges from Fortran (3 vs 4 at n=1):** The 12-op label-aware group includes the 6₃ screw, which maps cation d₁ ↔ d₂ (and anion d₃ ↔ d₄). Spacey identifies this correctly — `op 5` of the 12 has `R = -60°` rotation and `τ = (1/3, 2/3, 1/2)`, and one can verify by hand that `R · d₁ + τ ≡ d₂ (mod L)`. Under this op the binary cation labelings `(0, 1)` and `(1, 0)` are in the same orbit, giving 3 inequivalent configs at n=1. Fortran's enumeration is using a *smaller* symmetry group (apparently the symmorphic translationengleiche subgroup, P6mm? — to be confirmed), which doesn't include the 6₃ screw, so it sees the two labelings as inequivalent and gets 4.
+
+This is a separate semantic divergence from the option-(c) distinct-inactive-labels case in §11.2, but of the same flavor: Julia uses the full crystallographic symmetry group; Fortran uses a more restricted notion. Following the same precedent, we keep Julia's stricter (more symmetry-aware) semantic. The wurtzite Fortran-corpus rows are no longer load-bearing for correctness; the testset asserts the parent-level filter shape (24 → 12) instead of matching the Fortran enumeration count.

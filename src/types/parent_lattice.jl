@@ -101,6 +101,20 @@ struct ParentLattice{D}
 
         new(Af, ds, sg, dset_perms, dset_shifts)
     end
+
+    # Internal direct-fields constructor (chunk 6.5c, 2026-05-19). Bypasses
+    # canonicalization, the Spacey call, and `_dset_permutation` — all of those
+    # have already run on the parent we're sub-setting. Used by
+    # `_effective_parent(parent, sites)` to build a label-equivalence-aware
+    # filtered ParentLattice without redoing the symmetry computation. Not part
+    # of the public API; do not call directly.
+    function ParentLattice{D}(A::Matrix{Float64},
+                              dset::Vector{Vector{Float64}},
+                              space_group::Vector{SymmetryOp{D}},
+                              dset_perms::Vector{Vector{Int}},
+                              dset_shifts::Vector{Vector{Vector{Int}}}) where D
+        new(A, dset, space_group, dset_perms, dset_shifts)
+    end
 end
 
 # R50.2a internal helper. For one symmetry op (R, t) and a dset, compute the

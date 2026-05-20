@@ -278,6 +278,84 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         end
     end
 
+    # ---- Chunk 6.5c — label-equivalence-aware effective parent ----
+    # The Regime-C symmetry input is filtered at `enumerate(...)` entry by
+    # sub-setting `parent.space_group` to ops whose dset_perm respects the
+    # per-position `allowed_labels` equivalence classes. Regime A and Regime B
+    # short-circuit to the original `parent` (object identity); Regime C
+    # builds a fresh ParentLattice with the filtered space group.
+    @testset "_effective_parent (chunk 6.5c)" begin
+        # ---- Regime A fast path: single-lattice → no work, returns parent ----
+        @testset "Regime A (single dset) — identity short-circuit" begin
+            parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+            @test Enumlib._effective_parent(parent, sites) === parent
+        end
+
+        # ---- Regime B fast path: uniform allowed_labels → still identity ----
+        @testset "Regime B (uniform sublattices) — identity short-circuit" begin
+            a = 1.0; c = sqrt(8/3)
+            A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
+            parent = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                           Site([1/3, 2/3, 1/2], [0, 1])])
+            @test Enumlib._effective_parent(parent, sites) === parent
+        end
+
+        # ---- Regime C: parent.space_group is filtered when ops swap classes ----
+        # Half-Heusler with distinct Y={2}, Z={3}: FCC's 48 ops include ops
+        # that swap Y↔Z (e.g., inversion through the unit-cell center). After
+        # filtering by the {X, Y, Z} equivalence classes, exactly half survive.
+        @testset "Regime C halfHeusler (distinct labels) — 48 → 24" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0, 0.0, 0.0],
+                               [0.25, 0.25, 0.25],
+                               [0.75, 0.75, 0.75]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                           Site([0.25, 0.25, 0.25], [2]),
+                           Site([0.75, 0.75, 0.75], [3])])
+            @test length(p.space_group) == 48          # user's parent untouched
+            peff = Enumlib._effective_parent(p, sites)
+            @test peff !== p                            # not the same object
+            @test length(peff.space_group) == 24
+            @test length(p.space_group) == 48          # still untouched after the call
+        end
+
+        # ---- Wurtzite: uniform-types Spacey gives 24, label-aware filter gives 12 (P6₃mc) ----
+        @testset "Regime C wurtzite — 24 → 12" begin
+            A = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
+            ds = [[0.0, 0.0, 0.0], [1.0/3, 2.0/3, 0.5],
+                  [0.0, 0.0, 0.375], [1.0/3, 2.0/3, 0.875]]
+            p = ParentLattice(A, ds)
+            sites = Sites([Site(ds[1], [0, 1]),
+                           Site(ds[2], [0, 1]),
+                           Site(ds[3], [2]),
+                           Site(ds[4], [2])])
+            @test length(p.space_group) == 24
+            peff = Enumlib._effective_parent(p, sites)
+            @test length(peff.space_group) == 12       # P6₃mc
+        end
+
+        # ---- Regime C with all ops already class-preserving: identity short-circuit ----
+        # Half-Heusler with Y=Z={2}: X={0,1} is its own equivalence class;
+        # Y/Z share the {2} class. The FCC 48-op group has no ops that swap
+        # X ↔ Y/Z (X is at the origin, Y/Z at 1/4-positions — different Wyckoff
+        # orbits), and the Y↔Z swaps are class-preserving (same {2}). So no
+        # ops get filtered — _effective_parent short-circuits and returns the
+        # original parent. This is the case our existing chunk 6.5b corpus
+        # testset relies on.
+        @testset "Regime C halfHeusler (Y=Z={2}) — no-op short-circuit" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0, 0.0, 0.0],
+                               [0.25, 0.25, 0.25],
+                               [0.75, 0.75, 0.75]])
+            sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                           Site([0.25, 0.25, 0.25], [2]),
+                           Site([0.75, 0.75, 0.75], [2])])
+            @test Enumlib._effective_parent(p, sites) === p
+        end
+    end
+
     # ---- Multilattice — dset/Sites length mismatch ----
     @testset "enumerate — multilattice with Sites length ≠ ndset errors" begin
         a = 1.0; c = sqrt(8/3)
