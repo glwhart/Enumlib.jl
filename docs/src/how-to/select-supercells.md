@@ -23,13 +23,23 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);   # FCC primi
 Enumerate every symmetry-inequivalent supercell of volume `n` for each `n` in the range:
 
 ```jldoctest supcells_recipe
-julia> hnfs = enumerate_hnfs(VolumeRange(2:4), p);
-
-julia> length(hnfs)              # symmetry-inequivalent HNFs at volumes 2, 3, 4 combined
-12
+julia> hnfs = enumerate_hnfs(VolumeRange(2:4), p)
+12-element Vector{HNF{3}}:
+ HNF{3} (volume 2)  1 0 0 / 0 1 0 / 0 0 2
+ HNF{3} (volume 2)  1 0 0 / 0 1 0 / 0 1 2
+ HNF{3} (volume 3)  1 0 0 / 0 1 0 / 0 0 3
+ HNF{3} (volume 3)  1 0 0 / 0 1 0 / 0 1 3
+ HNF{3} (volume 3)  1 0 0 / 0 1 0 / 0 2 3
+ HNF{3} (volume 4)  1 0 0 / 0 1 0 / 0 0 4
+ HNF{3} (volume 4)  1 0 0 / 0 1 0 / 0 1 4
+ HNF{3} (volume 4)  1 0 0 / 0 1 0 / 0 2 4
+ HNF{3} (volume 4)  1 0 0 / 0 1 0 / 0 3 4
+ HNF{3} (volume 4)  1 0 0 / 0 1 0 / 1 2 4
+ HNF{3} (volume 4)  1 0 0 / 0 2 0 / 0 0 2
+ HNF{3} (volume 4)  1 0 0 / 1 2 0 / 1 0 2
 ```
 
-The 12 is the FCC inequivalent-HNF count summed across n = 2, 3, 4.
+Two HNFs at volume 2, three at volume 3, seven at volume 4 — the FCC inequivalent-HNF count summed across n = 2, 3, 4. Each row of the matrix is one supercell basis vector in the parent's lattice coordinates; the diagonal entries multiplied give the volume.
 
 ## RadiusBound — when cell *shape* matters
 

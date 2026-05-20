@@ -1,6 +1,6 @@
 # Sweep concentration ranges
 
-Enumerate across a *band* of concentrations in a single call using [`ConcentrationRange`](@ref). Internally, the range decomposes at each supercell volume into a list of integer-multiplicity "partitions"; `enumerate` runs the fixed-concentration algorithm once per partition.
+Enumerate across a *band* of concentrations in a single call using [`ConcentrationRange`](@ref). Internally, the range decomposes at each supercell volume into a list of integer-multiplicity "partitions" (possible stoichiometries consistent with the concentration range); `enumerate` runs the fixed-concentration algorithm once per partition.
 
 ## Setup
 
@@ -14,7 +14,7 @@ julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);               # binary
 
 ## A bounded range
 
-Specify per-species `(min, max)` fractional bounds. The example below restricts each species to the 40–60% range — a typical "near-equiatomic" sweep:
+Specify per-species `(min, max)` fractional bounds. The example below restricts each species to the 40–60% range — a typical "near-equiatomic" sweep (say, for high-entropy alloys):
 
 ```jldoctest range_recipe
 julia> cr = ConcentrationRange([(2//5, 3//5), (2//5, 3//5)]);     # 40%-60% on each species
