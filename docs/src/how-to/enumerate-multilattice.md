@@ -192,9 +192,9 @@ flows through automatically — no need to repeat `species_symbols=` at
 the POSCAR call site. The integer-label form `[0, 1]` / `[2]` is still
 accepted if you prefer it; see [Describe substitution sites](describe-substitution-sites.md#atomic-symbol-labels).
 
-Without `concentration`, Regime C throws an `ArgumentError`: "Multilattice with per-site `allowed_labels` (Regime C — heterogeneous sublattices) requires a `concentration` kwarg." That's the gate working as designed — unrestricted enumeration on heterogeneous sublattices isn't a defined problem; you need a fixed composition to enumerate around.
+Without `concentration`, Regime C throws an `ArgumentError`: "Multilattice with per-site `allowed_labels` (Regime C — heterogeneous sublattices) requires a `concentration` kwarg." That's the input validation working as designed — unrestricted enumeration on heterogeneous sublattices isn't a defined problem; you need a fixed composition to enumerate around.
 
-## When the gate rejects your inputs
+## When input validation rejects your inputs
 
 Two regime-discrimination errors you may hit:
 

@@ -1,4 +1,4 @@
-# Dispatch and the cost gate
+# Dispatch and the resource check
 
 How `enumerate(...)`'s `algorithm = :auto` dispatch picks one of the three enumeration algorithms, how the enumeration resource check uses Pólya / [`estimate_cost`](@ref) to refuse oversized requests, and how to override each step.
 
@@ -49,13 +49,13 @@ There's also a `skip_resource_check::Bool = false` kwarg that disables the check
 Defaults to `max(2 GiB, 25% of Sys.total_memory())`. Pass an explicit byte count to override:
 
 - **HPC / Slurm** — `Sys.total_memory()` reports the *host's* RAM, not the cgroup / Slurm allocation. Set `memory_budget = parse(Int, ENV["SLURM_MEM_PER_NODE"]) * 2^20` or similar.
-- **Smaller-than-default** — when you want the gate to fire earlier (e.g., on a laptop where 25% would still be too much).
+- **Smaller-than-default** — when you want the resource check to refuse earlier (e.g., on a laptop where 25% would still be too much).
 
 [`estimate_cost`](@ref) takes the same `memory_budget` kwarg and reports the would-be peak; you can call it explicitly to size before running.
 
-## Cost-gate ↔ Pólya ↔ algorithm alignment
+## Resource check ↔ Pólya ↔ algorithm alignment
 
-The cost-gate's count is the *aperiodic Pólya count* (see [polya-counting](polya-counting.md)), which matches what `enumerate(...)` will produce *with the same `include_superperiodic` policy*. So the predicted structure count is exact (up to BigInt arithmetic), and the predicted memory is an upper bound on what `enumerate` actually allocates.
+The resource check's count is the *aperiodic Pólya count* (see [polya-counting](polya-counting.md)), which matches what `enumerate(...)` will produce *with the same `include_superperiodic` policy*. So the predicted structure count is exact (up to BigInt arithmetic), and the predicted memory is an upper bound on what `enumerate` actually allocates.
 
 The chunk-7 / chunk-7.5 testsuites assert this alignment on the entire reference corpus: for every locked-count case, `count_inequivalent` and `length(enumerate(...))` agree, and `estimate_cost(...).peak_memory_bytes` ≥ the algorithm's actual peak.
 

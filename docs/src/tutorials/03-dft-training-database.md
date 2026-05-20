@@ -39,7 +39,7 @@ julia> count_inequivalent(parent, sites; supercells = VolumeRange(4:4), concentr
 5
 ```
 
-[^2]: `enumerate(...)` also runs this check internally and refuses to start when the predicted memory exceeds `memory_budget`. See [Dispatch and the cost gate](../explanation/dispatch-and-cost-gate.md).
+[^2]: `enumerate(...)` also runs this check internally and refuses to start when the predicted memory exceeds `memory_budget`. See [Dispatch and the resource check](../explanation/dispatch-and-cost-gate.md).
 
 Five configurations — small enough to ship in a single batch. (For production sweeps you'd vary volume and concentration too; see [Count without enumerating](../how-to/count-without-enumerating.md) for the recipe-oriented version of this pattern.)
 

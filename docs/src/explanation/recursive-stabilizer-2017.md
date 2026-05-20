@@ -34,7 +34,7 @@ For unrestricted (no-concentration) enumerations, this algorithm doesn't current
 ## Cost
 
 - **Time.** Worst-case `O(|G| · output_count · n)` — for each emitted structure, the tree walk does `O(|G|·n)` of partial-coloring stabilizer checks. In practice this is *much* faster than HF 2012 once the bitmap doesn't fit, because the tree skips entire subtrees when the partial coloring is identified as non-canonical early.
-- **Memory.** Streaming — only the current branch's partial coloring + stabilizer subset live in memory at once. The cost-gate's tree-mode prediction is `total_count × n × Int_overhead` as a conservative upper bound; per chunk-7.5 design Q6 this is deliberately loose, and the output term (= the final `Vector{EnumeratedStructure}`) dominates in practice.
+- **Memory.** Streaming — only the current branch's partial coloring + stabilizer subset live in memory at once. The resource check's tree-mode prediction is `total_count × n × Int_overhead` as a conservative upper bound; per chunk-7.5 design Q6 this is deliberately loose, and the output term (= the final `Vector{EnumeratedStructure}`) dominates in practice.
 
 For a back-of-envelope: at `n = 48` binary 24:24, `M = C(48, 24) ≈ 7.6 · 10^13` — the bitmap is ~9 TB, infeasible. The recursive-stabilizer tree handles the same problem in single-digit GB of working memory.
 
@@ -56,5 +56,5 @@ The `algorithm = :auto` dispatch is calibrated to ride the bitmap until it stops
 
 - [Algorithm overview](algorithm-overview.md)
 - [Multinomial mixed-radix hash (HF 2012)](multinomial-2012.md) — the bitmap algorithm the tree replaces.
-- [Dispatch and the cost gate](dispatch-and-cost-gate.md) — how `algorithm = :auto` picks.
+- [Dispatch and the resource check](dispatch-and-cost-gate.md) — how `algorithm = :auto` picks.
 - [Pick an algorithm](../how-to/pick-an-algorithm.md) — recipe.

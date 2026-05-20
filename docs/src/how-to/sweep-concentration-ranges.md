@@ -40,9 +40,9 @@ julia> length(e)
 216
 ```
 
-## The partition-count gate
+## The partition-count limit
 
-If a `ConcentrationRange` decomposes into many partitions per supercell, the cost can balloon. The default gate fires when the partition count exceeds **100** at any single volume:
+If a `ConcentrationRange` decomposes into many partitions per supercell, the cost can balloon. The default limit refuses the request when the partition count exceeds **100** at any single volume:
 
 ```jldoctest range_recipe
 julia> cr_wide = ConcentrationRange([(0//1, 1//1), (0//1, 1//1)]);   # totally unrestricted
@@ -51,12 +51,12 @@ julia> try
            enumerate(p, sites; supercells = VolumeRange(12:12),
                      concentration = cr_wide, partition_threshold = 5)
        catch e
-           e isa PartitionExplosionError ? :tripped : rethrow()
+           e isa PartitionExplosionError ? :refused : rethrow()
        end
-:tripped
+:refused
 ```
 
-In the example above we drop the threshold to 5 to fire the gate on a small case. To override at production scale, pass `on_partition_overflow = :warn` (warns but proceeds) or `:ignore` (silent), or raise `partition_threshold` explicitly. See [`PartitionExplosionError`](@ref) for the full message text and mitigation list.
+In the example above we drop the threshold to 5 to trigger the limit on a small case. To override at production scale, pass `on_partition_overflow = :warn` (warns but proceeds) or `:ignore` (silent), or raise `partition_threshold` explicitly. See [`PartitionExplosionError`](@ref) for the full message text and mitigation list.
 
 ## See also
 

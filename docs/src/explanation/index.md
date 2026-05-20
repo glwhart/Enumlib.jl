@@ -13,10 +13,10 @@ The "why" of Enumlib. Conceptual scaffolding for the underlying math, the algori
 - [Multinomial mixed-radix hash (HF 2012)](multinomial-2012.md) — the chunk-6 algorithm. Iterate only colorings at the target concentration.
 - [Recursive stabilizer (Morgan-Hart 2017)](recursive-stabilizer-2017.md) — the chunk-8 tree. Doesn't need a bitmap.
 
-## Counting and gating
+## Counting and the resource check
 
 - [Pólya counting](polya-counting.md) — Burnside on coloring spaces, plus the Möbius-inversion correction for aperiodic orbits.
-- [Dispatch and the cost gate](dispatch-and-cost-gate.md) — how `algorithm = :auto` picks; how the enumeration resource check refuses oversized requests.
+- [Dispatch and the resource check](dispatch-and-cost-gate.md) — how `algorithm = :auto` picks; how the enumeration resource check refuses oversized requests.
 
 ## Policy
 

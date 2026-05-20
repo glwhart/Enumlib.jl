@@ -16,7 +16,7 @@ Apply this with `X = k^n` (the labeling space on `n` supercell sites with `k` sp
 N_orbits = (1 / |G|) · Σ_{g ∈ G} k^{c(g)}
 ```
 
-This is what `polya_count(perm_group, k)` ([`Enumlib.Polya.polya_count`](@ref)) computes. Cost is `O(|G| · n)` per supercell — milliseconds even for hundreds of supercells, hence its use as the cost-gate's pricing tool.
+This is what `polya_count(perm_group, k)` ([`Enumlib.Polya.polya_count`](@ref)) computes. Cost is `O(|G| · n)` per supercell — milliseconds even for hundreds of supercells, hence its use as the resource check's pricing tool.
 
 ## Fixed concentration
 

@@ -75,7 +75,7 @@ tagged = attach_results(e, results)
 # → Vector{Tuple{EnumeratedStructure, Float64}}
 ```
 
-`tagged` is ready to hand off to [JuCE.jl](https://github.com/glwhart/JuCE.jl) or any other cluster-expansion / MLIP fitter that consumes `(structure, energy)` pairs.
+`tagged` is ready to hand off to [JuCE.jl](https://github.com/byu-panda-edu/JuCE.jl) or any other cluster-expansion / MLIP fitter that consumes `(structure, energy)` pairs.
 
 ## Right-handedness and other gotchas
 

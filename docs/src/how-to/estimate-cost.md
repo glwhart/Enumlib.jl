@@ -3,7 +3,7 @@
 [`estimate_cost`](@ref) predicts how big a planned `enumerate(...)` call will be — total structure count, peak memory, chosen algorithm — *without* actually allocating or running it. Two use cases:
 
 1. **You** call it to size a request before launching a multi-day job.
-2. **`enumerate(...)` itself** calls it internally as the *enumeration resource check* (formerly "pre-flight gate") — and refuses to proceed if the prediction exceeds `memory_budget`.
+2. **`enumerate(...)` itself** calls it internally as the *enumeration resource check* — and refuses to proceed if the prediction exceeds `memory_budget`.
 
 ## Setup
 
@@ -29,9 +29,9 @@ julia> est.chosen_algorithm                     # what :auto resolved to
 
 Inspect any field of the returned [`EnumerationCostEstimate`](@ref) (`total_count`, `peak_memory_bytes`, `chosen_algorithm`, `selection_kind`, `partition_count`, `notes`) to drive your sizing decisions.
 
-## The gate firing
+## When the resource check refuses
 
-The same `estimate_cost` call is made internally by `enumerate(...)`. If the prediction exceeds `memory_budget`, the default policy throws [`EnumerationTooLargeError`](@ref) — *before* any allocation happens. Below, we force the gate with an artificially tiny `memory_budget = 1` byte:
+The same `estimate_cost` call is made internally by `enumerate(...)`. If the prediction exceeds `memory_budget`, the default policy throws [`EnumerationTooLargeError`](@ref) — *before* any allocation happens. Below, demonstrate the error by forcing it with an artificially tiny `memory_budget = 1` byte:
 
 ```jldoctest cost_recipe; filter = r"\d+\.\d+ MiB"
 julia> try
@@ -45,7 +45,7 @@ julia> try
 
 ## Override policies
 
-When you genuinely *want* the run to proceed despite a tripped gate, pass one of:
+When you genuinely *want* the run to proceed despite a failed resource check, pass one of:
 
 - `on_overflow = :warn` — log a warning and proceed.
 - `on_overflow = :ignore` — proceed silently.
@@ -56,4 +56,4 @@ When you genuinely *want* the run to proceed despite a tripped gate, pass one of
 
 - Reference: [`estimate_cost`](@ref), [`EnumerationCostEstimate`](@ref), [`EnumerationTooLargeError`](@ref), [`format_bytes`](@ref), [`default_memory_budget`](@ref).
 - How-to: [Pick an algorithm](pick-an-algorithm.md), [Count without enumerating](count-without-enumerating.md), [Sweep concentration ranges](sweep-concentration-ranges.md).
-- Explanation: [Dispatch and the cost gate](../explanation/dispatch-and-cost-gate.md).
+- Explanation: [Dispatch and the resource check](../explanation/dispatch-and-cost-gate.md).

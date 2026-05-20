@@ -25,7 +25,7 @@ Enumlib carries three algorithms with overlapping coverage. They differ in *what
 | **Multinomial** (HF 2012) | Only colorings at the target concentration | A specific `Concentration` is fixed; multinomial coefficient ≪ `k^n` | [multinomial-2012](multinomial-2012.md) |
 | **Recursive stabilizer** (Morgan-Hart 2017) | A tree of partial colorings | Memory budget rules out the bitmap; very large `n` | [recursive-stabilizer-2017](recursive-stabilizer-2017.md) |
 
-All three produce the same set of symmetry-inequivalent structures for any given input; the choice is purely computational. The [dispatch-and-cost-gate](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` picks one.
+All three produce the same set of symmetry-inequivalent structures for any given input; the choice is purely computational. The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` picks one.
 
 ## Pólya counting — pricing without enumerating
 
@@ -34,7 +34,7 @@ All three produce the same set of symmetry-inequivalent structures for any given
 Two reasons to use it:
 
 1. **Sizing.** Before running a million-structure enumeration, ask Pólya how many structures you're about to get. See [Count without enumerating](../how-to/count-without-enumerating.md).
-2. **The cost-gate.** `enumerate(...)` internally calls Pólya (via [`estimate_cost`](@ref)) to decide whether the predicted memory usage fits the budget, and refuses to start if it doesn't.
+2. **The resource check.** `enumerate(...)` internally calls Pólya (via [`estimate_cost`](@ref)) to decide whether the predicted memory usage fits the budget, and refuses to start if it doesn't.
 
 By default Pólya returns the **aperiodic** orbit count — orbits whose stabilizer in the translation subgroup is trivial. That matches `length(enumerate(...; include_superperiodic = false))`. Pass `include_superperiodic = true` for the raw Burnside count.
 
@@ -60,7 +60,7 @@ See [Tutorial 01](../tutorials/01-first-enumeration.md) for the walkthrough. HF 
 
 ## Where to go next
 
-- **Pick an algorithm**: [pick-an-algorithm how-to](../how-to/pick-an-algorithm.md), [dispatch-and-cost-gate](dispatch-and-cost-gate.md).
+- **Pick an algorithm**: [pick-an-algorithm how-to](../how-to/pick-an-algorithm.md), [dispatch and the resource check](dispatch-and-cost-gate.md).
 - **The three algorithms in detail**: [exhaustive-2008](exhaustive-2008.md), [multinomial-2012](multinomial-2012.md), [recursive-stabilizer-2017](recursive-stabilizer-2017.md).
 - **Pólya machinery**: [polya-counting](polya-counting.md).
 - **Super-periodicity policy**: [super-periodicity](super-periodicity.md).

@@ -55,7 +55,7 @@ Three reasons it remains the chunk-5 default and the `algorithm = :auto` pick wh
 - **Memory blows up at large `n`.** `BitVector(k^n)` is `k^n / 8` bytes. At `k=2, n=30` that's 128 MB; at `k=3, n=20` that's ~440 MB; at `k=4, n=15` ~130 MB. Past those points either the [multinomial algorithm](multinomial-2012.md) (if you have a concentration) or the [recursive-stabilizer algorithm](recursive-stabilizer-2017.md) (which doesn't materialize the bitmap) is the right choice.
 - **Concentration restriction is wasteful.** If only 5% of the `k^n` labelings have the right composition, the exhaustive sweep visits the other 95% only to cross them off as wrong-composition.
 
-The [dispatch-and-cost-gate](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` makes this choice.
+The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` makes this choice.
 
 ## See also
 
