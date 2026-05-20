@@ -2,6 +2,16 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.2.1 — 2026-05-19
+
+### Added
+
+- **Chunk 6.5a — `:multinomial_restricted` algorithm.** HF 2012 §A.1: the bitmap variant for heterogeneous sublattices (Regime C), implemented as a linear iteration over the full multinomial space with a lazy `site_mask` check per slot. Same bitmap layout and crossing-out machinery as `:multinomial`, plus the mask filter. Users opt in explicitly via `algorithm = :multinomial_restricted`; cross-validated against `:recursive_stabilizer` count-by-count on the zinc-blende / half-Heusler (Y=Z={2}) / perovskite corpus.
+
+### Changed
+
+- **`:auto` dispatch for Regime C still picks `:recursive_stabilizer`.** The linear-iteration `:multinomial_restricted` scales by the *full* multinomial space, not the valid subspace, so for sparse masks (the Heusler / wurtzite / perovskite family where most positions are inactive) the tree is much faster. A tree-walk variant that prunes at branching time — which would scale by valid subspace — is queued as a v0.3 perf-polish item. Until then, `:multinomial_restricted` is opt-in only.
+
 ## v0.2.0 — 2026-05-19
 
 First release with a complete `enumerate(...)` public API, four production algorithms with auto-dispatch, multilattice support (Regime A, B, C), POSCAR roundtrip for DFT/MLIP workflows, and a full Diátaxis documentation site.

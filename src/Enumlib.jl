@@ -411,6 +411,8 @@ include("types/concentration.jl")
 include("types/cost_estimate.jl")
 include("types/errors.jl")
 include("algorithms/multinomial.jl")
+# --- chunk 6.5a: multinomial-restricted (HF 2012 §A.1) — bitmap + site-mask ---
+include("algorithms/multinomial_restricted.jl")
 # --- chunk 8: Morgan 2017 recursive-stabilizer tree (uses chunk-6 hash) ---
 include("algorithms/recursive_stabilizer.jl")
 # --- chunk 7: Polya submodule + InequivalentCount type ---

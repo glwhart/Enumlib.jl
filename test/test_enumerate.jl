@@ -356,6 +356,125 @@ using Enumlib: getSymInequivHNFs    # un-exported in chunk 13b.1; tests still ne
         end
     end
 
+    # ---- Chunk 6.5a — :multinomial_restricted cross-validates :recursive_stabilizer ----
+    # The bitmap + site-mask algorithm (HF 2012 §A.1) must produce the same
+    # set of canonical labelings as the tree (Morgan 2017) for every Regime-C
+    # case. The corpus testset above runs the tree; this set runs the bitmap
+    # at the same per-volume / per-concentration breakpoints (where the
+    # bitmap fits in memory) and asserts count equality.
+    #
+    # Note: `:auto` dispatch defaults to :recursive_stabilizer for Regime C
+    # because the linear-iteration bitmap algorithm scales by total
+    # multinomial space (most slots invalid for sparse masks) rather than by
+    # the valid subspace. Users opt into :multinomial_restricted explicitly
+    # for dense-mask cases or by passing `algorithm = :multinomial_restricted`.
+    # See `src/algorithms/multinomial_restricted.jl` for the design tradeoff.
+    @testset ":multinomial_restricted (chunk 6.5a) cross-validates :recursive_stabilizer" begin
+        # ---- zinc-blende (dense mask: every sublattice active) ----
+        @testset "zinc-blende n=1..3" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0,0.0,0.0], [0.25,0.25,0.25]])
+            sites = Sites([Site([0.0,0.0,0.0], [0,1]),
+                           Site([0.25,0.25,0.25], [2,3])])
+            for n in 1:3
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:4])
+                e_mr = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = cr,
+                                 algorithm = :multinomial_restricted,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true)
+                e_rs = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = cr,
+                                 algorithm = :recursive_stabilizer,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true)
+                @test length(e_mr) == length(e_rs)
+            end
+        end
+
+        # ---- half-Heusler (Y=Z={2}; sparse mask, but bitmap small enough at n≤3) ----
+        @testset "half-Heusler (Y=Z={2}) n=1..3" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0,0.0,0.0], [0.25,0.25,0.25], [0.75,0.75,0.75]])
+            sites = Sites([Site([0.0,0.0,0.0], [0,1]),
+                           Site([0.25,0.25,0.25], [2]),
+                           Site([0.75,0.75,0.75], [2])])
+            for n in 1:3
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:3])
+                e_mr = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = cr,
+                                 algorithm = :multinomial_restricted,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true)
+                e_rs = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = cr,
+                                 algorithm = :recursive_stabilizer,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true)
+                @test length(e_mr) == length(e_rs)
+            end
+        end
+
+        # ---- perovskite n=1..2 (both A and B active, three inactive O sites) ----
+        @testset "perovskite n=1..2" begin
+            p = ParentLattice([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],
+                              [[0.0,0.0,0.0], [0.5,0.5,0.5],
+                               [0.5,0.5,0.0], [0.5,0.0,0.5], [0.0,0.5,0.5]])
+            sites = Sites([Site([0.0,0.0,0.0], [0,1]),
+                           Site([0.5,0.5,0.5], [2,3]),
+                           Site([0.5,0.5,0.0], [4]),
+                           Site([0.5,0.0,0.5], [4]),
+                           Site([0.0,0.5,0.5], [4])])
+            for n in 1:2
+                cr = ConcentrationRange([(0//1, 1//1) for _ in 1:5])
+                e_mr = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = cr,
+                                 algorithm = :multinomial_restricted,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true)
+                e_rs = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = cr,
+                                 algorithm = :recursive_stabilizer,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true)
+                @test length(e_mr) == length(e_rs)
+            end
+        end
+
+        # ---- :multinomial_restricted rejected on Regime A and Regime B ----
+        @testset "rejected on Regime A / Regime B" begin
+            # Regime A (single dset, FCC binary).
+            p_A = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+            sites_A = Sites([Site([0.0,0.0,0.0], [0,1])])
+            c_A = concentration_count([2, 2]; n_total = 4)
+            @test_throws ArgumentError enumerate(p_A, sites_A;
+                supercells = VolumeRange(4:4), concentration = c_A,
+                algorithm = :multinomial_restricted)
+
+            # Regime B (HCP binary with uniform allowed_labels).
+            a = 1.0; c = sqrt(8/3)
+            A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
+            p_B = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+            sites_B = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                             Site([1/3, 2/3, 1/2], [0, 1])])
+            c_B = concentration_count([2, 2]; n_total = 4)
+            @test_throws ArgumentError enumerate(p_B, sites_B;
+                supercells = VolumeRange(2:2), concentration = c_B,
+                algorithm = :multinomial_restricted)
+        end
+
+        # ---- :multinomial_restricted still requires a concentration ----
+        @testset "requires concentration" begin
+            p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                              [[0.0,0.0,0.0], [0.25,0.25,0.25]])
+            sites = Sites([Site([0.0,0.0,0.0], [0,1]),
+                           Site([0.25,0.25,0.25], [2,3])])
+            @test_throws ArgumentError enumerate(p, sites;
+                supercells = VolumeRange(2:2),
+                algorithm = :multinomial_restricted)
+        end
+    end
+
     # ---- Multilattice — dset/Sites length mismatch ----
     @testset "enumerate — multilattice with Sites length ≠ ndset errors" begin
         a = 1.0; c = sqrt(8/3)

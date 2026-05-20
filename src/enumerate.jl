@@ -12,13 +12,13 @@
 
 Enumerate symmetry-inequivalent derivative structures of `parent` decorated by labelings drawn from `sites.allowed_labels`, over the supercells specified by `supercells`, optionally constrained to a fixed `concentration` or `ConcentrationRange`.
 
-## Algorithm dispatch (chunk 6)
+## Algorithm dispatch
 
-- `algorithm = :auto` (default): picks `:exhaustive` when `concentration === nothing`, `:multinomial` otherwise.
+- `algorithm = :auto` (default): picks `:exhaustive` when `concentration === nothing`. With `concentration` supplied, picks between the bitmap and the tree by predicted memory: `:multinomial` (Regime A/B) or `:multinomial_restricted` (Regime C) when the bitmap fits, `:recursive_stabilizer` otherwise.
 - `algorithm = :exhaustive` (Hart-Forcade 2008): unrestricted enumeration; ignores `concentration` if supplied.
-- `algorithm = :multinomial` (Hart-Forcade 2012): fixed-concentration enumeration via the multinomial-hash crossing-out. Requires `concentration !== nothing`.
-- `algorithm = :recursive_stabilizer` (Morgan 2017): tree-search-with-shrinking-stabilizers; same fixed-concentration scope as `:multinomial`, but streams (no bitmap) so it scales to high configurational freedom. `:auto` picks it when the multinomial bitmap would exceed `memory_budget × 0.8`.
-- `algorithm = :multinomial_restricted` reserved for chunk 6.5.
+- `algorithm = :multinomial` (Hart-Forcade 2012): fixed-concentration enumeration via the multinomial-hash crossing-out. Requires `concentration !== nothing`; Regime A and Regime B only.
+- `algorithm = :multinomial_restricted` (HF 2012 §A.1): the bitmap variant with a site-mask filter, for heterogeneous sublattices (Regime C — perovskite, half/full Heusler, wurtzite, zinc-blende, etc.). Requires `concentration !== nothing`.
+- `algorithm = :recursive_stabilizer` (Morgan 2017): tree-search-with-shrinking-stabilizers; same fixed-concentration scope as the bitmap algorithms, but streams (no bitmap) so it scales to high configurational freedom. `:auto` picks it when the bitmap would exceed `memory_budget × 0.8`.
 
 ## Concentration handling
 
@@ -112,10 +112,15 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
         if concentration === nothing
             algorithm = :exhaustive
         elseif ndset(parent) >= 2 && !_sites_are_uniform(sites)
-            # Regime C — only :recursive_stabilizer handles per-site
-            # restrictions today (chunk 6.5b). When :multinomial_restricted
-            # lands (6.5a), the :auto dispatch can pick between them based
-            # on bitmap-vs-tree fit, mirroring the Regime-B logic below.
+            # Regime C: default to :recursive_stabilizer (the tree scales by
+            # the valid-colorings subspace, while :multinomial_restricted
+            # allocates the *full* multinomial bitmap and lazily skips mask-
+            # invalid slots — fine for dense masks, slow for sparse ones
+            # like the Heusler / wurtzite / perovskite family where most
+            # positions are inactive). Users opt into :multinomial_restricted
+            # explicitly for dense-mask cases (e.g. zinc-blende-style "every
+            # sublattice active with disjoint labels"). A heuristic that picks
+            # automatically based on mask sparsity is queued for v0.3 polish.
             algorithm = :recursive_stabilizer
         else
             # Regime B (or single-lattice) with concentration. Pick
@@ -130,35 +135,42 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     # Now `algorithm` is one of :exhaustive, :multinomial, :recursive_stabilizer,
     # :multinomial_restricted, :bdd, or something unknown.
-    if algorithm == :multinomial_restricted
-        throw(ArgumentError(
-            "algorithm = :multinomial_restricted (HF 2012 §A.1, site-restricted " *
-            "backtracking) is reserved for chunk 6.5."))
-    elseif algorithm == :bdd
+    if algorithm == :bdd
         throw(ArgumentError(
             "algorithm = :bdd (Shinohara 2020 ZDD) is reserved for v0.3+."))
     elseif algorithm != :exhaustive && algorithm != :multinomial &&
+           algorithm != :multinomial_restricted &&
            algorithm != :recursive_stabilizer
         throw(ArgumentError(
             "unknown algorithm `:$algorithm`. Supported: :exhaustive (no " *
-            "concentration), :multinomial / :recursive_stabilizer (with concentration), " *
-            ":auto (default)."))
+            "concentration), :multinomial / :multinomial_restricted / " *
+            ":recursive_stabilizer (with concentration), :auto (default)."))
     end
 
-    # Regime-C dispatch: only :recursive_stabilizer supports per-site
-    # restrictions (chunk 6.5b). :multinomial would need the chunk-6.5a
-    # restricted variant — reject explicitly so the user doesn't get
-    # incorrect counts from the unrestricted bitmap.
+    # Regime-C dispatch: :multinomial (the bitmap without the site-mask filter)
+    # would over-allocate and over-emit for heterogeneous sublattices. The user
+    # must pick :multinomial_restricted or :recursive_stabilizer explicitly, or
+    # use :auto.
     if algorithm == :multinomial && ndset(parent) >= 2 && !_sites_are_uniform(sites)
         throw(ArgumentError(
             "algorithm = :multinomial doesn't support per-site `allowed_labels` " *
-            "(Regime C). Use `algorithm = :recursive_stabilizer` (chunk 6.5b) or " *
-            "wait for `:multinomial_restricted` (chunk 6.5a)."))
+            "(Regime C). Use `algorithm = :multinomial_restricted` (chunk 6.5a) " *
+            "or `algorithm = :recursive_stabilizer` (chunk 6.5b)."))
+    end
+
+    # :multinomial_restricted is Regime-C-specific; for Regime A/B the bitmap
+    # variant without the mask filter is the natural choice.
+    if algorithm == :multinomial_restricted &&
+       !(ndset(parent) >= 2 && !_sites_are_uniform(sites))
+        throw(ArgumentError(
+            "algorithm = :multinomial_restricted is designed for heterogeneous " *
+            "sublattices (Regime C). For uniform sublattices use :multinomial " *
+            "(or :auto)."))
     end
 
     # Validation: concentration-requiring algorithms.
-    if (algorithm == :multinomial || algorithm == :recursive_stabilizer) &&
-       concentration === nothing
+    if (algorithm == :multinomial || algorithm == :multinomial_restricted ||
+        algorithm == :recursive_stabilizer) && concentration === nothing
         throw(ArgumentError(
             "algorithm = :$algorithm requires a `concentration` kwarg. " *
             "For unrestricted enumeration use :exhaustive (or :auto with concentration=nothing)."))
@@ -204,6 +216,10 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
         return _enumerate_multinomial(parent_eff, sites, hnfs_with_degens, k, concentration,
                                       partition_threshold, on_partition_overflow;
                                       include_superperiodic, user_parent = parent)
+    elseif algorithm == :multinomial_restricted
+        return _enumerate_multinomial_restricted(parent_eff, sites, hnfs_with_degens, k, concentration,
+                                                  partition_threshold, on_partition_overflow;
+                                                  include_superperiodic, user_parent = parent)
     else  # :recursive_stabilizer
         return _enumerate_recursive_stabilizer(parent_eff, sites, hnfs_with_degens, k, concentration,
                                                 partition_threshold, on_partition_overflow;
@@ -289,6 +305,28 @@ function _enumerate_multinomial(parent::ParentLattice{D}, sites::Sites{D},
         # restrictions (queued for chunk 6.5a). The Regime-C dispatch in
         # `enumerate(...)` won't route here when site_mask is non-trivial.
         (perm_group, mults, _site_mask) -> getUniqueColorings_multinomial(perm_group, mults);
+        user_parent)
+end
+
+# ------------------------------------------------------------------------------
+# :multinomial_restricted algorithm body — chunk 6.5a's bitmap + site mask.
+# Same shared per-concentration sweep as :multinomial; the coloring_fn forwards
+# the site_mask (which is `nothing` only in Regime A/B, but the Regime-C
+# dispatch in `enumerate(...)` is what routes here in the first place).
+# ------------------------------------------------------------------------------
+
+function _enumerate_multinomial_restricted(parent::ParentLattice{D}, sites::Sites{D},
+                                            hnfs_with_degens::AbstractVector{Tuple{HNF{D}, Int}},
+                                            k::Int,
+                                            concentration::Union{Concentration, ConcentrationRange},
+                                            partition_threshold::Int,
+                                            on_partition_overflow::Symbol;
+                                            include_superperiodic::Bool = false,
+                                            user_parent::ParentLattice{D} = parent) where D
+    return _enumerate_per_concentration(parent, sites, hnfs_with_degens, k, concentration,
+        partition_threshold, on_partition_overflow, include_superperiodic,
+        (perm_group, mults, site_mask) -> getUniqueColorings_multinomial_restricted(
+            perm_group, mults, site_mask);
         user_parent)
 end
 
@@ -825,6 +863,10 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     chosen = if algorithm == :auto
         if concentration === nothing
             :exhaustive
+        elseif ndset(parent) >= 2 && !_sites_are_uniform(sites)
+            # Regime C: see the same-named branch in `enumerate(...)` for why
+            # we default to the tree here rather than the bitmap.
+            :recursive_stabilizer
         else
             _multinomial_bitmap_fits(parent_eff, supercells, concentration,
                                      default_memory_budget()) ?
@@ -835,19 +877,18 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     end
 
     # Reject algorithms that aren't implemented yet (matches enumerate's gate).
-    if chosen == :multinomial_restricted
-        throw(ArgumentError(
-            "algorithm = :multinomial_restricted is reserved for chunk 6.5."))
-    elseif chosen == :bdd
+    if chosen == :bdd
         throw(ArgumentError("algorithm = :bdd is reserved for v0.3+."))
     elseif chosen != :exhaustive && chosen != :multinomial &&
+           chosen != :multinomial_restricted &&
            chosen != :recursive_stabilizer
         throw(ArgumentError(
             "unknown algorithm `:$chosen`. Supported: :exhaustive, :multinomial, " *
-            ":recursive_stabilizer, :auto."))
+            ":multinomial_restricted, :recursive_stabilizer, :auto."))
     end
 
-    if (chosen == :multinomial || chosen == :recursive_stabilizer) && concentration === nothing
+    if (chosen == :multinomial || chosen == :multinomial_restricted ||
+        chosen == :recursive_stabilizer) && concentration === nothing
         throw(ArgumentError(
             "algorithm = :$chosen requires a `concentration` kwarg."))
     end
@@ -931,9 +972,11 @@ function _predict_peak_memory(hnfs, parent, k::Int, concentration, algorithm::Sy
                 # BitVector(k^(n_D·n)) bytes.
                 C = BigInt(k)^n_total
                 bitmap_peak = max(bitmap_peak, _bitmap_bytes(C))
-            else  # :multinomial
+            else  # :multinomial or :multinomial_restricted — same bitmap layout
                 # Per (HNF, concentration) bitmap. Take max across concentrations
-                # at this volume.
+                # at this volume. :multinomial_restricted allocates the full
+                # multinomial bitmap and skips invalid slots at iter time, so
+                # the peak-memory prediction is identical.
                 concs_here = if concentration isa Concentration
                     try
                         multiplicities(concentration, n_total)
@@ -945,7 +988,7 @@ function _predict_peak_memory(hnfs, parent, k::Int, concentration, algorithm::Sy
                 elseif concentration isa ConcentrationRange
                     concentrations_in_range(concentration, n_total)
                 else
-                    Concentration[]   # shouldn't happen for :multinomial, but safe
+                    Concentration[]   # shouldn't happen for bitmap algorithms
                 end
                 for c in concs_here
                     mults = multiplicities(c, n_total)
