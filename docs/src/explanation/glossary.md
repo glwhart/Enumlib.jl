@@ -1,6 +1,6 @@
 # Glossary
 
-Compact reference for terms used across the documentation, with pointers to where each one is unpacked in depth.
+Compact reference for terms used across the documentation, with pointers to where each one is unpacked in depth. The Enumlib-specific terms come first; the [Materials-science background](#materials-science-background) section at the bottom collects the field acronyms (FCC, DFT, POSCAR, …) that the tutorials and how-to pages use as shorthand.
 
 **Bravais lattice.** A periodic point lattice with one site per primitive cell. `ParentLattice(A)` with no dset argument (or a single-element dset) is Bravais. Contrast with **multilattice**.
 
@@ -53,3 +53,25 @@ Compact reference for terms used across the documentation, with pointers to wher
 **Supercell.** A larger cell built on top of the parent lattice as `A_super = A_parent · h` for some integer matrix `h`. The HNF is the canonical representative of each shape class. See [`Supercell`](@ref).
 
 **Supercell selection.** A `VolumeRange`, `RadiusBound`, or `ExplicitHNFs` value passed as the `supercells = ...` kwarg to `enumerate(...)`. Determines which HNFs are enumerated over. See [the supercell-selection how-to](../how-to/select-supercells.md).
+
+## Materials-science background
+
+Field shorthand that the tutorials and how-to pages use without further introduction. If you arrived at Enumlib from a combinatorics / symmetry-algorithms angle rather than from solid-state chemistry, these are the ones to skim first.
+
+**BCC (body-centered cubic).** Crystallographic prototype: cubic lattice with atoms at the corners and one at the body center. In primitive form, a single-site Bravais lattice. Common in metallic alloys (α-Fe, W, Cr).
+
+**CE (cluster expansion).** A polynomial-in-occupation-variables expansion of total energy as a function of configuration. Fit to a training set of energies for symmetry-inequivalent configurations (usually from DFT) and then used downstream for Monte Carlo simulations, phase-diagram construction, ground-state searches. [JuCE.jl](https://github.com/glwhart/JuCE.jl) is the cluster-expansion code that consumes Enumlib's enumerations.
+
+**DFT (density functional theory).** First-principles electronic-structure method for computing total energy, forces, stresses of a configuration. The Phase-11 POSCAR roundtrip (`write_enumeration_archive` → DFT calculation → `read_results` → `attach_results`) is designed for this workflow.
+
+**FCC (face-centered cubic).** Crystallographic prototype: cubic lattice with atoms at corners and face centers. In primitive form, a single-site Bravais lattice with 48-op point group. The richest-symmetry single-lattice example, and the workhorse for most reference-count comparisons in the docs. Common in metallic alloys (Cu, Al, Ag, Ni, Pt).
+
+**HCP (hexagonal close-packed).** Crystallographic prototype with a 2-atom basis on a hexagonal lattice — the simplest non-Bravais (i.e., multilattice) example. Used throughout the docs as the canonical Regime-B multilattice with uniform `allowed_labels` on both sublattices. Common in metallic alloys (Mg, Ti, Zn).
+
+**MLIP (machine-learning interatomic potential).** A neural-network or kernel-regression model trained on DFT data to predict energies (and often forces, stresses) much faster than DFT itself. Building the training-set of symmetry-inequivalent configurations is the Phase-11 use case alongside straight-DFT training.
+
+**POSCAR.** The VASP atomic-structure input-file format. Line 1 is a free-form comment, then a scale factor, the lattice vectors, species symbols + counts, the coordinate type (`Direct` for fractional, `Cartesian` otherwise), and the per-atom coordinates. Enumlib's `to_poscar` / `write_enumeration_archive` writes POSCARs whose line 1 carries metadata (`enumlib_id=`, `concentration=`, `energy_eV=`, …) that `read_results` parses back. See [write-poscars-for-dft](../how-to/write-poscars-for-dft.md).
+
+**PRB.** *Physical Review B*, the journal where the Hart-Forcade 2008 and 2009 papers were published. The HF 2012 paper is in *Computational Materials Science* (citation in the **HF 2012** glossary entry above).
+
+**VASP.** The Vienna Ab initio Simulation Package — a widely-used commercial DFT code. Enumlib's POSCAR roundtrip targets VASP-5+ format (compatible with VASP 5 and VASP 6).
