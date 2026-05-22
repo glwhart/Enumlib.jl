@@ -2,6 +2,14 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.0 — 2026-05-22
+
+### Changed
+
+- **`:auto` dispatch defaults to `:recursive_stabilizer` for unrestricted enumeration.** When `enumerate(...)` is called without a `concentration` kwarg, `:auto` now synthesizes a full-range `ConcentrationRange` internally and routes to the tree. Bench Section 5 (`bench/results-20260522.txt`) measured the tree at ~2-3× faster than `:exhaustive` and using ~half the memory across FCC binary/ternary and HCP at sizes n=4–12 (e.g., FCC binary n=12: 280 ms / 429 MiB vs 497 ms / 1.05 GiB). The structure *count* is invariant; the per-orbit *canonical representative* differs between the two algorithms, so `to_labeling(e[i])` will not be byte-identical across the upgrade — same orbits, different reps. `:exhaustive` remains available as an explicit `algorithm =` choice. Regime C unrestricted (heterogeneous sublattices without `concentration`) still errors at validation, regardless of algorithm. Answers the question logged in `docs/notes/v0.2-plan.md` line 445.
+- **`EnumerationCostEstimate.partition_count` for unrestricted `:auto` runs.** Now reflects the partitions of the synthetic `ConcentrationRange` (e.g. 35 for FCC binary at n=4: 5 partitions × 7 HNFs), where previously it reported 1. The `notes` field carries a "synthetic full-range ConcentrationRange" line so users reading the estimate understand the dispatch.
+- **Docs revised** — Algorithm overview, dispatch/cost-gate page, exhaustive-2008 page, recursive-stabilizer-2017 page, pick-an-algorithm how-to, estimate-cost how-to, tutorial 01, and the `enumerate(...)` docstring all updated to reflect the new default. The bench README's Section 5 entry documents the surprise result.
+
 ## v0.2.1 — 2026-05-19
 
 ### Added

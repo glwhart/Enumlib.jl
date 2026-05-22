@@ -14,11 +14,11 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 
 ## Algorithm dispatch
 
-- `algorithm = :auto` (default): picks `:exhaustive` when `concentration === nothing`. With `concentration` supplied, picks between the bitmap and the tree by predicted memory: `:multinomial` (Regime A/B) or `:multinomial_restricted` (Regime C) when the bitmap fits, `:recursive_stabilizer` otherwise.
-- `algorithm = :exhaustive` (Hart-Forcade 2008): unrestricted enumeration; ignores `concentration` if supplied.
+- `algorithm = :auto` (default): the tree (`:recursive_stabilizer`) for almost everything — including unrestricted enumeration, where `:auto` synthesizes a full-range `ConcentrationRange` internally (bench Section 5 shows ~2-3× speedup and ~half the memory vs the bitmap). With `concentration` supplied, picks between `:multinomial` and `:recursive_stabilizer` by predicted memory; for Regime C, picks `:recursive_stabilizer`. Falls through to `:exhaustive` only for the (unsupported) "Regime C unrestricted" case so the validation error fires.
+- `algorithm = :exhaustive` (Hart-Forcade 2008): unrestricted enumeration via the `k^n` bitmap; ignores `concentration` if supplied. `:auto` no longer picks this — use it explicitly for the bitmap's memory profile or to cross-check the tree.
 - `algorithm = :multinomial` (Hart-Forcade 2012): fixed-concentration enumeration via the multinomial-hash crossing-out. Requires `concentration !== nothing`; Regime A and Regime B only.
 - `algorithm = :multinomial_restricted` (HF 2012 §A.1): the bitmap variant with a site-mask filter, for heterogeneous sublattices (Regime C — perovskite, half/full Heusler, wurtzite, zinc-blende, etc.). Requires `concentration !== nothing`.
-- `algorithm = :recursive_stabilizer` (Morgan 2017): tree-search-with-shrinking-stabilizers; same fixed-concentration scope as the bitmap algorithms, but streams (no bitmap) so it scales to high configurational freedom. `:auto` picks it when the bitmap would exceed `memory_budget × 0.8`.
+- `algorithm = :recursive_stabilizer` (Morgan 2017): tree-search-with-shrinking-stabilizers; streams (no bitmap) and beats the bitmap algorithms in nearly every measured case. `:auto`'s default for both unrestricted and fixed-concentration when the bitmap doesn't fit (or always, for Regime C).
 
 ## Concentration handling
 
@@ -52,7 +52,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 ```
 
-**Unrestricted enumeration** (no concentration): all 19 symmetry-inequivalent binary FCC structures at supercell volume 4 (chunk-5 reference).
+**Unrestricted enumeration** (no concentration): all 19 symmetry-inequivalent binary FCC structures at supercell volume 4. The labeling of `e[1]` here is `[0, 1, 1, 1]` (one A atom on a 4-site cell) — `:auto` runs the recursive-stabilizer tree as of v0.3, which picks a different canonical orbit representative than `:exhaustive`'s bitmap did. The *count* is invariant; only the specific representative per orbit changes.
 ```jldoctest enumerate_examples
 julia> e = enumerate(p, sites; supercells = VolumeRange(4:4));
 
@@ -62,8 +62,8 @@ julia> length(e)
 julia> to_labeling(e[1])
 4-element Vector{Int8}:
  0
- 0
- 0
+ 1
+ 1
  1
 ```
 
@@ -110,7 +110,27 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
     # ---- Algorithm dispatch ----
     if algorithm == :auto
         if concentration === nothing
-            algorithm = :exhaustive
+            # v0.3 default for unrestricted enumeration: run the tree over a
+            # synthetic full-range `ConcentrationRange`. Bench Section 5
+            # (2026-05-22) shows :recursive_stabilizer is ~2-3× faster than
+            # :exhaustive across FCC binary/ternary and HCP, and uses ~half
+            # the memory (no k^n bitmap). Regime C unrestricted is rejected
+            # by validation regardless of algorithm — fall through to
+            # :exhaustive so the user gets the existing error message.
+            if ndset(parent) >= 2 && !_sites_are_uniform(sites)
+                algorithm = :exhaustive
+            else
+                # Regime A/B: k is the number of distinct labels at the
+                # (uniform) sites. Mirrors _validate_enumerate_inputs.
+                k_syn = length(sites.list[1].allowed_labels)
+                concentration = ConcentrationRange([(0//1, 1//1) for _ in 1:k_syn])
+                algorithm = :recursive_stabilizer
+                # Partition decomposition is an implementation detail of the
+                # synthetic concentration; the user didn't ask for a
+                # concentration constraint and shouldn't see partition_threshold
+                # errors as a consequence.
+                partition_threshold = typemax(Int)
+            end
         elseif ndset(parent) >= 2 && !_sites_are_uniform(sites)
             # Regime C: default to :recursive_stabilizer (the tree scales by
             # the valid-colorings subspace, while :multinomial_restricted
@@ -857,12 +877,30 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     # `enumerate(...)` uses. No-op for Regime A/B.
     parent_eff = _effective_parent(parent, sites)
 
+    # Track whether :auto routed an unrestricted request through a synthetic
+    # full-range ConcentrationRange (v0.3 default — see enumerate's :auto block).
+    # Surfaced in `notes` so users reading the estimate know why partition_count
+    # is > 1 for what they typed as "no concentration."
+    synthesized_concentration = false
+
     # Resolve algorithm (same logic as enumerate's :auto dispatch).
     # Note: estimate_cost doesn't have memory_budget context, so :auto here
     # uses default_memory_budget() for the multinomial-vs-tree pivot.
     chosen = if algorithm == :auto
         if concentration === nothing
-            :exhaustive
+            # v0.3 default: tree over a synthetic full-range ConcentrationRange
+            # for Regime A/B unrestricted. Regime C unrestricted falls through
+            # to :exhaustive (validation in enumerate() will reject it).
+            # Synthesize here too so peak-memory / total_count / partition_count
+            # reflect the algorithm that will actually run.
+            if ndset(parent) >= 2 && !_sites_are_uniform(sites)
+                :exhaustive
+            else
+                k_syn = length(sites.list[1].allowed_labels)
+                concentration = ConcentrationRange([(0//1, 1//1) for _ in 1:k_syn])
+                synthesized_concentration = true
+                :recursive_stabilizer
+            end
         elseif ndset(parent) >= 2 && !_sites_are_uniform(sites)
             # Regime C: see the same-named branch in `enumerate(...)` for why
             # we default to the tree here rather than the bitmap.
@@ -895,8 +933,14 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
 
     notes = String[]
     if algorithm == :auto
-        push!(notes, "Auto-dispatch chose :$chosen " *
-                     "(concentration $(concentration === nothing ? "nothing" : "supplied"))")
+        if synthesized_concentration
+            push!(notes, "Auto-dispatch chose :$chosen via a synthetic " *
+                         "full-range ConcentrationRange (no user-supplied " *
+                         "concentration; v0.3 default).")
+        else
+            push!(notes, "Auto-dispatch chose :$chosen " *
+                         "(concentration $(concentration === nothing ? "nothing" : "supplied"))")
+        end
     end
 
     # Resolve the HNF list (deferred work — same call enumerate makes).

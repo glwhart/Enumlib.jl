@@ -75,16 +75,16 @@ julia> length(e)
 
 julia> [to_labeling(s) for s in e]
 10-element Vector{Vector{Int8}}:
- [0]
  [1]
+ [0]
  [0, 1]
  [0, 1]
- [0, 0, 1]
  [0, 1, 1]
  [0, 0, 1]
  [0, 1, 1]
  [0, 0, 1]
  [0, 1, 1]
+ [0, 0, 1]
 ```
 
 Two of length 1 (the pure-A and pure-B unit cells), two of length 2, and six of length 3. Note that several volume-3 configurations share the coloring `[0, 0, 1]` or `[0, 1, 1]` — those configurations sit on **different supercells** (different HNFs, different lattice geometries), so they're distinct derivative configurations.
@@ -93,16 +93,16 @@ Each [`EnumeratedStructure`](@ref) carries the coloring, a reference to its supe
 
 ```jldoctest first_enum
 julia> s = e[5]
-EnumeratedStructure{3}(supercell #4, labeling=Int8[0, 0, 1], orbit_size=3)
+EnumeratedStructure{3}(supercell #4, labeling=Int8[0, 1, 1], orbit_size=3)
 
 julia> to_labeling(s)
 3-element Vector{Int8}:
  0
- 0
+ 1
  1
 ```
 
-`orbit_size = 3` means three of the `2^3 = 8` possible colorings on this supercell are equivalent to `[0, 0, 1]` under the supercell's symmetry — concretely, `[0, 0, 1]`, `[0, 1, 0]`, and `[1, 0, 0]`, the three positions where the lone B can sit. Enumlib emits one representative per orbit; the orbit size tells you how many it stood in for.
+`orbit_size = 3` means three of the `2^3 = 8` possible colorings on this supercell are equivalent to `[0, 1, 1]` under the supercell's symmetry — concretely, `[0, 1, 1]`, `[1, 0, 1]`, and `[1, 1, 0]`, the three positions where the lone A can sit. Enumlib emits one representative per orbit; the orbit size tells you how many it stood in for.
 
 ## Step 6 — get to the supercell
 

@@ -1,6 +1,9 @@
 # Exhaustive enumeration (HF 2008)
 
-The chunk-5 default, drawn from Hart & Forcade, *Algorithm for generating derivative structures*, PRB 77, 224115 (2008). Iterate every coloring; canonicalize each into an orbit representative; emit one per orbit. The simplest of the three algorithms and the right choice when `k^n` fits in memory.
+The original Enumlib algorithm, drawn from Hart & Forcade, *Algorithm for generating derivative structures*, PRB 77, 224115 (2008). Iterate every coloring; canonicalize each into an orbit representative; emit one per orbit. The simplest of the four algorithms; the natural reference implementation for the unrestricted enumeration problem.
+
+!!! note "No longer `:auto`'s default"
+    Through v0.2 this was the default for unrestricted enumeration. Bench Section 5 (2026-05-22) showed `:recursive_stabilizer` over a synthesized full-range `ConcentrationRange` is ~2-3× faster and uses ~½ the memory across the cases measured, so as of v0.3 `:auto` defaults to the tree. `:exhaustive` remains available as an explicit `algorithm =` choice for cross-checks and pedagogy — and is still the most direct presentation of the original 2008 algorithm.
 
 ## The setup
 
@@ -42,20 +45,20 @@ Two crossings happen per group element: orbit non-canonicals (`y > x`) and super
 
 For an FCC binary at volume `n = 12`, that's `2^12 = 4096` candidate labelings, `|G| ≈ 48 · 12 ≈ 576`, runtime ~1 second on a 2026 laptop. For ternary at `n = 8`, `3^8 = 6561` candidates, similar runtime. Once `k^n` crosses ~10^9 the bitmap (or the iteration) becomes the bottleneck.
 
-## Why this is the default
+## Why it's still useful
 
-Three reasons it remains the chunk-5 default and the `algorithm = :auto` pick when no `Concentration` is supplied:
+Even though `:auto` no longer picks it, `:exhaustive` is still worth understanding and occasionally worth running:
 
-1. **Simplicity** — easy to reason about correctness, easy to debug, easy to extend (e.g., R50.2b's multilattice extension just inflated `n` to `n_D · n`).
-2. **Memory efficiency at small `n`** — a `BitVector` is the densest representation of "which labelings survive" you can ship, byte-for-byte.
-3. **No concentration assumption** — covers the `concentration = nothing` case naturally. (The multinomial algorithm is more efficient *when* there's a concentration to exploit.)
+1. **Simplicity** — easy to reason about correctness, easy to debug, easy to extend (e.g., R50.2b's multilattice extension just inflated `n` to `n_D · n`). The reference implementation of the original HF 2008 algorithm.
+2. **Bitmap memory profile is densest at small `n`** — a `BitVector` is the densest representation of "which labelings survive" you can ship, byte-for-byte. The tree's per-structure output overhead can exceed the bitmap at very small inputs.
+3. **Cross-checks** — running `:exhaustive` against `:auto`'s tree on a few cases is a useful sanity check, especially when developing a new use-case.
 
 ## Where it falls down
 
-- **Memory blows up at large `n`.** `BitVector(k^n)` is `k^n / 8` bytes. At `k=2, n=30` that's 128 MB; at `k=3, n=20` that's ~440 MB; at `k=4, n=15` ~130 MB. Past those points either the [multinomial algorithm](multinomial-2012.md) (if you have a concentration) or the [recursive-stabilizer algorithm](recursive-stabilizer-2017.md) (which doesn't materialize the bitmap) is the right choice.
+- **Memory blows up at large `n`.** `BitVector(k^n)` is `k^n / 8` bytes. At `k=2, n=30` that's 128 MB; at `k=3, n=20` that's ~440 MB; at `k=4, n=15` ~130 MB. The [recursive-stabilizer algorithm](recursive-stabilizer-2017.md) avoids this by never materializing the bitmap; that's why `:auto` now uses it for unrestricted enumeration.
 - **Concentration restriction is wasteful.** If only 5% of the `k^n` labelings have the right composition, the exhaustive sweep visits the other 95% only to cross them off as wrong-composition.
 
-The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` makes this choice.
+The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` makes its choice now.
 
 ## See also
 

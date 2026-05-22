@@ -1,6 +1,6 @@
 # Dispatch and the resource check
 
-How `enumerate(...)`'s `algorithm = :auto` dispatch picks one of the three enumeration algorithms, how the enumeration resource check uses Pólya / [`estimate_cost`](@ref) to refuse oversized requests, and how to override each step.
+How `enumerate(...)`'s `algorithm = :auto` dispatch picks one of the four enumeration algorithms, how the enumeration resource check uses Pólya / [`estimate_cost`](@ref) to refuse oversized requests, and how to override each step.
 
 ## `algorithm = :auto` (the default)
 
@@ -8,23 +8,25 @@ When you call `enumerate(parent, sites; supercells, concentration, algorithm = :
 
 - `:exhaustive` — [HF 2008](exhaustive-2008.md). Iterates `k^(n_D·n)` labelings.
 - `:multinomial` — [HF 2012](multinomial-2012.md). Iterates the multinomial coefficient labelings at the target concentration.
+- `:multinomial_restricted` — [HF 2012 §A.1](multinomial-2012.md). Bitmap + per-site mask for Regime C; reserved for explicit selection (linear iteration is slower than the tree on the Regime-C corpus).
 - `:recursive_stabilizer` — [Morgan-Hart 2017](recursive-stabilizer-2017.md). Tree walk; no bitmap.
 
 The decision tree:
 
-1. **No concentration?** → `:exhaustive`. The other algorithms either need a concentration (multinomial; recursive-stabilizer in v0.2) or wouldn't help.
-2. **Concentration present + multinomial bitmap fits in 80% of `memory_budget`?** → `:multinomial`. The bitmap algorithm has tighter constants when the bitmap fits.
-3. **Concentration present + multinomial bitmap too big?** → `:recursive_stabilizer`. The tree algorithm doesn't materialize the bitmap.
+1. **No concentration?** → `:recursive_stabilizer` (v0.3 default), with a synthesized full-range `ConcentrationRange` built internally. Bench Section 5 shows the tree beats `:exhaustive` by ~2-3× and uses ~½ the memory across FCC binary/ternary and HCP. The single exception is Regime-C unrestricted, which the validator rejects regardless of algorithm.
+2. **Concentration present + Regime C (heterogeneous sublattices)?** → `:recursive_stabilizer`. The tree scales by the valid-colorings subspace; `:multinomial_restricted` iterates the full multinomial coefficient and runs ~9-60× slower on the Heusler / wurtzite / perovskite corpus (bench Section 4).
+3. **Concentration present + multinomial bitmap fits in 80% of `memory_budget`?** → `:multinomial`. The bitmap algorithm has tighter constants when the bitmap fits, and ties or narrowly trails the tree on FCC binary fixed-concentration (bench Section 2).
+4. **Concentration present + multinomial bitmap too big?** → `:recursive_stabilizer`. The tree algorithm doesn't materialize the bitmap.
 
 The "80% of `memory_budget`" threshold leaves headroom for the output `Vector{EnumeratedStructure}` and Julia's allocator overhead.
 
 ## Manual algorithm selection
 
-Pass an explicit `algorithm = :exhaustive` / `:multinomial` / `:recursive_stabilizer` symbol to override. Use cases:
+Pass an explicit `algorithm = :exhaustive` / `:multinomial` / `:multinomial_restricted` / `:recursive_stabilizer` symbol to override. Use cases:
 
-- **Benchmarking** — comparing wall-clock between algorithms on the same problem.
-- **Forcing the recursive-stabilizer tree** even when the bitmap would fit, e.g., to avoid heavy single allocations on a shared-memory cluster.
-- **Forcing exhaustive** on a concentration-restricted problem if you want the unrestricted count for comparison (uncommon).
+- **Benchmarking** — comparing wall-clock between algorithms on the same problem (this is how Section 5's "tree beats `:exhaustive`" finding was settled).
+- **Forcing the recursive-stabilizer tree** even when the bitmap would fit, e.g., to avoid heavy single allocations on a shared-memory cluster (`:auto` already does this for unrestricted enumeration as of v0.3).
+- **Forcing `:exhaustive`** on a concentration-restricted problem if you want the unrestricted count for comparison (uncommon), or to cross-check the tree against the original HF 2008 bitmap.
 
 Invalid combinations error at validation time — e.g., `algorithm = :multinomial` without `concentration` throws `ArgumentError`.
 

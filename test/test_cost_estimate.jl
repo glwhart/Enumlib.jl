@@ -61,10 +61,12 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
-        # No concentration → :exhaustive.
+        # No concentration → :recursive_stabilizer (v0.3: synthesizes a full
+        # ConcentrationRange internally; bench Section 5 shows ~2-3× speedup
+        # and ~½ memory vs :exhaustive's k^n bitmap).
         e1 = estimate_cost(parent, sites; supercells = VolumeRange(4:4))
-        @test e1.chosen_algorithm == :exhaustive
-        @test any(occursin("exhaustive", n) for n in e1.notes)
+        @test e1.chosen_algorithm == :recursive_stabilizer
+        @test any(occursin("recursive_stabilizer", n) for n in e1.notes)
 
         # With concentration → :multinomial.
         c = concentration_count([2, 2]; n_total = 4)
@@ -100,9 +102,13 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
-        # No concentration → 1.
+        # No concentration → :auto now synthesizes a full-range
+        # ConcentrationRange and routes to the tree (v0.3). The reported
+        # partition_count reflects the algorithm that will actually run:
+        # 5 partitions × 7 HNFs at n=4 = 35 (same as the explicit
+        # ConcentrationRange case below — they go through the same path).
         e_none = estimate_cost(parent, sites; supercells = VolumeRange(4:4))
-        @test e_none.partition_count == 1
+        @test e_none.partition_count == 5 * 7
 
         # Single Concentration → 1.
         c = concentration_count([2, 2]; n_total = 4)
@@ -200,7 +206,8 @@ using Enumlib
             @test err isa EnumerationTooLargeError
             @test err.estimate isa EnumerationCostEstimate
             @test err.estimate.total_count == 19
-            @test err.estimate.chosen_algorithm == :exhaustive
+            # v0.3: :auto routes unrestricted through the tree.
+            @test err.estimate.chosen_algorithm == :recursive_stabilizer
             @test err.budget_bytes == 1
             # showerror should run without error and contain "memory_budget".
             io = IOBuffer()

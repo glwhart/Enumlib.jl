@@ -1,6 +1,6 @@
 # Recursive stabilizer (Morgan-Hart 2017)
 
-The chunk-8 algorithm, drawn from Morgan & Hart, *A recursive method for enumerating derivative structures*, J. Stat. Mech. 053401 (2017). A tree walk over partial colorings using progressively-shrunken stabilizer subgroups. Doesn't need a bitmap, so it dominates the [HF 2008](exhaustive-2008.md) / [HF 2012](multinomial-2012.md) algorithms when the bitmap stops fitting in memory.
+`:auto`'s default for almost everything as of v0.3. Drawn from Morgan & Hart, *A recursive method for enumerating derivative structures*, J. Stat. Mech. 053401 (2017). A tree walk over partial colorings using progressively-shrunken stabilizer subgroups. Doesn't need a bitmap, so it dominates the [HF 2008](exhaustive-2008.md) / [HF 2012](multinomial-2012.md) algorithms when the bitmap stops fitting in memory — and bench Section 5 settled empirically that it beats them by 2-3× even when the bitmap *would* fit.
 
 ## The idea
 
@@ -24,12 +24,13 @@ This is the algorithm's name: each tree node carries the *stabilizer subgroup* o
 
 ## When this fires
 
-`algorithm = :auto` picks the recursive-stabilizer tree when:
+`algorithm = :auto` picks the recursive-stabilizer tree in nearly every situation:
 
-- A [`Concentration`](@ref) is supplied (so the search is shape-bounded — without a concentration, the unrestricted exhaustive sweep is the default), AND
-- The multinomial bitmap `M = n! / (a_1! · ... · a_k!)` would exceed the memory budget. (More precisely: the `_multinomial_bitmap_fits` helper checks whether the worst-case bitmap across all in-range concentrations fits in 80% of the memory budget.)
+- **No concentration kwarg** (v0.3 default) — `:auto` synthesizes a full-range `ConcentrationRange` internally and runs the tree across it. Bench Section 5 (2026-05-22) measured ~2-3× speedup and ~½ memory vs `:exhaustive` on FCC binary/ternary and HCP binary at sizes n=4–12.
+- **Heterogeneous sublattices (Regime C)** — the tree scales by the valid-colorings subspace; the `:multinomial_restricted` bitmap iterates the full multinomial coefficient and ends up ~9-60× slower on the perovskite / Heusler corpus (bench Section 4).
+- **Fixed concentration + multinomial bitmap exceeds 80% of `memory_budget`** — the bitmap can't be allocated; the tree streams instead. (The `_multinomial_bitmap_fits` helper checks the worst-case bitmap across all in-range concentrations.)
 
-For unrestricted (no-concentration) enumerations, this algorithm doesn't currently apply — the exhaustive sweep stays the default. Lifting that restriction is queued for chunk 8b polish.
+The remaining case — fixed concentration with a small bitmap — still goes to `:multinomial` because the bitmap's tighter constants edge out the tree at that scale (bench Section 2). The boundary is the memory-budget check.
 
 ## Cost
 
@@ -42,15 +43,14 @@ For a back-of-envelope: at `n = 48` binary 24:24, `M = C(48, 24) ≈ 7.6 · 10^1
 
 The chunk-8 testsuite asserts that for every problem where *both* algorithms apply, they produce identical structure sets (up to ordering of the output vector). The Morgan-Hart 2017 tree is *guaranteed* equivalent to HF 2012's bitmap-canonicalization at the math level; the testsuite makes that operational.
 
-## Why not the default
+## When the bitmap still wins
 
-Three reasons HF 2012's bitmap stays the default when it fits:
+The single remaining case where `:auto` picks a bitmap algorithm is fixed-concentration enumeration where the multinomial bitmap comfortably fits the memory budget. Bench Section 2 measures `:multinomial` and `:recursive_stabilizer` roughly tied for FCC binary at n=4/8/12 — sometimes the bitmap wins by 10-20%, sometimes the tree does. The dispatch defers to the bitmap there for two reasons:
 
-1. **Constants.** The bitmap's `O(1)` random access has tighter constants than the tree's per-node stabilizer-subset bookkeeping.
+1. **Constants.** The bitmap's `O(1)` random access has tighter constants than the tree's per-node stabilizer-subset bookkeeping when the bitmap fits.
 2. **Predictability.** The bitmap's runtime is determined entirely by `|G|·M`; the tree's runtime depends on how aggressively partials get pruned, which is more problem-shape-dependent.
-3. **Memory budget allowing.** The bitmap fits comfortably for the cases practitioners hit most often; ceding to the tree when it does fit would leave performance on the table.
 
-The `algorithm = :auto` dispatch is calibrated to ride the bitmap until it stops fitting, then switch.
+The `algorithm = :auto` dispatch picks the bitmap when it fits and switches to the tree when it doesn't.
 
 ## See also
 

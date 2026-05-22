@@ -10,10 +10,14 @@ using Enumlib
     parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
     sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
-    # ---- :auto with no concentration → :exhaustive (unchanged) ----
-    @testset ":auto / no concentration → :exhaustive" begin
+    # ---- :auto with no concentration → :recursive_stabilizer (v0.3) ----
+    # v0.3: :auto routes unrestricted enumeration through the tree via a
+    # synthetic full-range ConcentrationRange (bench Section 5 shows ~2-3×
+    # speedup and ~½ memory vs :exhaustive's k^n bitmap).
+    @testset ":auto / no concentration → :recursive_stabilizer" begin
         e = estimate_cost(parent, sites; supercells = VolumeRange(4:4))
-        @test e.chosen_algorithm == :exhaustive
+        @test e.chosen_algorithm == :recursive_stabilizer
+        @test any(occursin("synthetic", n) for n in e.notes)
     end
 
     # ---- :auto with concentration, default budget → :multinomial (small case fits) ----

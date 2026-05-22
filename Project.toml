@@ -1,6 +1,6 @@
 name = "Enumlib"
 uuid = "ae9d64bb-ee6e-4818-9249-167913fc9296"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Gus Hart <gus.hart@gmail.com>"]
 
 [deps]

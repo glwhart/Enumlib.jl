@@ -1,6 +1,6 @@
 # Algorithm overview
 
-A bird's-eye view of the three Hart-Forcade-Nelson enumeration algorithms, the Pólya counter that prices them, and how Enumlib chooses among them.
+A bird's-eye view of the four Hart-Forcade-Nelson / Morgan-Hart enumeration algorithms, the Pólya counter that prices them, and how Enumlib chooses among them.
 
 ## What enumeration computes
 
@@ -15,17 +15,18 @@ Concretely, for each chosen supercell:
 
 By default Enumlib also drops **super-periodic** labelings (those representable on a smaller supercell), so a single run across a volume range doesn't double-count smaller derivatives at larger volumes. See [super-periodicity](super-periodicity.md) for the policy.
 
-## Three algorithms
+## Four algorithms
 
-Enumlib carries three algorithms with overlapping coverage. They differ in *what they iterate*:
+Enumlib carries four algorithms with overlapping coverage. They differ in *what they iterate*:
 
 | Algorithm | Iterates | Best when | Where |
 |---|---|---|---|
-| **Exhaustive** (HF 2008) | All `k^n` colorings | `k^n` is small; unrestricted concentration | [exhaustive-2008](exhaustive-2008.md) |
-| **Multinomial** (HF 2012) | Only colorings at the target concentration | A specific `Concentration` is fixed; multinomial coefficient ≪ `k^n` | [multinomial-2012](multinomial-2012.md) |
-| **Recursive stabilizer** (Morgan-Hart 2017) | A tree of partial colorings | Memory budget rules out the bitmap; very large `n` | [recursive-stabilizer-2017](recursive-stabilizer-2017.md) |
+| **Exhaustive** (HF 2008) | All `k^n` colorings | The bitmap memory profile is desired explicitly; cross-checks against the tree | [exhaustive-2008](exhaustive-2008.md) |
+| **Multinomial** (HF 2012) | Only colorings at the target concentration | A specific `Concentration` is fixed; multinomial coefficient fits the memory budget | [multinomial-2012](multinomial-2012.md) |
+| **Multinomial-restricted** (HF 2012 §A.1) | Multinomial space with a per-site mask | Regime-C dense-mask cases where most slots survive the mask | [multinomial-2012](multinomial-2012.md) (§A.1) |
+| **Recursive stabilizer** (Morgan-Hart 2017) | A tree of partial colorings | `:auto`'s default for almost everything — unrestricted enumeration (v0.3), Regime C, and the large-bitmap fixed-concentration case | [recursive-stabilizer-2017](recursive-stabilizer-2017.md) |
 
-All three produce the same set of symmetry-inequivalent structures for any given input; the choice is purely computational. The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` picks one.
+All four produce the same set of symmetry-inequivalent structures for any given input; the choice is purely computational. The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` picks one.
 
 ## Pólya counting — pricing without enumerating
 
@@ -42,7 +43,7 @@ By default Pólya returns the **aperiodic** orbit count — orbits whose stabili
 
 The HF 2008/2012 algorithms were originally stated for single-lattice (Bravais) parents. HF 2009 extended them to multilattices where every dset position carries the same allowed labels ("uniform sublattices"). Enumlib's R50.2 series implemented HF 2009 — same code paths as the single-lattice case, with the permutation group built on `n_D · n` sites instead of `n`. See [enumerate-multilattice](../how-to/enumerate-multilattice.md) for the user-facing recipe.
 
-The **heterogeneous** multilattice case (different allowed labels per dset position — perovskite-style) is supported via the **recursive-stabilizer** algorithm with a site-mask filter, shipped in chunk 6.5b. Requires a `concentration` kwarg (unrestricted heterogeneous enumeration isn't defined). The faster **multinomial-restricted** variant for this regime is still queued for chunk 6.5a; `:auto` picks `:recursive_stabilizer` for Regime C today. See [enumerate-multilattice](../how-to/enumerate-multilattice.md#heterogeneous-sublattices-regime-c) for the user-facing recipe.
+The **heterogeneous** multilattice case (different allowed labels per dset position — perovskite-style) is supported via both Regime-C algorithms: **recursive-stabilizer** with a site-mask filter (chunk 6.5b/6.5c) and **multinomial-restricted** (chunk 6.5a, v0.2.1). Requires a `concentration` kwarg (unrestricted heterogeneous enumeration isn't defined). `:auto` picks `:recursive_stabilizer` because the tree scales by the valid-colorings subspace, while `:multinomial_restricted` iterates the full multinomial coefficient and is slower for sparse masks (bench Section 4 — ~9-60× gap on the Heusler / perovskite corpus). A tree-walk pruning variant of `:multinomial_restricted` that would scale by the valid subspace is queued for a later release. See [enumerate-multilattice](../how-to/enumerate-multilattice.md#heterogeneous-sublattices-regime-c) for the user-facing recipe.
 
 ## Reference derivative-structure counts
 

@@ -503,7 +503,7 @@ julia> e = enumerate(p, sites; supercells = VolumeRange(1:1));
 
 julia> to_atom_labeling(e[1], sites)
 1-element Vector{Symbol}:
- :Al
+ :Ga
 ```
 """
 function to_atom_labeling(structure, sites::Sites)

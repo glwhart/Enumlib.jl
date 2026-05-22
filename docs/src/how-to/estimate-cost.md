@@ -23,8 +23,8 @@ julia> est = estimate_cost(p, sites; supercells = VolumeRange(8:8));
 julia> est.total_count                          # how many structures we'd get
 390
 
-julia> est.chosen_algorithm                     # what :auto resolved to
-:exhaustive
+julia> est.chosen_algorithm                     # what :auto resolved to (v0.3 default)
+:recursive_stabilizer
 ```
 
 Inspect any field of the returned [`EnumerationCostEstimate`](@ref) (`total_count`, `peak_memory_bytes`, `chosen_algorithm`, `selection_kind`, `partition_count`, `notes`) to drive your sizing decisions.
