@@ -1,0 +1,50 @@
+==============================================================================
+Enumlib benchmark suite — 2026-05-22 08:28:34
+Julia 1.12.4  |  Enumlib 0.2.1
+==============================================================================
+
+Section 1 — FCC binary unrestricted (:exhaustive only)
+------------------------------------------------------------------------------
+  FCC binary, VolumeRange(4:4): 2.949 ms  (10.03 MiB, 160040 allocs)
+  FCC binary, VolumeRange(8:8): 48.158 ms  (131.48 MiB, 1960050 allocs)
+  FCC binary, VolumeRange(12:12): 472.099 ms  (1.05 GiB, 14548083 allocs)
+
+Section 2 — FCC binary fixed concentration (cross-algorithm)
+------------------------------------------------------------------------------
+  n=4 (2:2)
+    :exhaustive             2.960 ms  (10.03 MiB, 160040 allocs)
+    :multinomial            3.548 ms  (10.47 MiB, 173637 allocs)
+    :recursive_stabilizer   3.522 ms  (10.48 MiB, 173359 allocs)
+  n=8 (4:4)
+    :exhaustive             46.222 ms  (131.48 MiB, 1960050 allocs)
+    :multinomial            67.768 ms  (151.96 MiB, 2639721 allocs)
+    :recursive_stabilizer   68.311 ms  (152.81 MiB, 2659017 allocs)
+  n=12 (6:6)
+    :exhaustive             480.227 ms  (1.05 GiB, 14548083 allocs)
+    :multinomial            409.983 ms  (896.44 MiB, 14996345 allocs)
+    :recursive_stabilizer   441.891 ms  (926.22 MiB, 15754510 allocs)
+
+Section 3 — multilattice unrestricted (:exhaustive only)
+------------------------------------------------------------------------------
+  HCP    n=1..4 (333)     8.452 ms  (18.67 MiB, 295595 allocs)
+  HCP    n=5   (651)      9.337 ms  (17.49 MiB, 227990 allocs)
+  HCP    n=6   (4793)     108.976 ms  (188.88 MiB, 2245227 allocs)
+  Diamond n=1..4 (214)    8.118 ms  (18.75 MiB, 302612 allocs)
+
+Section 4 — Regime C cross-algorithm (chunk 6.5a vs chunk 8)
+------------------------------------------------------------------------------
+  zinc-blende n=2  (dense mask: every position active)
+    :multinomial_restricted   250.417 μs  (563.16 KiB, 15007 allocs)
+    :recursive_stabilizer     118.333 μs  (328.16 KiB, 6705 allocs)
+  zinc-blende n=3  (dense mask: every position active)
+    :multinomial_restricted   3.745 ms  (7.27 MiB, 207321 allocs)
+    :recursive_stabilizer     418.500 μs  (1.02 MiB, 23366 allocs)
+  half-Heusler Y=Z={2} n=2  (sparse mask: 2/3 of positions fixed)
+    :multinomial_restricted   515.375 μs  (1.13 MiB, 28993 allocs)
+    :recursive_stabilizer     142.917 μs  (477.62 KiB, 9317 allocs)
+  half-Heusler Y=Z={2} n=3  (sparse mask: 2/3 of positions fixed)
+    :multinomial_restricted   22.817 ms  (32.84 MiB, 821368 allocs)
+    :recursive_stabilizer     358.250 μs  (1.13 MiB, 22498 allocs)
+
+==============================================================================
+Done.

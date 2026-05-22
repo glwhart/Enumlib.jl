@@ -29,6 +29,20 @@ let
     enumerate(p, s; supercells = VolumeRange(4:4), concentration = c, algorithm = :multinomial)
     enumerate(p, s; supercells = VolumeRange(4:4), concentration = c, algorithm = :recursive_stabilizer)
     count_inequivalent(p, s; supercells = VolumeRange(4:4))
+
+    # Regime C warmup — touches :multinomial_restricted and the Regime-C
+    # branch of :recursive_stabilizer for Section 4.
+    pC = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                       [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
+    sC = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                Site([0.25, 0.25, 0.25], [2, 3])])
+    crC = ConcentrationRange([(0//1, 1//1) for _ in 1:4])
+    enumerate(pC, sC; supercells = VolumeRange(1:1), concentration = crC,
+              algorithm = :multinomial_restricted,
+              partition_threshold = 1_000_000, skip_resource_check = true)
+    enumerate(pC, sC; supercells = VolumeRange(1:1), concentration = crC,
+              algorithm = :recursive_stabilizer,
+              partition_threshold = 1_000_000, skip_resource_check = true)
 end
 
 println("="^78)
@@ -130,35 +144,75 @@ let
 end
 
 # ============================================================================
-# Section 4 — per-site restricted labels (Regime C — perovskite-style).
-# Currently NOT supported by any Julia algorithm — :multinomial_restricted is
-# queued for chunk 6.5 and :recursive_stabilizer doesn't yet branch on per-site
-# allowed sets (queued).
+# Section 4 — per-site restricted labels (Regime C) — cross-algorithm.
 #
-# This section just confirms the gate fires and records the error — when one
-# of those algorithms lands, we'll switch this to a real timing comparison.
+# Both Regime C algorithms — :multinomial_restricted (chunk 6.5a, HF 2012
+# §A.1 bitmap + site_mask) and :recursive_stabilizer (chunk 8, Morgan-Hart
+# 2017 tree) — are now wired through. Section 4 measures them head-to-head
+# on two contrasting mask shapes:
+#
+#   - "dense": zinc-blende. Both sublattices active, disjoint binary labels
+#     ({0,1} on sublattice 1, {2,3} on sublattice 2). Every position is
+#     active; the mask only forbids cross-sublattice labels.
+#   - "sparse": half-Heusler Y=Z={2}. One binary sublattice ({0,1}) plus two
+#     fixed sublattices (label 2 only). Most positions are inactive.
+#
+# :auto picks :recursive_stabilizer in both cases (chunk 6.5a's design
+# note): :multinomial_restricted's linear bitmap scales by the full
+# multinomial coefficient, so for sparse masks where most slots are
+# invalid it wastes effort. A tree-walk pruning variant is queued for v0.3.
 # ============================================================================
 
 println()
-println("Section 4 — per-site restricted (Regime C; currently gated)")
+println("Section 4 — Regime C cross-algorithm (chunk 6.5a vs chunk 8)")
 println("-"^78)
 
 let
-    # Diamond-style multilattice where one sublattice is fixed (inactive).
-    fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
-    p = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
-    sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),       # binary
-                   Site([0.25, 0.25, 0.25], [0])])       # fixed
-    print("  Diamond w/ inactive 2nd sublattice: ")
-    try
-        enumerate(p, sites; supercells = VolumeRange(2:2))
-        println("UNEXPECTEDLY SUCCEEDED — gate may be wider than expected")
-    catch e
-        # Trim to just the first sentence — full ArgumentError includes
-        # a long suggestion list.
-        msg = sprint(showerror, e)
-        first_line = first(split(msg, '.'))
-        println("ArgumentError (expected): ", first_line, ".")
+    # ---- dense mask: zinc-blende ({0,1} ⊕ {2,3}) ----
+    p_zb = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                         [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
+    s_zb = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.25, 0.25, 0.25], [2, 3])])
+    cr_zb = ConcentrationRange([(0//1, 1//1) for _ in 1:4])
+
+    for n in (2, 3)
+        println("  zinc-blende n=$n  (dense mask: every position active)")
+        for alg in (:multinomial_restricted, :recursive_stabilizer)
+            print("    $(rpad(":$alg", 26))")
+            b = @benchmark enumerate($p_zb, $s_zb;
+                                     supercells = VolumeRange($n:$n),
+                                     concentration = $cr_zb,
+                                     algorithm = $alg,
+                                     partition_threshold = 1_000_000,
+                                     skip_resource_check = true) samples=5 evals=1
+            println(BenchmarkTools.prettytime(minimum(b).time),
+                    "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                    ", ", minimum(b).allocs, " allocs)")
+        end
+    end
+
+    # ---- sparse mask: half-Heusler Y=Z={2} ----
+    p_hh = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                         [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]])
+    s_hh = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.25, 0.25, 0.25], [2]),
+                  Site([0.75, 0.75, 0.75], [2])])
+    cr_hh = ConcentrationRange([(0//1, 1//1) for _ in 1:3])
+
+    for n in (2, 3)
+        println("  half-Heusler Y=Z={2} n=$n  (sparse mask: 2/3 of positions fixed)")
+        for alg in (:multinomial_restricted, :recursive_stabilizer)
+            print("    $(rpad(":$alg", 26))")
+            b = @benchmark enumerate($p_hh, $s_hh;
+                                     supercells = VolumeRange($n:$n),
+                                     concentration = $cr_hh,
+                                     algorithm = $alg,
+                                     partition_threshold = 1_000_000,
+                                     skip_resource_check = true) samples=5 evals=1
+            println(BenchmarkTools.prettytime(minimum(b).time),
+                    "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                    ", ", minimum(b).allocs, " allocs)")
+        end
     end
 end
 
