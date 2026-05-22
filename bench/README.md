@@ -35,6 +35,7 @@ First run will instantiate; subsequent runs use the cached `Manifest.toml`.
 | 2 | FCC binary, fixed concentration, n=4/8/12 | `:exhaustive`, `:multinomial`, `:recursive_stabilizer` | works — direct cross-comparison |
 | 3 | HCP / Diamond, unrestricted, various n | `:exhaustive` | works (R50.2b) |
 | 4 | Regime C: zinc-blende (dense mask) + half-Heusler Y=Z={2} (sparse mask), n=2/3 | `:multinomial_restricted` vs `:recursive_stabilizer` | works — chunks 6.5a/6.5b/6.5c head-to-head |
+| 5 | Full-sweep (all concentrations): FCC binary/ternary, HCP binary | `:exhaustive` vs `:recursive_stabilizer` (via full `ConcentrationRange`) | works |
 
 The Section 4 numbers settle why `:auto` picks `:recursive_stabilizer` for
 Regime C: on the dense zinc-blende case `:recursive_stabilizer` is ~9× faster
@@ -43,6 +44,14 @@ half-Heusler case the gap widens to ~60× (380 μs vs 22.8 ms) because the
 bitmap iterates the full multinomial space while most slots fail the
 site_mask check. A tree-walk pruning variant of `:multinomial_restricted`
 is queued for v0.3.
+
+Section 5 (added 2026-05-22) is the surprise: `:recursive_stabilizer` over
+a full `ConcentrationRange` beats `:exhaustive` at every case measured —
+~2× faster and ~half the memory at FCC binary n=12 (280 ms / 429 MiB vs
+497 ms / 1.05 GiB). The tree visits the same coloring space split into
+per-concentration partitions, but per-branch pruning means it never
+materializes the full k^n bitmap. Current `:auto` still picks `:exhaustive`
+when no concentration is given — re-evaluating that is a v0.3 item.
 
 ## When to extend
 

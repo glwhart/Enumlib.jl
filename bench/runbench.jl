@@ -216,6 +216,107 @@ let
     end
 end
 
+# ============================================================================
+# Section 5 — full-sweep cross-algorithm (:exhaustive vs :recursive_stabilizer).
+#
+# When the user wants every symmetry-inequivalent configuration regardless
+# of concentration, two paths exist:
+#
+#   - `:exhaustive` (no concentration kwarg) — one bitmap pass over k^n.
+#   - `:recursive_stabilizer` with `ConcentrationRange([(0,1), ...])` — runs
+#     the tree once per integer composition of n_active into k parts and
+#     concatenates. The number of partitions is `C(n+k-1, k-1)`, all small
+#     for the cases here.
+#
+# Same FCC/HCP/Diamond cases as Sections 1–3, just probing whether the tree
+# beats the bitmap when *every* concentration is enumerated. Multinomial
+# ternary (FCC k=3) added because the partition fan-out is larger and the
+# bitmap covers a wider domain (3^n vs 2^n).
+# ============================================================================
+
+println()
+println("Section 5 — full-sweep (:exhaustive vs :recursive_stabilizer)")
+println("-"^78)
+
+let
+    # ---- FCC binary, full sweep ----
+    p_b = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+    s_b = Sites(p_b, [0, 1])
+    cr_b = ConcentrationRange([(0//1, 1//1), (0//1, 1//1)])
+
+    for n in (4, 8, 12)
+        println("  FCC binary n=$n  (2^$n = $(2^n) bitmap slots)")
+        print("    $(rpad(":exhaustive", 26))")
+        b = @benchmark enumerate($p_b, $s_b;
+                                 supercells = VolumeRange($n:$n)) samples=5 evals=1
+        println(BenchmarkTools.prettytime(minimum(b).time),
+                "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                ", ", minimum(b).allocs, " allocs)")
+        print("    $(rpad(":recursive_stabilizer", 26))")
+        b = @benchmark enumerate($p_b, $s_b;
+                                 supercells = VolumeRange($n:$n),
+                                 concentration = $cr_b,
+                                 algorithm = :recursive_stabilizer,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true) samples=5 evals=1
+        println(BenchmarkTools.prettytime(minimum(b).time),
+                "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                ", ", minimum(b).allocs, " allocs)")
+    end
+
+    # ---- FCC ternary, full sweep ----
+    p_t = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+    s_t = Sites(p_t, [0, 1, 2])
+    cr_t = ConcentrationRange([(0//1, 1//1), (0//1, 1//1), (0//1, 1//1)])
+
+    for n in (4, 6)
+        println("  FCC ternary n=$n  (3^$n = $(3^n) bitmap slots)")
+        print("    $(rpad(":exhaustive", 26))")
+        b = @benchmark enumerate($p_t, $s_t;
+                                 supercells = VolumeRange($n:$n)) samples=5 evals=1
+        println(BenchmarkTools.prettytime(minimum(b).time),
+                "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                ", ", minimum(b).allocs, " allocs)")
+        print("    $(rpad(":recursive_stabilizer", 26))")
+        b = @benchmark enumerate($p_t, $s_t;
+                                 supercells = VolumeRange($n:$n),
+                                 concentration = $cr_t,
+                                 algorithm = :recursive_stabilizer,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true) samples=5 evals=1
+        println(BenchmarkTools.prettytime(minimum(b).time),
+                "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                ", ", minimum(b).allocs, " allocs)")
+    end
+
+    # ---- HCP binary, full sweep ----
+    a = 1.0; c = sqrt(8/3)
+    A_hcp = [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 c]
+    p_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
+    s_hcp = Sites(p_hcp, [0, 1])
+    cr_hcp = ConcentrationRange([(0//1, 1//1), (0//1, 1//1)])
+
+    for n in (3, 5)
+        println("  HCP binary n=$n  (2^$(2n) = $(2^(2n)) bitmap slots — 2 dset sites)")
+        print("    $(rpad(":exhaustive", 26))")
+        b = @benchmark enumerate($p_hcp, $s_hcp;
+                                 supercells = VolumeRange($n:$n)) samples=5 evals=1
+        println(BenchmarkTools.prettytime(minimum(b).time),
+                "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                ", ", minimum(b).allocs, " allocs)")
+        print("    $(rpad(":recursive_stabilizer", 26))")
+        b = @benchmark enumerate($p_hcp, $s_hcp;
+                                 supercells = VolumeRange($n:$n),
+                                 concentration = $cr_hcp,
+                                 algorithm = :recursive_stabilizer,
+                                 partition_threshold = 1_000_000,
+                                 skip_resource_check = true) samples=5 evals=1
+        println(BenchmarkTools.prettytime(minimum(b).time),
+                "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                ", ", minimum(b).allocs, " allocs)")
+    end
+end
+
 println()
 println("="^78)
 println("Done.")
