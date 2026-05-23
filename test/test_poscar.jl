@@ -728,6 +728,51 @@ using Enumlib
         end
     end
 
+    @testset "manifest carries enumlib_version, sites, equivalence_classes" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e; super_periodic = false)
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
+                enum_section = manifest["enumeration"]
+
+                @test haskey(enum_section, "enumlib_version")
+                @test !isempty(enum_section["enumlib_version"])
+                @test occursin(r"^\d+\.\d+", enum_section["enumlib_version"])
+
+                @test haskey(enum_section, "sites")
+                @test length(enum_section["sites"]) == length(sites.list)
+                site_entry = enum_section["sites"][1]
+                @test site_entry["position"] == [0.0, 0.0, 0.0]
+                @test site_entry["allowed_labels"] == [0, 1]
+
+                @test haskey(enum_section, "equivalence_classes")
+                # Default (no equate!) → no non-trivial classes.
+                @test enum_section["equivalence_classes"] == Any[]
+            end
+        end
+    end
+
+    @testset "sidecar TOML written next to tarball, matches in-tarball manifest" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            out = write_enumeration_archive(tmp, e; super_periodic = false)
+            stem = replace(out, r"\.(tar\.gz|tgz)$" => "")
+            sidecar = stem * ".toml"
+
+            @test isfile(sidecar)
+            sidecar_manifest = TOML.parsefile(sidecar)
+
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                inside_manifest =
+                    TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
+                @test sidecar_manifest == inside_manifest
+            end
+        end
+    end
+
     @testset "explicit .tar.gz path is honored verbatim" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp

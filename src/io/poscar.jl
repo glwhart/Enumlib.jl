@@ -379,7 +379,9 @@ The tarball contains:
   `<hnf>` is the HNF index (no padding). Each POSCAR's header line 1
   carries the same `radius=` value and an `enumlib_id=NNNNN` matching the
   filename's leading id, plus an empty `energy_eV=` slot the calculator fills in.
-- `enumeration.toml` — manifest mapping each filename to its structure metadata, plus a `[enumeration]` top-level section recording the parent lattice, species symbols, super-periodicity policy, etc.
+- `enumeration.toml` — manifest mapping each filename to its structure metadata, plus a `[enumeration]` top-level section recording the parent lattice (`parent_basis_columns`), the full `sites` list (each with `position` and `allowed_labels`), any `equivalence_classes`, the `enumlib_version`, species symbols, super-periodicity policy, etc. Sufficient to re-enumerate the same set of structures from the manifest alone.
+
+A sidecar `<stem>.toml` (same contents as the in-tarball `enumeration.toml`) is also written next to the tarball, so the caller retains local provenance after shipping the tarball to a collaborator.
 
 # Arguments
 
@@ -452,13 +454,18 @@ function write_enumeration_archive(
         mkpath(parent_dir)
     end
 
-    # Build the directory of POSCARs + manifest, then tar+gzip it.
+    # Build the directory of POSCARs + manifest, then tar+gzip it. Also
+    # copy the manifest to a sidecar `<stem>.toml` next to the tarball so
+    # the caller retains local provenance after shipping the tarball
+    # (the manifest inside the tarball goes with it).
+    stem = replace(out_path, r"\.(tar\.gz|tgz)$" => "")
+    sidecar_path = stem * ".toml"
     if keep_directory
         # Persistent directory next to the tarball (no temp).
-        stem = replace(out_path, r"\.(tar\.gz|tgz)$" => "")
         isdir(stem) && rm(stem; recursive = true, force = true)
         mkpath(stem)
         _build_enumeration_directory(stem, enumeration; super_periodic, species_symbols)
+        cp(joinpath(stem, "enumeration.toml"), sidecar_path; force = true)
         _tar_gzip_directory(stem, out_path)
     else
         # Temp dir — auto-cleaned after tarring.
@@ -469,6 +476,7 @@ function write_enumeration_archive(
                 super_periodic,
                 species_symbols,
             )
+            cp(joinpath(temp_dir, "enumeration.toml"), sidecar_path; force = true)
             _tar_gzip_directory(temp_dir, out_path)
         end
     end
@@ -500,10 +508,31 @@ function _build_enumeration_directory(
         length(species_symbols)
     k = isempty(species_symbols) ? inferred_k : length(species_symbols)
 
+    # Serialize the Sites for self-contained re-enumeration: each site's
+    # fractional position and the sorted list of allowed integer labels
+    # (BitSet → Vector{Int}). Equivalence classes (Union-Find on site
+    # indices) are emitted as a list of multi-element classes; singletons
+    # are omitted since they're the trivial default.
+    sites_section = [
+        Dict{String,Any}(
+            "position" => copy(site.position),
+            "allowed_labels" => sort!(collect(site.allowed_labels)),
+        ) for site in enumeration.sites.list
+    ]
+    classes_by_root = Dict{Int,Vector{Int}}()
+    for i = 1:length(enumeration.sites.list)
+        push!(get!(classes_by_root, canonical(enumeration.sites, i), Int[]), i)
+    end
+    equivalence_classes = sort!(
+        [sort!(c) for c in values(classes_by_root) if length(c) > 1];
+        by = first,
+    )
+
     # Build manifest dict in parallel with writing POSCARs.
     manifest = Dict{String,Any}()
     manifest["enumeration"] = Dict{String,Any}(
         "created_at" => Dates.format(Dates.now(), "yyyy-mm-ddTHH:MM:SS"),
+        "enumlib_version" => string(pkgversion(@__MODULE__)),
         "n_structures" => n_structures,
         "n_supercells" => length(enumeration.supercells),
         "super_periodic" => super_periodic,
@@ -512,6 +541,8 @@ function _build_enumeration_directory(
             species_symbols,
         "parent_basis_columns" => [collect(enumeration.parent.A[:, j]) for j = 1:D],
         "k" => k,
+        "sites" => sites_section,
+        "equivalence_classes" => equivalence_classes,
     )
     structures_section = Dict{String,Any}()
 
