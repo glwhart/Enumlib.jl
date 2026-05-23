@@ -25,6 +25,7 @@ makedocs(
             "tutorials/01-first-enumeration.md",
             "tutorials/02-fixed-concentration.md",
             "tutorials/03-dft-training-database.md",
+            "tutorials/04-multilattice-per-sublattice.md",
         ],
         "How-to guides" => [
             "how-to/index.md",
@@ -34,6 +35,7 @@ makedocs(
             "how-to/enumerate-at-fixed-concentration.md",
             "how-to/sweep-concentration-ranges.md",
             "how-to/enumerate-multilattice.md",
+            "how-to/specify-per-sublattice-concentration.md",
             "how-to/pick-an-algorithm.md",
             "how-to/count-without-enumerating.md",
             "how-to/estimate-cost.md",

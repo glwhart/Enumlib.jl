@@ -194,33 +194,14 @@ accepted if you prefer it; see [Describe substitution sites](describe-substituti
 
 ## Per-sublattice `Concentration` for Regime C
 
-For Regime C the global flat-vector `Concentration` is awkward — perovskite
-ABO₃ at 1:1 A, 1:1 B, fixed O resolves to `Concentration([1//10, 1//10, 1//10, 1//10, 6//10])`
-at n=2, which means computing per-sublattice contributions and the global
-normalization by hand. The v0.3 per-sublattice constructor
-[`Concentration(sites, per_sublattice)`](@ref) does that bookkeeping:
-
-```julia
-p = ParentLattice([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],
-                  [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5],
-                   [0.5, 0.5, 0.0], [0.5, 0.0, 0.5], [0.0, 0.5, 0.5]])
-sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
-               Site([0.5, 0.5, 0.5], [2, 3]),
-               Site([0.5, 0.5, 0.0], [4]),
-               Site([0.5, 0.0, 0.5], [4]),
-               Site([0.0, 0.5, 0.5], [4])])
-# "1:1 on A, 1:1 on B, O fixed" — one entry per dset position, in the sorted
-# order of that position's allowed_labels.
-c = Concentration(sites, [[1, 1], [1, 1], [1], [1], [1]])
-# → Concentration(1//10, 1//10, 1//10, 1//10, 3//5)
-```
-
-Each row of the second argument is normalized within its sublattice (so `[1, 1]`
-and `[1//2, 1//2]` are interchangeable), and the result is exactly equivalent
-to the flat-vector `Concentration` — pass it straight to `enumerate(...)` as
-the `concentration` kwarg. Particularly useful for spinel, half/full Heusler
-with distinct sublattice species, perovskite-like A/B mixing, and HEAs on
-multi-sublattice parents.
+For Regime C, stating the concentration globally as a flat-vector
+`Concentration([f₁, ..., f_k])` requires translating per-sublattice composition
+into global fractions, which gets fiddly fast (perovskite ABO₃ at 1:1 A,
+1:1 B, fixed O resolves to `Concentration([1//10, 1//10, 1//10, 1//10, 6//10])`
+at n=2). The v0.3 per-sublattice constructor lets you state composition
+per dset position directly — see the [Specify concentration per sublattice](specify-per-sublattice-concentration.md)
+how-to for the recipe and [Tutorial 04](../tutorials/04-multilattice-per-sublattice.md)
+for a walkthrough.
 
 Without `concentration`, Regime C throws an `ArgumentError`: "Multilattice with per-site `allowed_labels` (Regime C — heterogeneous sublattices) requires a `concentration` kwarg." That's the input validation working as designed — unrestricted enumeration on heterogeneous sublattices isn't a defined problem; you need a fixed composition to enumerate around.
 

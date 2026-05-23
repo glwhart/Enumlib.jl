@@ -14,6 +14,7 @@ Task-oriented recipes. Each page answers a focused **"I have X, I want Y"** ques
 - [Sweep concentration ranges](sweep-concentration-ranges.md) — `ConcentrationRange` and the partition gate.
 - [Count without enumerating](count-without-enumerating.md) — Pólya / Burnside counts via `count_inequivalent`.
 - [Enumerate on a multilattice parent](enumerate-multilattice.md) — HCP, diamond, and other dset-bearing parents (HF 2009 / R50.2).
+- [Specify concentration per sublattice](specify-per-sublattice-concentration.md) — `Concentration(sites, per_sublattice)` for Regime C / perovskite / Heusler.
 
 ## Tune and control
 
