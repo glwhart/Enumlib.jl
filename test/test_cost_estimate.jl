@@ -102,13 +102,13 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
-        # No concentration → :auto now synthesizes a full-range
-        # ConcentrationRange and routes to the tree (v0.3). The reported
-        # partition_count reflects the algorithm that will actually run:
-        # 5 partitions × 7 HNFs at n=4 = 35 (same as the explicit
-        # ConcentrationRange case below — they go through the same path).
+        # No concentration → 1. :auto synthesizes a full-range
+        # ConcentrationRange internally to route to the tree (v0.3), but
+        # the partition decomposition is an implementation detail — the
+        # user didn't ask for a concentration constraint, so partition_count
+        # surfaces as 1 (consistent with the user's intent).
         e_none = estimate_cost(parent, sites; supercells = VolumeRange(4:4))
-        @test e_none.partition_count == 5 * 7
+        @test e_none.partition_count == 1
 
         # Single Concentration → 1.
         c = concentration_count([2, 2]; n_total = 4)
@@ -165,6 +165,45 @@ using Enumlib
         @test_throws EnumerationTooLargeError enumerate(parent, sites;
                                                          supercells = VolumeRange(4:4),
                                                          memory_budget = 1)
+    end
+
+    # ---- Real-world gate firing: the default budget protects against a
+    # case that would otherwise allocate hundreds of GiB.
+    # v0.2-polish item from `docs/notes/v0.2-plan.md` line 444. The previous
+    # gate-firing tests force the issue with `memory_budget = 1`; this one
+    # confirms the gate also fires for a realistic input without budget
+    # manipulation. FCC binary unrestricted at n=30 with `:exhaustive`
+    # predicts a 2^30-bit bitmap (~130 MiB) but the conservative output-buffer
+    # bound from `_predict_peak_memory` adds the per-structure cost across
+    # 2.6 × 10^9 predicted structures, well over 200 GiB. Default 8 GiB budget
+    # refuses the request.
+    @testset "default budget fires for FCC binary :exhaustive n=30" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        @test_throws EnumerationTooLargeError enumerate(parent, sites;
+            supercells = VolumeRange(30:30), algorithm = :exhaustive)
+        # Same case via estimate_cost — predicted peak far exceeds the
+        # default 25%-of-RAM-or-2-GiB budget for any reasonable machine.
+        est = estimate_cost(parent, sites; supercells = VolumeRange(30:30),
+                             algorithm = :exhaustive)
+        @test est.chosen_algorithm == :exhaustive
+        @test est.total_count > 10^9
+        @test est.peak_memory_bytes > Enumlib.default_memory_budget()
+    end
+
+    # The negative counterpart: a moderately large enumeration that the gate
+    # *passes*. Confirms the conservatism dial is set so the gate doesn't
+    # refuse cases that would actually run. FCC binary unrestricted at n=18
+    # predicts ~32 MiB of memory and ~4 × 10^5 structures — fits in the
+    # default budget comfortably.
+    @testset "default budget passes for FCC binary auto n=18" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        est = estimate_cost(parent, sites; supercells = VolumeRange(18:18))
+        @test est.chosen_algorithm == :recursive_stabilizer  # v0.3 default
+        @test est.peak_memory_bytes < Enumlib.default_memory_budget()
+        # Sanity: total_count nontrivial.
+        @test est.total_count > 10^5
     end
 
     @testset "on_overflow = :warn warns but proceeds" begin

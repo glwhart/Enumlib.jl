@@ -317,6 +317,51 @@ let
     end
 end
 
+# ============================================================================
+# Section 6 — fixed-concentration at scale (:multinomial vs :recursive_stabilizer).
+#
+# Section 2 measured the two at FCC binary n=4/8/12 — roughly tied (the
+# bitmap edges out the tree by ~10% at n=12). Section 6 extends the curve
+# to n=14/16/18/20 where the multinomial bitmap is bigger but still fits
+# in `default_memory_budget` (`:auto` keeps picking `:multinomial`). The
+# question this answers: does the v0.3 "tree wins" finding from Section 5
+# (full sweep) carry over to single fixed concentrations at large bitmap
+# sizes, or do the bitmap's constants compound?
+#
+# Result (2026-05-23): the bitmap's O(1) random-access advantage compounds
+# as the multinomial coefficient grows. At fixed 50% concentration:
+#   n=14 7:7    bitmap 2.2× faster, 0.7× memory
+#   n=16 8:8    bitmap 3.5× faster, 0.5× memory
+#   n=18 9:9    bitmap 5.2× faster, 0.3× memory
+#   n=20 10:10  bitmap 6.2× faster, 0.2× memory
+# Confirms `:auto`'s 80%-of-budget pivot (`_multinomial_bitmap_fits`) — keep
+# bitmap as long as it fits, then switch to tree.
+# ============================================================================
+
+println()
+println("Section 6 — fixed-concentration at scale (:multinomial vs :recursive_stabilizer)")
+println("-"^78)
+
+let
+    p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+    s = Sites(p, [0, 1])
+    # n=20 10:10 takes ~10 s for multinomial and ~55 s for tree on Apple M1;
+    # keep the case list reasonable for a manual bench run.
+    for (n, a, b) in ((14, 7, 7), (16, 8, 8), (18, 9, 9))
+        c = concentration_count([a, b]; n_total = n)
+        println("  FCC binary n=$n $(a):$(b)  (multinomial C = $(Enumlib.multinomial_count([a, b])))")
+        for alg in (:multinomial, :recursive_stabilizer)
+            print("    $(rpad(":$alg", 26))")
+            bm = @benchmark enumerate($p, $s; supercells = VolumeRange($n:$n),
+                                       concentration = $c, algorithm = $alg,
+                                       skip_resource_check = true) samples=3 evals=1
+            println(BenchmarkTools.prettytime(minimum(bm).time),
+                    "  (", BenchmarkTools.prettymemory(minimum(bm).memory),
+                    ", ", minimum(bm).allocs, " allocs)")
+        end
+    end
+end
+
 println()
 println("="^78)
 println("Done.")

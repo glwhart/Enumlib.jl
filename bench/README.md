@@ -36,6 +36,7 @@ First run will instantiate; subsequent runs use the cached `Manifest.toml`.
 | 3 | HCP / Diamond, unrestricted, various n | `:exhaustive` | works (R50.2b) |
 | 4 | Regime C: zinc-blende (dense mask) + half-Heusler Y=Z={2} (sparse mask), n=2/3 | `:multinomial_restricted` vs `:recursive_stabilizer` | works — chunks 6.5a/6.5b/6.5c head-to-head |
 | 5 | Full-sweep (all concentrations): FCC binary/ternary, HCP binary | `:exhaustive` vs `:recursive_stabilizer` (via full `ConcentrationRange`) | works |
+| 6 | Fixed-concentration at scale: FCC binary n=14/16/18 at 50% | `:multinomial` vs `:recursive_stabilizer` | works — validates the 80% threshold |
 
 The Section 4 numbers settle why `:auto` picks `:recursive_stabilizer` for
 Regime C: on the dense zinc-blende case `:recursive_stabilizer` is ~9× faster
@@ -50,8 +51,17 @@ a full `ConcentrationRange` beats `:exhaustive` at every case measured —
 ~2× faster and ~half the memory at FCC binary n=12 (280 ms / 429 MiB vs
 497 ms / 1.05 GiB). The tree visits the same coloring space split into
 per-concentration partitions, but per-branch pruning means it never
-materializes the full k^n bitmap. Current `:auto` still picks `:exhaustive`
-when no concentration is given — re-evaluating that is a v0.3 item.
+materializes the full k^n bitmap. Acted on in v0.3.0: `:auto` now picks
+the tree for unrestricted enumeration too.
+
+Section 6 (added 2026-05-23) is the *counter*-surprise: for a *single*
+fixed `Concentration`, `:multinomial` beats `:recursive_stabilizer` —
+and the gap widens with n. At FCC binary 50%:
+n=14 7:7 the bitmap is 2.2× faster; n=18 9:9 it's 5.2× faster and uses
+0.3× the memory. The bitmap's O(1) random-access advantage compounds.
+Confirms the v0.3.0 `_multinomial_bitmap_fits` 80%-of-budget threshold is
+well-calibrated: keep the bitmap as long as it fits, then switch to the
+tree. No tuning needed.
 
 ## When to extend
 

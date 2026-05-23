@@ -108,6 +108,13 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
                         skip_resource_check::Bool = false) where D
 
     # ---- Algorithm dispatch ----
+    # Preserve the user's original kwargs so the resource-check call into
+    # estimate_cost re-runs the same dispatch with the same lightweight
+    # cost-path semantics (it has its own :auto branch that mirrors this
+    # one; passing the synthesized values would force it to redo synthesis
+    # and re-pay the per-partition count_inequivalent cost we want to skip).
+    user_concentration = concentration
+    user_algorithm = algorithm
     if algorithm == :auto
         if concentration === nothing
             # v0.3 default for unrestricted enumeration: run the tree over a
@@ -208,8 +215,10 @@ function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
 
     # ---- Enumeration resource check (chunk 7.5) ----
     if !skip_resource_check
-        estimate = estimate_cost(parent_eff, sites; supercells, concentration,
-                                 algorithm, include_superperiodic)
+        estimate = estimate_cost(parent_eff, sites; supercells,
+                                 concentration = user_concentration,
+                                 algorithm = user_algorithm,
+                                 include_superperiodic)
         if estimate.peak_memory_bytes > memory_budget
             if on_overflow === :error
                 throw(EnumerationTooLargeError(estimate, memory_budget))
@@ -947,12 +956,24 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
     hnfs = enumerate_hnfs(supercells, parent_eff)
     n_D = ndset(parent_eff)
 
-    # Total count via the chunk-7 machinery.
-    total_count = count_inequivalent(parent_eff, sites; supercells, concentration,
+    # Total count via the chunk-7 machinery. When :auto synthesized a
+    # full-range ConcentrationRange, we pass `nothing` to count_inequivalent
+    # instead of iterating per-partition: the Pólya count for unrestricted
+    # enumeration equals the sum across all in-range concentrations, but
+    # the unrestricted call is a single Burnside evaluation while the
+    # ConcentrationRange path iterates partitions. At small n the per-
+    # partition iteration dominates the resource-check wall time
+    # (measured 2026-05-23: 5.5 ms → ~0.5 ms for FCC binary n=4 unrestricted).
+    count_concentration = synthesized_concentration ? nothing : concentration
+    total_count = count_inequivalent(parent_eff, sites; supercells,
+                                     concentration = count_concentration,
                                      include_superperiodic)
 
-    # Peak memory.
-    peak_memory = _predict_peak_memory(hnfs, parent_eff, k, concentration, chosen, total_count)
+    # Peak memory. Pass `nothing` for the synthesized case too — the tree's
+    # memory prediction doesn't consult `concentration` (line below in
+    # `_predict_peak_memory` short-circuits to `bitmap_peak = 0`), so this
+    # is purely an optimization, not a semantic change.
+    peak_memory = _predict_peak_memory(hnfs, parent_eff, k, count_concentration, chosen, total_count)
 
     # Selection kind.
     selection_kind = supercells isa VolumeRange ? :volume_range :
@@ -960,8 +981,12 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
 
     # Partition count (chunk 6 already exposes the partition machinery). For
     # multilattice (n_D ≥ 2), the multiplicity vectors are resolved against
-    # n_D · volume(h) total sites, not volume(h).
-    partition_count = if concentration isa ConcentrationRange
+    # n_D · volume(h) total sites, not volume(h). For :auto's synthetic
+    # full-range case we report 1 — the user didn't ask for a concentration
+    # so partition mechanics are an implementation detail.
+    partition_count = if synthesized_concentration
+        1
+    elseif concentration isa ConcentrationRange
         sum(length(concentrations_in_range(concentration, n_D * volume(h))) for h in hnfs;
             init = 0)
     else

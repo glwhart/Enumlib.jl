@@ -150,6 +150,61 @@ using Enumlib
         @test length(e) == 1552
     end
 
+    # ---- HF 2012 Table 1: per-HNF reference counts ----
+    # v0.2-polish item from `docs/notes/v0.2-plan.md` line 443. The locked
+    # totals above (5, 94, 86, 1552) are cumulative sums across all HNF orbits
+    # at the given volume; a regression in the Pólya math or in how counts
+    # split across HNFs can compensate within the sum and stay hidden. Locking
+    # the per-HNF vectors catches that.
+    #
+    # The HNF ordering is the canonical order returned by `enumerate_hnfs` —
+    # the same order `enumerate(...)` iterates them in. The per-HNF count
+    # vectors below were computed against the v0.3.0 implementation and
+    # cross-checked against the cumulative totals (which match HF 2012).
+    @testset "FCC binary per-HNF counts (HF 2012 Table 1 anchors)" begin
+        parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+
+        # n=4, 2:2 — 7 HNFs. Five SNF=[1,1,4] HNFs each contribute one
+        # aperiodic 2:2 configuration; two SNF=[1,2,2] HNFs contribute zero
+        # *aperiodic* configurations because all of their 2:2 layouts are
+        # super-periodic (the order-2 element of the Z/2×Z/2 translation
+        # subgroup fixes every 2:2 decoration on this cell). With
+        # include_superperiodic = true the per-HNF vector becomes
+        # [2, 2, 2, 2, 2, 2, 1] instead.
+        hnfs4 = enumerate_hnfs(VolumeRange(4:4), parent)
+        c_22 = concentration_count([2, 2]; n_total = 4)
+        per_hnf_4 = [length(enumerate(parent, sites;
+                                       supercells = ExplicitHNFs([h]),
+                                       concentration = c_22)) for h in hnfs4]
+        @test per_hnf_4 == [1, 1, 1, 1, 1, 0, 0]
+        @test sum(per_hnf_4) == 5
+
+        # With super-periodics kept, every HNF carries 2:2 configurations.
+        # The five SNF=[1,1,4] HNFs gain one super-periodic orbit each
+        # (1 → 2); HNF #6 (SNF=[1,2,2], |G|=8) gains two (0 → 2); HNF #7
+        # (SNF=[1,2,2], |G|=24) is the highly-symmetric supercell whose
+        # larger stabilizer collapses what would be two orbits on HNF #6
+        # into one (0 → 1).
+        per_hnf_4_sp = [length(enumerate(parent, sites;
+                                          supercells = ExplicitHNFs([h]),
+                                          concentration = c_22,
+                                          include_superperiodic = true)) for h in hnfs4]
+        @test per_hnf_4_sp == [2, 2, 2, 2, 2, 2, 1]
+
+        # n=8, 4:4 — 20 HNFs. Mix of 6 / 4 / 5 / 3 / 2 per-HNF counts;
+        # the distribution probes the stabilizer-and-translation-subgroup
+        # machinery's behavior across HNF shapes.
+        hnfs8 = enumerate_hnfs(VolumeRange(8:8), parent)
+        c_44 = concentration_count([4, 4]; n_total = 8)
+        per_hnf_8 = [length(enumerate(parent, sites;
+                                       supercells = ExplicitHNFs([h]),
+                                       concentration = c_44)) for h in hnfs8]
+        @test per_hnf_8 == [6, 6, 6, 4, 6, 4, 6, 6, 6, 6,
+                            4, 4, 4, 5, 4, 4, 4, 3, 4, 2]
+        @test sum(per_hnf_8) == 94
+    end
+
     # ---- The identity test: sum of per-concentration enumerations == unrestricted ----
     # This is the load-bearing correctness check — proves the multinomial port
     # over the entire chunk-5 FCC corpus without needing to run the slow
