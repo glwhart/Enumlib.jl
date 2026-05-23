@@ -10,13 +10,14 @@ A [`Concentration`](@ref) value carries `Rational{Int}` fractions that sum to 1.
 mults = multiplicities(concentration, n_total)   # ::Vector{Int}, sum(mults) == n_total
 ```
 
-Three constructors land on the same `Concentration`:
+Four constructors land on the same `Concentration`:
 
 | Constructor | Input | Use case |
 |---|---|---|
 | `Concentration([f₁, f₂, ...])` | Fractions summing to 1 | You already have the composition as fractions. |
 | `concentration_ratio([a₁, a₂, ...])` | Raw ratios | You have integers like `[1, 3]` meaning 1 of A per 3 of B; divides by the sum. |
 | `concentration_count([n₁, n₂, ...]; n_total = N)` | Anchored counts | You have a specific supercell in mind; validates `sum == n_total`. |
+| `Concentration(sites, [[r₁₁, r₁₂, ...], [r₂₁, ...], ...])` | Per-sublattice ratios | Regime C (heterogeneous sublattices). Stating "1:1 on A, 1:1 on B, fixed on O" directly is much less error-prone than computing the global flat-vector by hand. v0.3+. |
 
 They're interchangeable downstream: `enumerate(...; concentration = c)` takes any of them.
 

@@ -49,6 +49,79 @@ using Enumlib
         @test_throws ArgumentError concentration_count([1, 1]; n_total = 0)
     end
 
+    # ---- Per-sublattice Concentration constructor (v0.3 ergonomics) ----
+    # Spec'd in `docs/notes/chunk6.5-design.md` §6 Q3. Lets users state
+    # Regime C compositions per dset position instead of computing the
+    # global flat-vector by hand. Strictly additive — the flat-vector
+    # constructor remains canonical.
+    @testset "Concentration(sites, per_sublattice)" begin
+        # Perovskite ABO₃: A={0,1}, B={2,3}, three O sites all = {4}.
+        # 1:1 on A, 1:1 on B, fixed O. Global: [1/10, 1/10, 1/10, 1/10, 6/10].
+        p = ParentLattice([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],
+                          [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5],
+                           [0.5, 0.5, 0.0], [0.5, 0.0, 0.5], [0.0, 0.5, 0.5]])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                       Site([0.5, 0.5, 0.5], [2, 3]),
+                       Site([0.5, 0.5, 0.0], [4]),
+                       Site([0.5, 0.0, 0.5], [4]),
+                       Site([0.0, 0.5, 0.5], [4])])
+        c_psl = Concentration(sites, [[1, 1], [1, 1], [1], [1], [1]])
+        c_flat = Concentration([1//10, 1//10, 1//10, 1//10, 6//10])
+        @test c_psl == c_flat
+
+        # Same problem via fractions instead of ratios — should land on the
+        # same Concentration. Per-row normalization makes 1:1 and 1/2:1/2
+        # interchangeable.
+        c_psl_fr = Concentration(sites, [[1//2, 1//2], [1//2, 1//2], [1], [1], [1]])
+        @test c_psl_fr == c_flat
+
+        # Asymmetric per-sublattice ratios. A: 3:1, B: 1:1, O fixed.
+        # Per cell: label0=3/4, label1=1/4, label2=1/2, label3=1/2, label4=3.
+        # Sum=5; fractions = [3/20, 1/20, 1/10, 1/10, 3/5].
+        c_asym = Concentration(sites, [[3, 1], [1, 1], [1], [1], [1]])
+        @test c_asym == Concentration([3//20, 1//20, 1//10, 1//10, 3//5])
+
+        # ---- Half-Heusler with distinct inactive species (X={0,1}, Y={2}, Z={3}) ----
+        p_hh = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                             [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]])
+        sites_hh = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                          Site([0.25, 0.25, 0.25], [2]),
+                          Site([0.75, 0.75, 0.75], [3])])
+        @test Concentration(sites_hh, [[1, 1], [1], [1]]) ==
+              Concentration([1//6, 1//6, 1//3, 1//3])
+
+        # ---- Errors ----
+        # Wrong number of dset positions.
+        @test_throws ArgumentError Concentration(sites_hh, [[1, 1], [1]])
+
+        # Wrong row length for a sublattice.
+        @test_throws ArgumentError Concentration(sites_hh, [[1, 1, 1], [1], [1]])
+
+        # Negative entry.
+        @test_throws ArgumentError Concentration(sites_hh, [[1, -1], [1], [1]])
+
+        # Row sums to zero.
+        @test_throws ArgumentError Concentration(sites_hh, [[0, 0], [1], [1]])
+
+        # ---- End-to-end: per-sublattice Concentration drives a real enumerate ----
+        # The same perovskite n=1 enumeration computed via flat-vector and
+        # per-sublattice Concentrations must produce the same count.
+        n = 1
+        c_check_flat = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                  concentration = c_flat,
+                                  skip_resource_check = true)
+        c_check_psl = enumerate(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = c_psl,
+                                 skip_resource_check = true)
+        @test length(c_check_flat) == length(c_check_psl)
+
+        # ---- Regime A/B still works (single dset position) ----
+        p_fcc = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+        sites_fcc = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        @test Concentration(sites_fcc, [[1, 1]]) == Concentration([1//2, 1//2])
+        @test Concentration(sites_fcc, [[3, 1]]) == Concentration([3//4, 1//4])
+    end
+
     @testset "multiplicities resolves cleanly or throws" begin
         c = concentration_ratio([15, 17])
         @test multiplicities(c, 32) == [15, 17]

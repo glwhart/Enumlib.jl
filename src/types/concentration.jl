@@ -82,6 +82,106 @@ function concentration_count(counts::AbstractVector{<:Integer}; n_total::Integer
 end
 
 """
+    Concentration(sites::Sites, per_sublattice::Vector{<:AbstractVector{<:Real}}) -> Concentration
+
+Per-sublattice constructor for Regime C / multilattice cases. Each
+`per_sublattice[i]` gives the *ratio* (or fraction) of each label allowed at
+dset position `i`, in the sorted order of `sites.list[i].allowed_labels`. The
+constructor normalizes each sublattice row to a per-site fraction, sums across
+dset positions, and divides by the number of dset positions to produce the
+global flat-vector `Concentration`.
+
+Use when the flat-vector representation is awkward — e.g., perovskite ABO₃
+with 1:1 mixing on A and B and O fixed, which globally translates to
+`Concentration([1//10, 1//10, 1//10, 1//10, 6//10])` at n=2. The per-sublattice
+form lets you say "1:1 on A, 1:1 on B, fixed on O" directly and have the
+constructor do the bookkeeping.
+
+# Examples
+
+Perovskite ABO₃ (A site = {0,1}, B site = {2,3}, three O sites all = {4}):
+
+```jldoctest sublat_conc
+julia> using Enumlib
+
+julia> p = ParentLattice([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],
+                          [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5],
+                           [0.5, 0.5, 0.0], [0.5, 0.0, 0.5], [0.0, 0.5, 0.5]]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                       Site([0.5, 0.5, 0.5], [2, 3]),
+                       Site([0.5, 0.5, 0.0], [4]),
+                       Site([0.5, 0.0, 0.5], [4]),
+                       Site([0.0, 0.5, 0.5], [4])]);
+
+julia> Concentration(sites, [[1, 1], [1, 1], [1], [1], [1]])
+Concentration(1//10, 1//10, 1//10, 1//10, 3//5)
+```
+
+Half-Heusler with distinct sublattice species (X = {0,1}, Y = {2}, Z = {3}):
+
+```jldoctest sublat_conc_hh
+julia> using Enumlib
+
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                          [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                       Site([0.25, 0.25, 0.25], [2]),
+                       Site([0.75, 0.75, 0.75], [3])]);
+
+julia> Concentration(sites, [[1, 1], [1], [1]])
+Concentration(1//6, 1//6, 1//3, 1//3)
+```
+"""
+function Concentration(sites::Sites,
+                       per_sublattice::AbstractVector{<:AbstractVector{<:Real}})
+    length(per_sublattice) == length(sites.list) ||
+        throw(ArgumentError(
+            "per_sublattice has $(length(per_sublattice)) entries but Sites " *
+            "has $(length(sites.list)) dset positions."))
+
+    # Global species set across all dset positions; require zero-indexed dense
+    # labels (same gate the enumerate validation applies to Regime C inputs).
+    union_labels = reduce(union, (s.allowed_labels for s in sites.list))
+    k_global = length(union_labels)
+    sorted_global = sort(collect(union_labels))
+    sorted_global == collect(0:k_global-1) ||
+        throw(ArgumentError(
+            "zero-indexed dense labels required across all positions; got " *
+            "$(sort(collect(union_labels)))"))
+
+    # Per-cell label counts: each dset position contributes 1 atom per cell,
+    # split among its allowed labels according to per_sublattice[i].
+    counts_per_cell = zeros(Rational{Int}, k_global)
+    for (i, s) in enumerate(sites.list)
+        row = per_sublattice[i]
+        length(row) == length(s.allowed_labels) ||
+            throw(ArgumentError(
+                "per_sublattice[$i] has $(length(row)) entries but " *
+                "sites.list[$i].allowed_labels has $(length(s.allowed_labels)) labels."))
+        all(>=(0), row) ||
+            throw(ArgumentError(
+                "per_sublattice[$i] entries must be non-negative; got $row"))
+        row_total = sum(row)
+        row_total > 0 ||
+            throw(ArgumentError(
+                "per_sublattice[$i] entries sum to zero; need at least one " *
+                "positive entry per dset position"))
+
+        # `allowed_labels` is a BitSet so iteration is sorted ascending; the
+        # k-th entry of `row` corresponds to the k-th smallest allowed label.
+        for (k_idx, label) in enumerate(sort(collect(s.allowed_labels)))
+            counts_per_cell[label + 1] += Rational{Int}(row[k_idx]) // row_total
+        end
+    end
+
+    # Normalize to global fractions (per-cell counts sum to ndset).
+    total = sum(counts_per_cell)
+    return Concentration(counts_per_cell ./ total)
+end
+
+"""
     n_species(c::Concentration)
 
 Number of species in the concentration vector.

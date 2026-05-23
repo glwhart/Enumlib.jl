@@ -2,6 +2,24 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.1 — 2026-05-23
+
+### Added
+
+- **Per-sublattice `Concentration` constructor for Regime C.** `Concentration(sites, per_sublattice)` lets users state per-dset-position composition ratios ("1:1 on A, 1:1 on B, fixed on O") directly instead of computing the global flat-vector by hand. Each row of `per_sublattice` is normalized within its sublattice (so `[1, 1]` and `[1//2, 1//2]` are interchangeable), summed across positions, and divided by `ndset(parent)` to produce the canonical flat-vector form. Strictly additive — the flat-vector constructor remains canonical and the new method delegates to it. Useful for perovskite, half/full Heusler with distinct sublattice species, spinel, and HEAs on multi-sublattice parents.
+- **Real-world resource-check gate-firing test (v0.2-polish #3).** FCC binary `:exhaustive` at n=30 predicts 2.6 × 10^9 structures and ~230 GiB peak — the default 8 GiB budget refuses without the `memory_budget = 1` lever the existing gate tests use. Paired negative-counterpart test at n=18 confirms a moderate enumeration passes.
+- **HF 2012 Table-1 per-HNF anchors (v0.2-polish #2).** Locked per-HNF count vectors for FCC binary 2:2 at n=4 (`[1,1,1,1,1,0,0]`) and 4:4 at n=8 (a 20-element vector). Includes an `include_superperiodic = true` companion for n=4 that pins the super-periodic policy behavior.
+- **Pólya orbit-count reference table (v0.2-polish #1).** `test/data/polya_reference.csv` vendors 40 reference rows across FCC/BCC/HCP/Diamond binary, FCC ternary, and FCC binary fixed-concentration — both aperiodic (default) and `include_superperiodic = true` counts, cross-checked against HF 2008 and HF 2012 references. `test/test_polya_reference.jl` asserts the current `count_inequivalent` matches every row. Catches silent drift in cycle-structure / Burnside / Möbius math that the algorithm-side tests might compensate for.
+- **Bench Section 6.** `:multinomial` vs `:recursive_stabilizer` at FCC binary 50% from n=14 to n=18 — locks the v0.3.1 finding that the bitmap wins 2.2-5.2× for fixed concentration when it fits the budget (gap widening with n), validating the existing 80%-of-budget pivot in `_multinomial_bitmap_fits`. No threshold tune needed.
+
+### Fixed
+
+- **`estimate_cost` regression at small n.** v0.3.0's `:auto` synthesized a full-range `ConcentrationRange` and passed it through to `estimate_cost`, which then iterated per-partition for `count_inequivalent` — at FCC binary n=4 unrestricted that took 5.5 ms vs 2 ms in v0.2. Fix: thread the user's original `concentration` and `algorithm` kwargs into `estimate_cost` (it has its own `:auto` branch); inside, when `:auto` synthesizes the full-range concentration, use the original (`nothing`) for the `count_inequivalent` call. `partition_count` also reports 1 for the synthesized case (consistent with the user not having asked for a concentration constraint). Section 1 of the bench is now back in line with v0.2 numbers.
+
+### Documented
+
+- **Wurtzite Fortran-corpus divergence resolved.** `docs/notes/chunk6.5-design.md` §11.4 updated: Fortran enumlib is wrong, Enumlib.jl is correct. Wurtzite's 6₃ screw maps cation₁ ↔ cation₂ and anion₁ ↔ anion₂ — preserves label-class structure, so it's a legitimate symmetry of the labeled structure. Fortran dropping it is an artifact of not supporting per-position `allowed_labels` in the first place. Migration guide (Phase 13f / later release) will document the count discrepancy for users moving from Fortran.
+
 ## v0.3.0 — 2026-05-22
 
 ### Changed
