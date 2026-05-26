@@ -25,7 +25,7 @@ julia> length(e)
 94
 ```
 
-The locked chunk-6 reference: 94 symmetry-inequivalent labelings of 8-site FCC supercells at 50/50 binary concentration.
+The canonical HF 2012 reference: 94 symmetry-inequivalent labelings of 8-site FCC supercells at 50/50 binary concentration.
 
 ## Other constructors
 

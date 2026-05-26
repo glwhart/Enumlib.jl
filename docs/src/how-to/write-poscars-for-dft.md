@@ -1,6 +1,6 @@
 # Write POSCARs for DFT
 
-This is the v0.2.0 **first-application workflow**: enumerate structures → write VASP-format POSCAR files for downstream DFT or MLIP runs → ship the directory to a collaborator → receive POSCARs back with energies filled in → attach the energies to your `Enumeration` for cluster-expansion fitting.
+The DFT/MLIP **roundtrip workflow**: enumerate structures → write VASP-format POSCAR files for downstream DFT or MLIP runs → ship the directory to a collaborator → receive POSCARs back with energies filled in → attach the energies to your `Enumeration` for cluster-expansion fitting.
 
 The code examples below are **prose snippets**, not jldoctests — they touch the filesystem (timestamped archive names, temporary directories), which doesn't doctest cleanly. Treat them as a template; the file-format details are locked by the reference docstrings.
 
@@ -16,7 +16,7 @@ c     = concentration_count([4, 4]; n_total = 8)                # 50/50
 e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c)
 ```
 
-`e` carries 94 `EnumeratedStructure`s — the chunk-6 reference for FCC binary 4:4 at n=8.
+`e` carries 94 `EnumeratedStructure`s — the canonical HF 2012 reference count for FCC binary 4:4 at n=8.
 
 ## One POSCAR for one structure
 

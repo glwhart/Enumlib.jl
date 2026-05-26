@@ -12,11 +12,9 @@
 
 A single enumerated derivative structure: a reference to a `Supercell{D}` (by index into the parent `Enumeration.supercells` vector) plus the labeling that decorates it.
 
-The parametric `L` is the labeling representation (the "string" of atom types). For chunk 5 (v0.2-alpha) only `L = Vector{Int8}` is supported — the decoded form, ~n bytes per structure. Phase 6 §6.7 contemplates `L = Int64` (hash-based, compact) and `L = BigInt` (very-large enumerations), deferred to v0.3+ as the test-corpus sizes (n ≤ 12) don't motivate them.
+The parametric `L` is the labeling representation (the "string" of atom types). Currently only `L = Vector{Int8}` is supported — the decoded form, ~n bytes per structure.
 
 The `orbit_size` field is the symmetry-orbit size of the labeling under the supercell's permutation group `G` — i.e., `|G| / |Stab(labeling)|`, via the orbit-stabilizer theorem. This is UNCLE's `d_F` (HF 2008 Eq. 3) and matches the Fortran enumlib's `lab_degen` field. Downstream consumers use it for free-energy weighting in MC simulations, convex-hull degeneracy display, and phase-space coverage diagnostics.
-
-**Removed in v0.3-prep:** the placeholder fields `labeling_degeneracy` (always 1, was conceptually a duplicate of `orbit_size` — R33's addition merged the concept under the better name) and `hnf_degeneracy` (per-supercell, not per-configuration — moved to [`Supercell`](@ref) where it semantically belongs).
 
 # Examples
 ```jldoctest
@@ -55,7 +53,7 @@ EnumeratedStructure{D}(supercell_id::Integer, labeling::L,
 """
     to_labeling(s::EnumeratedStructure) -> Vector{Int8}
 
-Return the labeling of structure `s` as a `Vector{Int8}`. For chunk-5's `L = Vector{Int8}` representation this is a no-op pass-through. Future representations (`Int64`, `BigInt`) will decode on access.
+Return the labeling of structure `s` as a `Vector{Int8}`. For the `L = Vector{Int8}` representation this is a no-op pass-through.
 
 # Examples
 Small case — FCC binary at volume 2 (the first structure of two):
@@ -72,7 +70,7 @@ julia> to_labeling(e[1])
  1
 ```
 
-Larger case — BCC binary at volume 8 with 4:4 concentration (chunk-6 fixed-concentration enumeration), the 7th of 94 structures:
+Larger case — BCC binary at volume 8 with 4:4 concentration (94 structures total), the 7th:
 ```jldoctest
 julia> A_bcc = 0.5 * [-1.0 1.0 1.0; 1.0 -1.0 1.0; 1.0 1.0 -1.0];
 
@@ -134,7 +132,7 @@ n = length(e)
 first = e[1]
 ```
 
-For chunk 5 the structures vector is fully materialized at construction (eager). Phase 6 §6.8 contemplates a lazy variant for streaming output of very large enumerations; deferred to v0.3+.
+The structures vector is fully materialized at construction (eager).
 """
 struct Enumeration{D,L}
     parent::ParentLattice{D}

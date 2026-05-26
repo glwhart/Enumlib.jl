@@ -1,6 +1,6 @@
 # Generating a DFT/MLIP training database
 
-The v0.2.0 first-application workflow, end to end: enumerate symmetry-inequivalent configurations[^terms] → ship them to a DFT or MLIP collaborator → receive POSCARs back with energies filled in → pair the energies with the original enumeration, ready for cluster-expansion fitting.
+The DFT/MLIP roundtrip workflow, end to end: enumerate symmetry-inequivalent configurations[^terms] → ship them to a DFT or MLIP collaborator → receive POSCARs back with energies filled in → pair the energies with the original enumeration, ready for cluster-expansion fitting.
 
 [^terms]: Same terminology as Tutorials 01 and 02 — a **configuration** is a supercell-plus-coloring pair (an [`EnumeratedStructure`](@ref)); a **coloring** is the per-site species vector. The [glossary](../explanation/glossary.md) has the full list.
 
@@ -12,7 +12,7 @@ On the same FCC binary parent as the earlier tutorials, treated as Ag–Pt at 50
 - A one-paragraph workflow your collaborator follows to fill in energies.
 - A `Vector{Tuple{EnumeratedStructure, Float64}}` paired and ready to hand to a cluster-expansion (CE) or MLIP fitter[^1].
 
-[^1]: JuCE.jl is the v0.2.0 first-application target. The "tuple-list" shape — a vector of `(configuration, energy)` pairs — is the *interchange format* both sides agree on: a stable, minimal contract that doesn't require either side to know the other's internal types. Anything that accepts that shape works.
+[^1]: JuCE.jl is the canonical downstream consumer. The "tuple-list" shape — a vector of `(configuration, energy)` pairs — is the *interchange format* both sides agree on: a stable, minimal contract that doesn't require either side to know the other's internal types. Anything that accepts that shape works.
 
 Most code blocks below are **prose snippets**, not jldoctests — the pipeline touches the filesystem (timestamped archive names, temp dirs, TOML manifests), which doesn't doctest cleanly.
 
@@ -113,7 +113,7 @@ Partial batches are fine — if the calculator hasn't filled some POSCARs yet, `
 
 ## Step 6 — pair with the original enumeration and hand off
 
-[`attach_results`](@ref) zips the `Dict{Int, Float64}` into the existing [`Enumeration`](@ref), producing the `Vector{Tuple{EnumeratedStructure, Float64}}` that's the v0.2.0 interchange format:
+[`attach_results`](@ref) zips the `Dict{Int, Float64}` into the existing [`Enumeration`](@ref), producing the `Vector{Tuple{EnumeratedStructure, Float64}}` interchange format:
 
 ```julia
 pairs = attach_results(e, results)
@@ -141,7 +141,7 @@ Every step is one function call. The collaborator's side is a few-line script, i
 
 ## Troubleshooting
 
-**"VASP says my POSCAR is left-handed."** Shouldn't happen — `to_poscar` detects left-handed parent bases at write time and swaps two columns to fix the sign of the determinant while preserving the Cartesian geometry. If you see this with a v0.2 build, please file an issue, including the parent lattice and HNF.
+**"VASP says my POSCAR is left-handed."** Shouldn't happen — `to_poscar` detects left-handed parent bases at write time and swaps two columns to fix the sign of the determinant while preserving the Cartesian geometry. If you see this, please file an issue, including the parent lattice and HNF.
 
 **"`read_results` skipped some POSCARs."** Either the `energy_eV=` slot is still empty (calculator didn't fill it), or line 1 was modified and no longer matches the expected format. The slot must be exactly `energy_eV=<float>`, and the float should **always carry its sign** — DFT total energies are negative, and while the parser will accept an unsigned value it can't catch a missing minus. Scientific notation is fine:
 
@@ -149,7 +149,7 @@ Every step is one function call. The collaborator's side is a few-line script, i
 # enumlib_id=42 hnf=14 concentration=15:17 super_periodic=false energy_eV=-45.32
 ```
 
-**"My collaborator wants forces and stresses too (MLIP fits)."** v0.2.0's schema is energy-only. Forces/stresses extension is queued for v0.2.x. Open an issue when you need this.
+**"My collaborator wants forces and stresses too (MLIP fits)."** The current schema is energy-only. Open an issue if you need forces/stresses.
 
 **"My collaborator only ran some of the configurations."** That's the expected partial-fill flow. `read_results` returns just the filled-in results; `attach_results` warns about the missing IDs. Pair what you have, refit the CE later when the rest land.
 

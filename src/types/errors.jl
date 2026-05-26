@@ -15,10 +15,10 @@ Thrown when the user's request cannot produce any valid structures. `reason` cod
 - `:no_active_sites` — the user's `Sites` has only inactive sites (single allowed
   label per site), so the labeling space is empty.
 - `:site_restriction_conflict` — site restrictions over-constrain the requested
-  concentration (chunk 6+).
+  concentration.
 
-Per chunk 2 review item 5, we throw rather than silently returning an empty
-result — the caller is more often confused than not when no structures appear.
+We throw rather than silently returning an empty result — the caller is more
+often confused than not when no structures appear.
 """
 struct EmptyEnumerationError <: Exception
     reason::Symbol
@@ -32,9 +32,9 @@ end
 """
     PartitionExplosionError(partition_count::Int, threshold::Int, diagnostic::String = "")
 
-Thrown when a `ConcentrationRange` decomposes into too many distinct multiplicity vectors at the requested cell size. Default threshold (chunk 6): 100. Above that, the naïve caller almost certainly wanted a narrower range.
+Thrown when a `ConcentrationRange` decomposes into too many distinct multiplicity vectors at the requested cell size. Default threshold: 100. Above that, the naïve caller almost certainly wanted a narrower range.
 
-Per Phase 7 §7.6, the gate is paternalistic by default; expert users can pass `on_partition_overflow = :ignore` (or set `partition_threshold` higher) for literature-validation runs that genuinely want every partition.
+The gate is paternalistic by default; expert users can pass `on_partition_overflow = :ignore` (or set `partition_threshold` higher) for literature-validation runs that genuinely want every partition.
 """
 struct PartitionExplosionError <: Exception
     partition_count::Int
@@ -67,7 +67,7 @@ end
 
 Thrown by `enumerate(...)` when the predicted `EnumerationCostEstimate`'s `peak_memory_bytes` exceeds the configured `memory_budget`. Carries the full estimate so the user can see exactly what would have been allocated, plus the budget that was tripped.
 
-Per Phase 7 §7.3, the gate is `on_overflow = :error` by default; expert users can pass `:warn` (warns but proceeds) or `:ignore` (silent pass-through), or set `skip_resource_check = true` to bypass the estimator entirely.
+The gate is `on_overflow = :error` by default; expert users can pass `:warn` (warns but proceeds) or `:ignore` (silent pass-through), or set `skip_resource_check = true` to bypass the estimator entirely.
 """
 struct EnumerationTooLargeError <: Exception
     estimate::EnumerationCostEstimate

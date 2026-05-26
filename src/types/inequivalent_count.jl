@@ -9,7 +9,7 @@ Fields:
 - `by_concentration::Vector{Tuple{Concentration, BigInt}}` — populated when `concentration` was a `ConcentrationRange`; one entry per partition. Empty otherwise.
 - `by_hnf::Vector{Tuple{HNF{D}, BigInt}}` — per-HNF count (one entry per symmetry-inequivalent HNF in the request). Useful for diagnosing which HNFs dominate the count.
 
-Phase 6.9 design used `by_hnf_class::Dict{HNFClass{D}, BigInt}`, but `HNFClass` doesn't exist yet — chunks 1–6 didn't need it, and `enumerate_hnfs(...)` already returns one HNF per class. The flat per-HNF list defers `HNFClass` until a real quotient view is needed. (chunk 7 design Q3-A.)
+`enumerate_hnfs(...)` already returns one HNF per symmetry class, so the flat per-HNF list serves the same role a dedicated `HNFClass` type would. No quotient wrapper is needed today.
 """
 struct InequivalentCount{D}
     total::BigInt

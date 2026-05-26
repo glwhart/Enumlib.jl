@@ -1,7 +1,7 @@
 """
     Supercell{D}
 
-A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SNF diagonal and the permutation group induced by the parent space-group operations that fix the superlattice. Carries the per-supercell data the labeling enumeration in chunk 5 will reuse across all colorings on this supercell.
+A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SNF diagonal and the permutation group induced by the parent space-group operations that fix the superlattice. Carries the per-supercell data the labeling enumeration reuses across all colorings on this supercell.
 
 ## Cached fields
 
@@ -9,11 +9,11 @@ A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SN
 - `snf` — diagonal of the Smith Normal Form decomposition of `hnf.matrix`. Length `D`, with `s_1 | s_2 | ... | s_D`. Used by the labeling enumeration to index supercell sites.
 - `n_stabilizer_ops` — number of `parent.space_group` operations whose action fixes the superlattice (the order of the stabilizer subgroup).
 - `permutation_group` — permutations of the `n × n_D` supercell sites induced by the stabilizer's rotations composed with the supercell's translation group. This is what the labeling enumeration consults when crossing out symmetry-equivalent labelings.
-- `hnf_degeneracy` — the size of this supercell's parent-point-group orbit on the set of volume-`n` HNFs. Mirrors the Fortran enumlib's `hnf_degen`. Diagnostic-grade. Moved here from `EnumeratedStructure` in v0.3-prep because it's intrinsically per-supercell.
+- `hnf_degeneracy` — the size of this supercell's parent-point-group orbit on the set of volume-`n` HNFs. Mirrors the Fortran enumlib's `hnf_degen`. Diagnostic-grade.
 
 ## Construction
 
-`Supercell(hnf::HNF{D}, parent::ParentLattice{D})` builds the SNF, finds the stabilizer subgroup of `parent.space_group`, and constructs the permutation group via the legacy `getPermG`. The permutation-group construction is cached at construction time (per chunk 2 review item 1) — small memory cost (~kB per supercell) for substantial savings during the labeling enumeration loop, which consults `permutation_group` once per labeling check.
+`Supercell(hnf::HNF{D}, parent::ParentLattice{D})` builds the SNF, finds the stabilizer subgroup of `parent.space_group`, and constructs the permutation group via `getPermG`. The permutation-group construction is cached at construction time — small memory cost (~kB per supercell) for substantial savings during the labeling enumeration loop, which consults `permutation_group` once per labeling check.
 
 `hnf_degeneracy` is computed on demand by counting the HNF's parent-point-group orbit at the given volume. For batch construction inside `enumerate(...)`, the degeneracy is precomputed via `getSymInequivHNFs_with_degeneracies` and passed in to skip the recomputation: `Supercell(hnf, parent; hnf_degeneracy = precomputed)`.
 

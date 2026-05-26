@@ -2,8 +2,8 @@
 
 The original Enumlib algorithm, drawn from Hart & Forcade, *Algorithm for generating derivative structures*, PRB 77, 224115 (2008). Iterate every coloring; canonicalize each into an orbit representative; emit one per orbit. The simplest of the four algorithms; the natural reference implementation for the unrestricted enumeration problem.
 
-!!! note "No longer `:auto`'s default"
-    Through v0.2 this was the default for unrestricted enumeration. Bench Section 5 (2026-05-22) showed `:recursive_stabilizer` over a synthesized full-range `ConcentrationRange` is ~2-3× faster and uses ~½ the memory across the cases measured, so as of v0.3 `:auto` defaults to the tree. `:exhaustive` remains available as an explicit `algorithm =` choice for cross-checks and pedagogy — and is still the most direct presentation of the original 2008 algorithm.
+!!! note "Not `:auto`'s default"
+    Bench Section 5 shows `:recursive_stabilizer` over a synthesized full-range `ConcentrationRange` is ~2-3× faster and uses ~½ the memory across the cases measured, so `:auto` defaults to the tree even for unrestricted enumeration. `:exhaustive` remains available as an explicit `algorithm =` choice for cross-checks and pedagogy — and is still the most direct presentation of the original 2008 algorithm.
 
 ## The setup
 
@@ -36,7 +36,7 @@ for x in 0:(k^n - 1):
 canonical_labelings = findall(hashTbl)
 ```
 
-Two crossings happen per group element: orbit non-canonicals (`y > x`) and super-periodics (`y == x` for some non-identity translation `g`). The second one is the chunk-5 super-periodicity filter; pass `include_superperiodic = true` to disable it.
+Two crossings happen per group element: orbit non-canonicals (`y > x`) and super-periodics (`y == x` for some non-identity translation `g`). The second one is the super-periodicity filter; pass `include_superperiodic = true` to disable it.
 
 ## Cost
 
@@ -49,7 +49,7 @@ For an FCC binary at volume `n = 12`, that's `2^12 = 4096` candidate labelings, 
 
 Even though `:auto` no longer picks it, `:exhaustive` is still worth understanding and occasionally worth running:
 
-1. **Simplicity** — easy to reason about correctness, easy to debug, easy to extend (e.g., R50.2b's multilattice extension just inflated `n` to `n_D · n`). The reference implementation of the original HF 2008 algorithm.
+1. **Simplicity** — easy to reason about correctness, easy to debug, easy to extend (the multilattice extension just inflates `n` to `n_D · n`). The reference implementation of the original HF 2008 algorithm.
 2. **Bitmap memory profile is densest at small `n`** — a `BitVector` is the densest representation of "which labelings survive" you can ship, byte-for-byte. The tree's per-structure output overhead can exceed the bitmap at very small inputs.
 3. **Cross-checks** — running `:exhaustive` against `:auto`'s tree on a few cases is a useful sanity check, especially when developing a new use-case.
 

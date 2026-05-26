@@ -17,13 +17,13 @@
     getUniqueColorings_recursive_stabilizer(perm_group, multiplicities;
                                              site_mask = nothing) -> Vector{Vector{Int8}}
 
-Symmetry-inequivalent colorings at fixed concentration via the Morgan 2017 tree-search-with-shrinking-stabilizers algorithm. Internal driver — un-exported in chunk 13b.1; users reach this algorithm via `enumerate(parent, sites; algorithm = :recursive_stabilizer, ...)`. The chunk-6 analog (`Enumlib.getUniqueColorings_multinomial`) and this one are the two parallel concentration-restricted enumerators.
+Symmetry-inequivalent colorings at fixed concentration via the Morgan-Hart 2017 tree-search-with-shrinking-stabilizers algorithm. Internal driver — users reach this algorithm via `enumerate(parent, sites; algorithm = :recursive_stabilizer, ...)`. `Enumlib.getUniqueColorings_multinomial` and this function are the two parallel concentration-restricted enumerators.
 
-For high configurational freedom (large n, k ≥ 3), the tree is asymptotically faster than chunk-6's bitmap algorithm — Morgan 2017 Fig. 5 shows ~100× speedup at FCC ternary n=20. For small n, chunk-6's bitmap may still be faster (no per-level overhead); `:auto` dispatch in `enumerate(...)` picks based on the chunk-7.5 enumeration resource check (`estimate_cost`).
+For high configurational freedom (large n, k ≥ 3), the tree is asymptotically faster than the bitmap algorithm — Morgan-Hart 2017 Fig. 5 shows ~100× speedup at FCC ternary n=20. For small n the bitmap may still be faster (no per-level overhead); `:auto` dispatch in `enumerate(...)` picks based on the enumeration resource check (`estimate_cost`).
 
-Returns every canonical labeling (one per orbit under `perm_group`). Super-periodic filtering is the caller's job (see `Enumlib._enumerate_per_concentration`) — the algorithm itself has no notion of "pure translation"; that's a property of the supercell's translation subgroup, which lives in the caller's scope where `n_cells = volume(hnf)` is in scope. Pulling super-periodicity out of here also lets us share one implementation across `:multinomial` and `:recursive_stabilizer`.
+Returns every canonical labeling (one per orbit under `perm_group`). Super-periodic filtering is the caller's job (see `Enumlib._enumerate_per_concentration`) — the algorithm itself has no notion of "pure translation"; that's a property of the supercell's translation subgroup, which lives in the caller's scope where `n_cells = volume(hnf)` is in scope.
 
-The optional `site_mask` kwarg (`BitMatrix(n, k)`) is the chunk-6.5 (2026-05-18) extension for per-site restricted allowed labels (Regime C). When `nothing` (default), every position can carry every color — behavior is unchanged from chunk 8. When supplied, the tree branching at each depth filters `unfilled_positions` to those where `site_mask[pos, depth+1]` is true; if too few allowed positions remain to satisfy the multiplicity for the current color, the branch is pruned.
+The optional `site_mask` kwarg (`BitMatrix(n, k)`) enables per-site restricted allowed labels (Regime C). When `nothing` (default), every position can carry every color. When supplied, the tree branching at each depth filters `unfilled_positions` to those where `site_mask[pos, depth+1]` is true; if too few allowed positions remain to satisfy the multiplicity for the current color, the branch is pruned.
 """
 function getUniqueColorings_recursive_stabilizer(perm_group,
                                                   multiplicities::AbstractVector{<:Integer};

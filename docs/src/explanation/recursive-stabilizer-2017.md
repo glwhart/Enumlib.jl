@@ -1,6 +1,6 @@
 # Recursive stabilizer (Morgan-Hart 2017)
 
-`:auto`'s default for almost everything as of v0.3. Drawn from Morgan & Hart, *A recursive method for enumerating derivative structures*, J. Stat. Mech. 053401 (2017). A tree walk over partial colorings using progressively-shrunken stabilizer subgroups. Doesn't need a bitmap, so it dominates the [HF 2008](exhaustive-2008.md) / [HF 2012](multinomial-2012.md) algorithms when the bitmap stops fitting in memory — and bench Section 5 settled empirically that it beats them by 2-3× even when the bitmap *would* fit.
+`:auto`'s default for almost everything. Drawn from Morgan & Hart, *A recursive method for enumerating derivative structures*, J. Stat. Mech. 053401 (2017). A tree walk over partial colorings using progressively-shrunken stabilizer subgroups. Doesn't need a bitmap, so it dominates the [HF 2008](exhaustive-2008.md) / [HF 2012](multinomial-2012.md) algorithms when the bitmap stops fitting in memory — and bench Section 5 settles empirically that it beats them by 2-3× even when the bitmap *would* fit.
 
 ## The idea
 
@@ -26,7 +26,7 @@ This is the algorithm's name: each tree node carries the *stabilizer subgroup* o
 
 `algorithm = :auto` picks the recursive-stabilizer tree in nearly every situation:
 
-- **No concentration kwarg** (v0.3 default) — `:auto` synthesizes a full-range `ConcentrationRange` internally and runs the tree across it. Bench Section 5 (2026-05-22) measured ~2-3× speedup and ~½ memory vs `:exhaustive` on FCC binary/ternary and HCP binary at sizes n=4–12.
+- **No concentration kwarg** — `:auto` synthesizes a full-range `ConcentrationRange` internally and runs the tree across it. Bench Section 5 measures ~2-3× speedup and ~½ memory vs `:exhaustive` on FCC binary/ternary and HCP binary at sizes n=4–12.
 - **Heterogeneous sublattices (Regime C)** — the tree scales by the valid-colorings subspace; the `:multinomial_restricted` bitmap iterates the full multinomial coefficient and ends up ~9-60× slower on the perovskite / Heusler corpus (bench Section 4).
 - **Fixed concentration + multinomial bitmap exceeds 80% of `memory_budget`** — the bitmap can't be allocated; the tree streams instead. (The `_multinomial_bitmap_fits` helper checks the worst-case bitmap across all in-range concentrations.)
 
@@ -35,13 +35,13 @@ The remaining case — fixed concentration with a small bitmap — still goes to
 ## Cost
 
 - **Time.** Worst-case `O(|G| · output_count · n)` — for each emitted structure, the tree walk does `O(|G|·n)` of partial-coloring stabilizer checks. In practice this is *much* faster than HF 2012 once the bitmap doesn't fit, because the tree skips entire subtrees when the partial coloring is identified as non-canonical early.
-- **Memory.** Streaming — only the current branch's partial coloring + stabilizer subset live in memory at once. The resource check's tree-mode prediction is `total_count × n × Int_overhead` as a conservative upper bound; per chunk-7.5 design Q6 this is deliberately loose, and the output term (= the final `Vector{EnumeratedStructure}`) dominates in practice.
+- **Memory.** Streaming — only the current branch's partial coloring + stabilizer subset live in memory at once. The resource check's tree-mode prediction is `total_count × n × Int_overhead` as a conservative upper bound; this is deliberately loose, and the output term (= the final `Vector{EnumeratedStructure}`) dominates in practice.
 
 For a back-of-envelope: at `n = 48` binary 24:24, `M = C(48, 24) ≈ 7.6 · 10^13` — the bitmap is ~9 TB, infeasible. The recursive-stabilizer tree handles the same problem in single-digit GB of working memory.
 
 ## Validation against HF 2012
 
-The chunk-8 testsuite asserts that for every problem where *both* algorithms apply, they produce identical structure sets (up to ordering of the output vector). The Morgan-Hart 2017 tree is *guaranteed* equivalent to HF 2012's bitmap-canonicalization at the math level; the testsuite makes that operational.
+The Enumlib testsuite asserts that for every problem where *both* algorithms apply, they produce identical structure sets (up to ordering of the output vector). The Morgan-Hart 2017 tree is *guaranteed* equivalent to HF 2012's bitmap-canonicalization at the math level; the testsuite makes that operational.
 
 ## When the bitmap still wins
 

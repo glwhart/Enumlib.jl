@@ -17,7 +17,7 @@ Four constructors land on the same `Concentration`:
 | `Concentration([f₁, f₂, ...])` | Fractions summing to 1 | You already have the composition as fractions. |
 | `concentration_ratio([a₁, a₂, ...])` | Raw ratios | You have integers like `[1, 3]` meaning 1 of A per 3 of B; divides by the sum. |
 | `concentration_count([n₁, n₂, ...]; n_total = N)` | Anchored counts | You have a specific supercell in mind; validates `sum == n_total`. |
-| `Concentration(sites, [[r₁₁, r₁₂, ...], [r₂₁, ...], ...])` | Per-sublattice ratios | Regime C (heterogeneous sublattices). Stating "1:1 on A, 1:1 on B, fixed on O" directly is much less error-prone than computing the global flat-vector by hand. v0.3+. |
+| `Concentration(sites, [[r₁₁, r₁₂, ...], [r₂₁, ...], ...])` | Per-sublattice ratios | Regime C (heterogeneous sublattices). Stating "1:1 on A, 1:1 on B, fixed on O" directly is much less error-prone than computing the global flat-vector by hand. |
 
 They're interchangeable downstream: `enumerate(...; concentration = c)` takes any of them.
 
@@ -45,7 +45,7 @@ multiplicities(Concentration([1//2, 1//2]), 4)   # → [2, 2]
 multiplicities(Concentration([1//4, 3//4]), 4)   # → [1, 3]
 ```
 
-This is what R50.2c (bundled into R50.2b, 2026-05-15) wired through: `count_inequivalent`, `estimate_cost`, `_enumerate_per_concentration`, etc., all use `n_total = n_D · n`, not `n`. The single-lattice case is the degenerate `n_D = 1` case.
+Internally `count_inequivalent`, `estimate_cost`, and the per-concentration enumeration path all resolve against `n_total = n_D · n`, not `n`. The single-lattice case is the degenerate `n_D = 1` case.
 
 ## Concentration ranges
 

@@ -28,13 +28,13 @@
                                               multiplicities::AbstractVector{<:Integer},
                                               site_mask::BitMatrix) -> Vector{Vector{Int8}}
 
-Symmetry-inequivalent colorings at fixed concentration with per-site `allowed_labels` (Regime C). The chunk-6 bitmap-and-crossing-out machinery, extended with a site-mask filter.
+Symmetry-inequivalent colorings at fixed concentration with per-site `allowed_labels` (Regime C). The HF 2012 §A.1 bitmap-and-crossing-out machinery, extended with a site-mask filter.
 
-Iterates over all `C = multinomial(n; multiplicities)` valid colorings (each at its hash index), maintains a `BitVector(C)` "visited" mask, and at each unvisited coloring (a) checks the site mask — invalid slots are marked visited and skipped — and (b) when valid, crosses out the σ-images for every σ in `perm_group` (the σ-images are guaranteed mask-valid when `perm_group` is the effective per-supercell group, since chunk 6.5c filters parent ops that don't preserve `allowed_labels` equivalence classes).
+Iterates over all `C = multinomial(n; multiplicities)` valid colorings (each at its hash index), maintains a `BitVector(C)` "visited" mask, and at each unvisited coloring (a) checks the site mask — invalid slots are marked visited and skipped — and (b) when valid, crosses out the σ-images for every σ in `perm_group` (the σ-images are guaranteed mask-valid when `perm_group` is the effective per-supercell group, since `_effective_parent` filters parent ops that don't preserve `allowed_labels` equivalence classes).
 
 Returns every canonical labeling — one per orbit. Super-periodic filtering is the caller's job; `_enumerate_per_concentration` post-filters via `_is_super_periodic` with `n_cells = volume(hnf)` in scope.
 
-The chunk-6.5b analog is `getUniqueColorings_recursive_stabilizer(perm_group, multiplicities; site_mask)`. Both return the same set of canonical labelings under any (parent, sites, supercells, concentration); the cross-algorithm equality assertion is the load-bearing correctness test for chunk 6.5a.
+The recursive-stabilizer analog is `getUniqueColorings_recursive_stabilizer(perm_group, multiplicities; site_mask)`. Both return the same set of canonical labelings under any (parent, sites, supercells, concentration); the cross-algorithm equality assertion is the load-bearing correctness test for this algorithm.
 """
 function getUniqueColorings_multinomial_restricted(perm_group,
                                                     multiplicities::AbstractVector{<:Integer},

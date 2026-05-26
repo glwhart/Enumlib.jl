@@ -276,7 +276,7 @@ Fractional coordinates (in the supercell basis) of each of the `n_D · volume(hn
 
 Internal helper for POSCAR writing. Derivation: from the SNF `U·h·V = S` (NormalForms.jl convention) with `S = diag(d_1, ..., d_D)`, the Bravais site `(i_1, ..., i_D)` in SNF coords has parent-fractional position `U^{-1}·(i_1, ..., i_D)`, so its supercell-fractional position is `h^{-1}·U^{-1}·(i_1, ..., i_D) = V·(i_1/d_1, ..., i_D/d_D)` (mod 1). For multilattice, the atom at dset position `α` adds `h^{-1}·dset[α]` to this Bravais position.
 
-The site iteration order matches the dset-blocks layout used by the parent-aware `getPermG` (R50.2b): `flat_idx(α, g) = (α-1)·n + g_idx` with `g_idx` iterating `[[i,j,k] for i ∈ 0:d_1-1 for j ∈ 0:d_2-1 for k ∈ 0:d_3-1]` (3D specialization). So site `m` in the returned vector corresponds to color `coloring[m]` in any chunk-5/6/8 enumeration.
+The site iteration order matches the dset-blocks layout used by the parent-aware `getPermG`: `flat_idx(α, g) = (α-1)·n + g_idx` with `g_idx` iterating `[[i,j,k] for i ∈ 0:d_1-1 for j ∈ 0:d_2-1 for k ∈ 0:d_3-1]` (3D specialization). So site `m` in the returned vector corresponds to color `coloring[m]` in any enumeration's output.
 
 # Examples
 
@@ -682,7 +682,7 @@ Pair each `enumlib_id → energy` entry in `results` with the corresponding `Enu
 
 Throws `KeyError` if any ID in `results` is out of range `[1, length(enumeration.structures)]`. Emits an `@info` message naming structure IDs that appear in the enumeration but not in `results` (calculator hasn't filled in energy yet — usually expected mid-batch).
 
-A typed `EnrichedEnumeration` wrapper is intentionally NOT introduced here; the flat tuple list is the simplest interchange shape and the current consumer (JuCE.jl's CE fitter) expects it. Wrapping is v0.3+ polish if a richer view becomes useful.
+A typed `EnrichedEnumeration` wrapper is intentionally NOT introduced here; the flat tuple list is the simplest interchange shape, and downstream consumers (JuCE.jl's CE fitter, MLIP training pipelines) expect it.
 """
 function attach_results(
     enumeration::Enumeration{D,L},

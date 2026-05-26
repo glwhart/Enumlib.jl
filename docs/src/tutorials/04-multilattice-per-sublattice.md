@@ -1,6 +1,6 @@
 # Multilattice with per-sublattice concentration
 
-[Tutorial 02](02-fixed-concentration.md) constrained a single-lattice binary alloy to a fixed concentration. Real materials are often *multi-sublattice*: a half-Heusler `XYZ` carries three distinct chemical roles, a perovskite `ABO₃` two cation sublattices around a fixed oxygen framework, a spinel `AB₂O₄` likewise. This tutorial enumerates a half-Heusler-style problem where one sublattice is binary while the other two are each fixed to a different species, and shows how the v0.3 per-sublattice [`Concentration`](@ref) constructor keeps the user-side spec clean.
+[Tutorial 02](02-fixed-concentration.md) constrained a single-lattice binary alloy to a fixed concentration. Real materials are often *multi-sublattice*: a half-Heusler `XYZ` carries three distinct chemical roles, a perovskite `ABO₃` two cation sublattices around a fixed oxygen framework, a spinel `AB₂O₄` likewise. This tutorial enumerates a half-Heusler-style problem where one sublattice is binary while the other two are each fixed to a different species, and shows how the per-sublattice [`Concentration`](@ref) constructor keeps the user-side spec clean.
 
 ## What you'll build
 
@@ -38,11 +38,11 @@ julia> sites = Sites([
        ]);
 ```
 
-Atomic-symbol labels (`:Na`, `:K`, …) are a v0.2+ convenience — Enumlib maps them to integer labels internally (`:Na → 0`, `:K → 1`, `:Mg → 2`, `:F → 3`), and you get `Vector{Symbol}` back from [`to_atom_labeling`](@ref) at the end. See [Describe substitution sites](../how-to/describe-substitution-sites.md#atomic-symbol-labels) for the mechanism.
+Atomic-symbol labels (`:Na`, `:K`, …) are a convenience — Enumlib maps them to integer labels internally (`:Na → 0`, `:K → 1`, `:Mg → 2`, `:F → 3`), and you get `Vector{Symbol}` back from [`to_atom_labeling`](@ref) at the end. See [Describe substitution sites](../how-to/describe-substitution-sites.md#atomic-symbol-labels) for the mechanism.
 
 ## Step 2 — state the concentration per sublattice
 
-50/50 on X, fixed on Y and Z. The pre-v0.3 way is to write the global flat-vector:
+50/50 on X, fixed on Y and Z. One way is to write the global flat-vector by hand:
 
 ```julia
 # X has 1 of label 0 + 1 of label 1; Y has 1 of label 2; Z has 1 of label 3.

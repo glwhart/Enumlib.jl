@@ -3,7 +3,7 @@
 
 A space-group operation in lattice coordinates: a rotation `R` (D×D integer matrix) plus a fractional translation `t` (length-D float vector). For a single Bravais lattice, all `t == 0`. For a multilattice (more than one position in the dset), the dset induces fractional translations (screws / glides) that must be tracked alongside the rotation.
 
-`SymmetryOp{3}` is the type of every element of `ParentLattice{3}.space_group`. The parametric `D` is for forward compatibility with 2D enumerations (v0.3+). See `docs/notes/v0.2-plan.md` (Type-system glossary) for the meaning of "thin wrapper", "specialize", and parametric types.
+`SymmetryOp{3}` is the type of every element of `ParentLattice{3}.space_group`. The parametric `D` keeps the type ready for 2D or 4D extensions.
 
 Thin wrapper around Spacey's `SpacegroupOp`. The fractional translation `t` is canonicalized to `[0,1)^D` at construction (delegated to `Spacey._canonicalize_τ`); we don't need to wrap again.
 

@@ -23,7 +23,7 @@ julia> est = estimate_cost(p, sites; supercells = VolumeRange(8:8));
 julia> est.total_count                          # how many structures we'd get
 390
 
-julia> est.chosen_algorithm                     # what :auto resolved to (v0.3 default)
+julia> est.chosen_algorithm                     # what :auto resolved to
 :recursive_stabilizer
 ```
 

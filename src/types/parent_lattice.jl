@@ -20,7 +20,7 @@ Computed once at construction by calling `Spacey.spacegroup(c::Crystal)` with a 
 
 ## dset-permutation precompute (multilattice support)
 
-For each space-group operation `(N, t)`, the constructor precomputes the dset permutation `π(i)` and the integer lattice shifts `v_i` satisfying `N·d_i + t = d_{π(i)} + v_i`. Stored as `dset_perms::Vector{Vector{Int}}` and `dset_shifts::Vector{Vector{Vector{Int}}}`, both indexed by op. The multilattice supercell-permutation-group construction (R50.2b) consumes these to build the correct `n_D · n`-site permutation group; for single-lattice parents (`n_D = 1`) `π` is trivially `[1]` and `v` is `[zeros(Int, D)]`, and the multilattice path degenerates to the single-lattice path. Tolerance `eps_dset` (default `1e-6`) is configurable via the constructor.
+For each space-group operation `(N, t)`, the constructor precomputes the dset permutation `π(i)` and the integer lattice shifts `v_i` satisfying `N·d_i + t = d_{π(i)} + v_i`. Stored as `dset_perms::Vector{Vector{Int}}` and `dset_shifts::Vector{Vector{Vector{Int}}}`, both indexed by op. The multilattice supercell-permutation-group construction consumes these to build the correct `n_D · n`-site permutation group; for single-lattice parents (`n_D = 1`) `π` is trivially `[1]` and `v` is `[zeros(Int, D)]`, and the multilattice path degenerates to the single-lattice path. Tolerance `eps_dset` (default `1e-6`) is configurable via the constructor.
 
 The parametric `D` is the spatial dimension. Almost all uses are `D=3`; `D=2` is reserved for the future surface/2D extension. The constructor infers `D` from `size(A,1)`.
 """

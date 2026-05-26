@@ -207,13 +207,13 @@ end
     getUniqueColorings_multinomial(perm_group::AbstractVector,
                                    multiplicities::AbstractVector{<:Integer}) :: Vector{Vector{Int8}}
 
-Symmetry-inequivalent colorings at fixed concentration. Crossing-out algorithm over the multinomial-hash space — the chunk-6 analog of `getUniqueColorings(k, perm_group)` from chunk 5.
+Symmetry-inequivalent colorings at fixed concentration. Crossing-out algorithm over the multinomial-hash space — the concentration-restricted analog of `getUniqueColorings(k, perm_group)` for the unrestricted case.
 
 Iterates over all `C = multinomial(n; multiplicities)` valid colorings (each at its hash index), maintains a `BitVector(C)` "visited" mask, and when a coloring is the lex-smallest representative of its orbit under `perm_group`, keeps it and crosses out its orbit-mates.
 
 Returns every canonical labeling — one per orbit. Super-periodic filtering is the caller's job; the algorithm itself has no notion of "pure translation" (that's a property of the supercell's translation subgroup, in the caller's scope). See `Enumlib._enumerate_per_concentration` for the post-filter step.
 
-For chunk-6 sizes (Ag-Pt at 15:17 in n=32 → C ≈ 5.7E8 → 71 MB bitmap), this fits in memory comfortably. For larger cases the bitmap won't fit in `typemax(Int)` and `enumerate(...)` redirects to the recursive-stabilizer tree (chunk 8). The enumeration resource check (chunk 7) catches the overflow before allocation.
+For typical concentration-restricted sizes (e.g. Ag-Pt at 15:17 in n=32 → C ≈ 5.7E8 → 71 MB bitmap), the bitmap fits in memory comfortably. For larger cases the bitmap won't fit in `typemax(Int)` and `enumerate(...)` redirects to the recursive-stabilizer tree. The enumeration resource check catches the overflow before allocation.
 """
 function getUniqueColorings_multinomial(perm_group, multiplicities::AbstractVector{<:Integer})
     C = multinomial_count(multiplicities)

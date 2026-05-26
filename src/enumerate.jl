@@ -15,34 +15,24 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 ## Algorithm dispatch
 
 - `algorithm = :auto` (default): the tree (`:recursive_stabilizer`) for almost everything — including unrestricted enumeration, where `:auto` synthesizes a full-range `ConcentrationRange` internally (bench Section 5 shows ~2-3× speedup and ~half the memory vs the bitmap). With `concentration` supplied, picks between `:multinomial` and `:recursive_stabilizer` by predicted memory; for Regime C, picks `:recursive_stabilizer`. Falls through to `:exhaustive` only for the (unsupported) "Regime C unrestricted" case so the validation error fires.
-- `algorithm = :exhaustive` (Hart-Forcade 2008): unrestricted enumeration via the `k^n` bitmap; ignores `concentration` if supplied. `:auto` no longer picks this — use it explicitly for the bitmap's memory profile or to cross-check the tree.
+- `algorithm = :exhaustive` (Hart-Forcade 2008): unrestricted enumeration via the `k^n` bitmap; ignores `concentration` if supplied. Not `:auto`'s default — use it explicitly for the bitmap's memory profile or to cross-check the tree.
 - `algorithm = :multinomial` (Hart-Forcade 2012): fixed-concentration enumeration via the multinomial-hash crossing-out. Requires `concentration !== nothing`; Regime A and Regime B only.
 - `algorithm = :multinomial_restricted` (HF 2012 §A.1): the bitmap variant with a site-mask filter, for heterogeneous sublattices (Regime C — perovskite, half/full Heusler, wurtzite, zinc-blende, etc.). Requires `concentration !== nothing`.
 - `algorithm = :recursive_stabilizer` (Morgan 2017): tree-search-with-shrinking-stabilizers; streams (no bitmap) and beats the bitmap algorithms in nearly every measured case. `:auto`'s default for both unrestricted and fixed-concentration when the bitmap doesn't fit (or always, for Regime C).
 
 ## Concentration handling
 
-- `concentration === nothing` → unrestricted (chunk 5 path).
+- `concentration === nothing` → unrestricted.
 - `concentration::Concentration` → single fixed concentration; the multinomial-hash algorithm enumerates the exactly-`a_i`-of-each-species labelings.
-- `concentration::ConcentrationRange` → loops over `concentrations_in_range(cr, n)` for each supercell volume; gates against partition explosion via `partition_threshold` (default 100; chunk 6 review item 4).
+- `concentration::ConcentrationRange` → loops over `concentrations_in_range(cr, n)` for each supercell volume; gates against partition explosion via `partition_threshold` (default 100).
 
-## Enumeration resource check (chunk 6: partial)
+## Super-periodicity policy
 
-Chunk 6 wires only the partition-explosion check; the memory-side enumeration resource check is still a stub (chunk 7 lands the real estimator with the Polya counter). Reserved kwargs (`memory_budget`, `on_overflow`, `skip_resource_check`) are accepted and largely ignored for now.
-
-## Super-periodicity policy (chunk 6.2)
-
-`include_superperiodic = false` (default) drops colorings whose true period strictly divides the supercell — these are duplicates of smaller-supercell derivatives across a volume sweep (HF 2008 step 5d). `include_superperiodic = true` keeps them and returns the full Burnside orbit space; useful for theoretical comparisons or single-volume queries where the user wants every orbit. See `research.md` §5.2.1.
+`include_superperiodic = false` (default) drops colorings whose true period strictly divides the supercell — these are duplicates of smaller-supercell derivatives across a volume sweep (HF 2008 step 5d). `include_superperiodic = true` keeps them and returns the full Burnside orbit space; useful for theoretical comparisons or single-volume queries where the user wants every orbit.
 
 ## Returns
 
 `Enumeration{D, Vector{Int8}}` containing the parent, sites, list of distinct supercells encountered, and the enumerated structures. Iterable + indexable.
-
-## Constraints (still in place after chunk 6)
-
-- Single-lattice parents only (`length(parent.dset) == 1`). Multilattice → "v0.3 feature."
-- Single-site `Sites` only. Multi-site (perovskite-style site restrictions) → chunk 6.5.
-- Zero-indexed dense `allowed_labels` (`{0, 1, ..., k-1}`). Sparse labels → chunk 6.5.
 
 # Examples
 Setup used in all examples below — FCC primitive, one binary substitution site:
@@ -52,7 +42,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 ```
 
-**Unrestricted enumeration** (no concentration): all 19 symmetry-inequivalent binary FCC structures at supercell volume 4. The labeling of `e[1]` here is `[0, 1, 1, 1]` (one A atom on a 4-site cell) — `:auto` runs the recursive-stabilizer tree as of v0.3, which picks a different canonical orbit representative than `:exhaustive`'s bitmap did. The *count* is invariant; only the specific representative per orbit changes.
+**Unrestricted enumeration** (no concentration): all 19 symmetry-inequivalent binary FCC structures at supercell volume 4.
 ```jldoctest enumerate_examples
 julia> e = enumerate(p, sites; supercells = VolumeRange(4:4));
 
@@ -67,7 +57,7 @@ julia> to_labeling(e[1])
  1
 ```
 
-**Fixed concentration** via `concentration_count`: the canonical FCC binary 4:4 at n=8 → 94 structures (chunk-6 reference, HF 2012).
+**Fixed concentration** via `concentration_count`: the canonical HF 2012 FCC binary 4:4 at n=8 → 94 structures.
 ```jldoctest enumerate_examples
 julia> c = concentration_count([4, 4]; n_total = 8);
 
@@ -603,7 +593,7 @@ end
 """
     default_memory_budget()
 
-The default `memory_budget` for `enumerate(...)` — adapts to the host machine. 25% of the system's physical memory, with a 2 GiB floor. The enumeration resource check is still a stub through chunk 6; chunk 7 (Polya counter) makes it a real check.
+The default `memory_budget` for `enumerate(...)` — adapts to the host machine. 25% of the system's physical memory, with a 2 GiB floor.
 
 **Caveat:** `Sys.total_memory()` reports the *machine's* RAM, not the cgroup / Slurm / Kubernetes allocation in containerized environments. HPC users on a shared cluster need to pass `memory_budget = \$SLURM_MEM_PER_NODE` (or similar) explicitly.
 """
@@ -722,7 +712,7 @@ Count symmetry-inequivalent derivative structures *without enumerating them*. P�
 - `breakdown = false` (default) returns the `BigInt` total.
 - `breakdown = true` returns `InequivalentCount{D}` with per-volume / per-concentration / per-HNF breakdowns.
 
-Cost: O(|G| · n) per supercell for the unrestricted case; with Möbius correction add subgroup-enumeration of `T` (cheap for our v0.2 sizes). Sub-second across the chunk-6 corpus.
+Cost: O(|G| · n) per supercell for the unrestricted case; with Möbius correction add subgroup-enumeration of `T` (cheap at typical supercell sizes). Sub-second across the full reference corpus.
 
 See `research.md` §5.2.1 for the super-periodicity policy and `research.md` §4.6 / §7.2 for the underlying Pólya machinery.
 
@@ -734,7 +724,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 ```
 
-**Basic count** — the canonical FCC binary n=12 unrestricted total (chunk-5 reference):
+**Basic count** — the canonical FCC binary n=12 unrestricted total:
 ```jldoctest count_examples
 julia> count_inequivalent(p, sites; supercells = VolumeRange(12:12))
 7140

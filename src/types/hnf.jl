@@ -5,7 +5,7 @@ A Hermite Normal Form matrix in `D` dimensions: a lower-triangular integer matri
 
 Construction validates the HNF form (lower-triangular, positive diagonal, sub-diagonal range). Once built, an `HNF{D}` is guaranteed to satisfy the form; downstream code can rely on that without re-checking.
 
-`HNF{D}` is parametric on the spatial dimension `D` for forward compatibility with 2D enumeration (v0.3+). Almost all uses are `D=3`; the constructor infers `D` from `size(matrix, 1)`.
+`HNF{D}` is parametric on the spatial dimension `D`. Almost all uses are `D=3`; the constructor infers `D` from `size(matrix, 1)`.
 """
 struct HNF{D}
     matrix::Matrix{Int}    # D×D, lower-triangular, validated at construction
@@ -90,7 +90,7 @@ end
 
 Return the symmetry-inequivalent HNFs of supercell volume `n` under the action of `parent`'s lattice point group. One representative HNF per equivalence class.
 
-This is the chunk-3 wrapper around the pure-integer legacy `getSymInequivHNFs(d, LG)`. Extracts the rotation parts of `parent.space_group` (fractional translations don't affect HNF equivalence) and returns `Vector{HNF{D}}`.
+Wraps the pure-integer `getSymInequivHNFs(d, LG)`. Extracts the rotation parts of `parent.space_group` (fractional translations don't affect HNF equivalence) and returns `Vector{HNF{D}}`.
 """
 function getSymInequivHNFs(n::Int, parent::ParentLattice{D}) where D
     LG = lattice_rotations(parent)

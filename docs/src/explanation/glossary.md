@@ -16,11 +16,11 @@ Compact reference for terms used across the documentation, with pointers to wher
 
 **Enumeration.** The full set of symmetry-inequivalent derivative structures for a given (parent, sites, supercell selection) tuple. Returned by `enumerate(...)`; see [`Enumeration`](@ref).
 
-**Exhaustive algorithm.** The chunk-5 default. Iterates `k^n` colorings on each supercell, hashes each into the orbit-canonical representative, emits one structure per orbit. Best when `k^n` is small. See [exhaustive-2008](exhaustive-2008.md).
+**Exhaustive algorithm.** Iterates `k^n` colorings on each supercell, hashes each into the orbit-canonical representative, emits one structure per orbit. The simplest and most direct algorithm; not `:auto`'s default. See [exhaustive-2008](exhaustive-2008.md).
 
 **HF 2008.** Hart & Forcade, *Algorithm for generating derivative structures*, PRB 77, 224115 (2008). The original derivative-structure enumeration algorithm — single-lattice case.
 
-**HF 2009.** Hart & Forcade, *Generating derivative structures from multilattices*, PRB 80, 014120 (2009). The multilattice extension. Enumlib's R50.2 series implemented this.
+**HF 2009.** Hart & Forcade, *Generating derivative structures from multilattices*, PRB 80, 014120 (2009). The multilattice extension that Enumlib implements for uniform-sublattice (Regime B) inputs.
 
 **HF 2012.** Hart, Nelson, & Forcade, *Generating derivative structures at a fixed concentration*, Comp. Mat. Sci. 59, 101 (2012). Adds the multinomial mixed-radix hash for concentration-restricted enumeration.
 
@@ -30,7 +30,7 @@ Compact reference for terms used across the documentation, with pointers to wher
 
 **Multilattice.** A parent lattice with two or more dset sites per primitive cell (HCP, diamond, perovskite). Contrast with **Bravais lattice** (single dset site).
 
-**Multinomial algorithm.** The chunk-6 algorithm for concentration-restricted enumeration. Iterates only colorings matching the target concentration via mixed-radix indexing. Best when the multinomial coefficient is much smaller than `k^n`. See [multinomial-2012](multinomial-2012.md).
+**Multinomial algorithm.** The concentration-restricted bitmap algorithm. Iterates only colorings matching the target concentration via mixed-radix indexing. Best when the multinomial coefficient is much smaller than `k^n`. See [multinomial-2012](multinomial-2012.md).
 
 **Orbit.** An equivalence class of colorings under the supercell's permutation group. Each orbit corresponds to one symmetry-inequivalent derivative structure. `orbit_size` is the number of colorings in an orbit (also called *multiplicity* or *degeneracy*).
 
@@ -40,7 +40,7 @@ Compact reference for terms used across the documentation, with pointers to wher
 
 **Pólya count.** The Burnside-averaged count of orbits of a coloring space under the permutation group. Computed without enumerating. See [polya-counting](polya-counting.md).
 
-**Recursive-stabilizer algorithm.** The chunk-8 algorithm of Morgan & Hart 2017. Tree-walk over partial colorings; never materializes the full hash table. Best when memory dominates over CPU. See [recursive-stabilizer-2017](recursive-stabilizer-2017.md).
+**Recursive-stabilizer algorithm.** The Morgan-Hart 2017 algorithm. Tree-walk over partial colorings; never materializes the full hash table. `:auto`'s default for unrestricted enumeration, Regime C, and any case where the bitmap doesn't fit the memory budget. See [recursive-stabilizer-2017](recursive-stabilizer-2017.md).
 
 **Sites.** A `Sites` object declares which dset positions can be substituted and which species (`allowed_labels`) are allowed at each. Equivalence-class ties between sites are also tracked. See [`Sites`](@ref) and [the substitution-sites how-to](../how-to/describe-substitution-sites.md).
 

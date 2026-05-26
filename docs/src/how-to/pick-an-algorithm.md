@@ -4,7 +4,7 @@ In practice, `enumerate` will automatically pick the best algorithm for your req
 `enumerate` ships with three concentration-aware algorithms plus the "original" exhaustive (HF 2008) algorithm that sweeps over all concentrations. In most cases, **leave `algorithm = :auto`** — it makes the right call and you save reading the rest of this page.
 
 !!! tip "The tree wins almost everywhere"
-    Cross-algorithm benchmarks (`bench/runbench.jl` Sections 2, 4, 5) show that the recursive-stabilizer tree (Morgan-Hart 2017) is faster than the bitmap algorithms in nearly every case measured — ~2-3× over `:exhaustive` for unrestricted enumeration (and ~½ the memory), and ~9-60× over `:multinomial_restricted` for Regime C. As of v0.3, `:auto` defaults to the tree for unrestricted enumeration too (synthesizing a full-range `ConcentrationRange` internally). The bitmap algorithms remain available for explicit cross-checks and edge cases.
+    Cross-algorithm benchmarks (`bench/runbench.jl` Sections 2, 4, 5) show that the recursive-stabilizer tree (Morgan-Hart 2017) is faster than the bitmap algorithms in nearly every case measured — ~2-3× over `:exhaustive` for unrestricted enumeration (and ~½ the memory), and ~9-60× over `:multinomial_restricted` for Regime C. `:auto` defaults to the tree for unrestricted enumeration too (synthesizing a full-range `ConcentrationRange` internally). The bitmap algorithms remain available for explicit cross-checks and edge cases.
 
 ## Setup
 
@@ -23,7 +23,7 @@ julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);               # binary
 | No `concentration` kwarg | `:recursive_stabilizer` (Morgan-Hart 2017) | The tree streams over all concentrations via a synthesized full-range `ConcentrationRange`; bench Section 5 measures ~2-3× speedup and ~½ memory vs `:exhaustive`. |
 | `concentration` supplied **and** the multinomial bitmap fits in `memory_budget × 0.8` | `:multinomial` (HF 2012) | Memory-bounded but fast. Mixed-radix hash into a `[0, C-1]` bitmap; cross out orbits. |
 | `concentration` supplied **but** the multinomial bitmap won't fit | `:recursive_stabilizer` (Morgan-Hart 2017) | Memory-cheap (no bitmap). Good for very long enumerations. Tree search with shrinking stabilizers; generates configurations "lazily". |
-| Heterogeneous `Sites` — different allowed labels per dset position (e.g. perovskite A-site mixing, the As-fixed-on-anion AlGaAs example) — **plus** `concentration` | `:recursive_stabilizer` | The tree scales by the valid-colorings subspace; the bitmap variant `:multinomial_restricted` (shipped in v0.2.1) iterates the *full* multinomial coefficient and ends up slower for sparse Regime-C masks. |
+| Heterogeneous `Sites` — different allowed labels per dset position (e.g. perovskite A-site mixing, the As-fixed-on-anion AlGaAs example) — **plus** `concentration` | `:recursive_stabilizer` | The tree scales by the valid-colorings subspace; the bitmap variant `:multinomial_restricted` iterates the *full* multinomial coefficient and ends up slower for sparse Regime-C masks. |
 
 The "Regime" labels you may see in error messages and design docs come from a three-way split of multilattice problems: **A** = single-site parent (just a Bravais lattice), **B** = multilattice with every dset position carrying the same allowed labels ("uniform sublattices" — HCP binary, diamond binary), **C** = multilattice with allowed labels that differ per dset position ("heterogeneous sublattices" — perovskite-style). Regime A and B run on `:multinomial` when concentration is given *and the bitmap fits the memory budget*; everything else (including Regime C and unrestricted enumeration) runs on the tree.
 
@@ -87,12 +87,6 @@ julia> est = estimate_cost(p, sites; supercells = VolumeRange(8:8),
 julia> est.chosen_algorithm                          # explicit override sticks
 :recursive_stabilizer
 ```
-
-## Algorithms reserved for the future
-
-These names parse but throw `ArgumentError` today:
-
-- **`:bdd`** (Shinohara 2020 ZDD) — reserved for v0.3+.
 
 ## See also
 

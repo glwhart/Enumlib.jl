@@ -20,10 +20,9 @@ documentation tree:
   key papers, dispatch logic, super-periodicity, glossary, how finite precision is handled.
 
 !!! note "Status"
-    Enumlib.jl is in active development for its v0.2.0 release. The API is
-    settling but is not yet declared stable. See the
-    [v0.2 plan](https://github.com/glwhart/Enumlib.jl/blob/main/docs/notes/v0.2-plan.md)
-    for current scope.
+    Enumlib.jl is in active development. The API is settling but is not
+    yet declared stable; pin a specific version in your `Project.toml`
+    if you need reproducible builds.
 
 ## Install
 

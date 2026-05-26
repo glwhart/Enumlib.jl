@@ -93,7 +93,7 @@ end
 
 Return `(canonical_hnfs, class_sizes)` where `class_sizes[i]` is the number of volume-`d` HNFs in the parent-point-group orbit of `canonical_hnfs[i]` — i.e., the size of its symmetry class. Sum of class sizes equals the total number of volume-`d` HNFs from `getAllHNFs(d)`.
 
-The canonical HNFs and their ordering match what `getSymInequivHNFs(d, LG)` returns. This is the with-degeneracies sibling used to populate `Supercell.hnf_degeneracy` (v0.3-prep: the Fortran enumlib's `hnf_degen`).
+The canonical HNFs and their ordering match what `getSymInequivHNFs(d, LG)` returns. Used to populate `Supercell.hnf_degeneracy` (mirroring Fortran enumlib's `hnf_degen`).
 """
 function _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
     HNFList = getAllHNFs(d)
@@ -120,8 +120,7 @@ end
 
 Return a mask identifying the elements of the symmetry group (expressed in lattice
 coordinates) that fix the superlattice defined by the HNF — i.e., the stabilizer
-subgroup of `LG`. (The legacy Cartesian-coord variant was dropped in chunk 3 to
-keep the implementation in pure-integer arithmetic; see chunk 3 design.)
+subgroup of `LG`. Pure integer arithmetic in the lattice-coords basis.
 """
 function getFixingOps(hnf, LG::Vector{Matrix{Int}})
     mask = falses(length(LG))

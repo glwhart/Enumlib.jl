@@ -1,13 +1,13 @@
 """
     abstract type SupercellSelection end
 
-User-facing description of "which supercells should we enumerate over?". Three concrete subtypes cover the v0.2 use cases:
+User-facing description of "which supercells should we enumerate over?". Three concrete subtypes:
 
 - `VolumeRange(range)` — enumerate all symmetry-inequivalent HNFs of supercell volume in `range`.
 - `RadiusBound(; max_radius_ratio, max_volume)` — enumerate HNFs whose `avg_cell_radius` is at most `max_radius_ratio` times the parent cell's, with a `max_volume` safety stop.
 - `ExplicitHNFs(hnfs)` — pass a hand-curated list of HNFs through; no symmetry reduction happens (the user has already done it).
 
-The dispatcher `enumerate_hnfs(::SupercellSelection, parent)` turns any selection into a concrete `Vector{HNF{D}}` that downstream code can iterate over uniformly. This replaces the implicit `n in volume_range` loop pattern that earlier phases used.
+The dispatcher `enumerate_hnfs(::SupercellSelection, parent)` turns any selection into a concrete `Vector{HNF{D}}` that downstream code can iterate over uniformly.
 """
 abstract type SupercellSelection end
 
@@ -41,7 +41,7 @@ end
 
 Enumerate symmetry-inequivalent HNFs whose Minkowski-reduced cell radius (per `avg_cell_radius`) is at most `max_radius_ratio` times the parent cell's own radius. The `max_volume` is a safety stop — without it, very large `max_radius_ratio` values would scan unbounded volumes.
 
-The radius measure is the *average* distance from cell center to the 8 corners of the Minkowski-reduced basis. Per chunk 2 review item 2, this gives finer tie-breaking than max-distance and is more descriptive for elongated cells.
+The radius measure is the *average* distance from cell center to the 8 corners of the Minkowski-reduced basis. Average gives finer tie-breaking than max-distance and is more descriptive for elongated cells.
 """
 struct RadiusBound <: SupercellSelection
     max_radius_ratio::Float64
@@ -95,7 +95,7 @@ Turn a `SupercellSelection` into a concrete `Vector{HNF{D}}` for the `parent` la
 - `RadiusBound`: scan volumes 1..`max_volume`, compute each candidate's `avg_cell_radius`, keep those within the bound, then symmetry-reduce.
 - `ExplicitHNFs`: pass through unchanged.
 
-Downstream code (`enumerate(...)` in chunk 5+) treats the returned vector uniformly regardless of which selection produced it.
+Downstream code (`enumerate(...)`) treats the returned vector uniformly regardless of which selection produced it.
 
 # Examples
 FCC has 2 symmetry-inequivalent HNFs at volume 2:

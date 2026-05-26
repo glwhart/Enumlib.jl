@@ -2,8 +2,8 @@
 
 When the parent isn't a single-site Bravais lattice, it carries a **dset** — two or more basis sites per primitive cell. For example, HCP (2 atoms/cell), diamond (2 atoms), zincblende (2 atoms), perovskite ABO₃ (5 atoms), etc. Two cases:
 
-- **Uniform sublattices** (every dset position carries the same allowed labels). Shipped in R50.2 (v0.2-era) via the HF 2009 multilattice extension. Unrestricted enumeration via [`enumerate(parent, sites; supercells)`] just works.
-- **Heterogeneous sublattices** (different allowed labels per dset position — perovskite-style A-site cation mixing while B-site stays fixed, etc.). Shipped in chunk 6.5b via the `:recursive_stabilizer` algorithm with a site-mask filter. Requires a [`Concentration`](@ref) or [`ConcentrationRange`](@ref) kwarg (unrestricted heterogeneous enumeration isn't supported — Regime C only makes sense at fixed concentration).
+- **Uniform sublattices** (every dset position carries the same allowed labels) — handled by the HF 2009 multilattice extension. Unrestricted enumeration via [`enumerate(parent, sites; supercells)`] just works.
+- **Heterogeneous sublattices** (different allowed labels per dset position — perovskite-style A-site cation mixing while B-site stays fixed, etc.) — handled by `:recursive_stabilizer` with a site-mask filter. Requires a [`Concentration`](@ref) or [`ConcentrationRange`](@ref) kwarg (unrestricted heterogeneous enumeration isn't supported — Regime C only makes sense at fixed concentration).
 
 ## Setup — HCP binary
 
@@ -198,8 +198,9 @@ For Regime C, stating the concentration globally as a flat-vector
 `Concentration([f₁, ..., f_k])` requires translating per-sublattice composition
 into global fractions, which gets fiddly fast (perovskite ABO₃ at 1:1 A,
 1:1 B, fixed O resolves to `Concentration([1//10, 1//10, 1//10, 1//10, 6//10])`
-at n=2). The v0.3 per-sublattice constructor lets you state composition
-per dset position directly — see the [Specify concentration per sublattice](specify-per-sublattice-concentration.md)
+at n=2). The per-sublattice constructor `Concentration(sites, per_sublattice)`
+lets you state composition per dset position directly — see the
+[Specify concentration per sublattice](specify-per-sublattice-concentration.md)
 how-to for the recipe and [Tutorial 04](../tutorials/04-multilattice-per-sublattice.md)
 for a walkthrough.
 
@@ -211,7 +212,7 @@ Two regime-discrimination errors you may hit:
 
 - **`Sites` length ≠ `ndset(parent)`.** With `ndset(p) = 2` you need a 2-entry `Sites`. The shorthand `Sites(p, [0, 1])` constructs one per dset position automatically (uniform case only).
 - **Heterogeneous `allowed_labels` without `concentration`.** As above — supply a `Concentration` or `ConcentrationRange`.
-- **`algorithm = :multinomial_restricted`.** Reserved for chunk 6.5a; throws until that ships. Use `:recursive_stabilizer` (or `:auto`, which picks it automatically for Regime C).
+- **`algorithm = :multinomial_restricted` for Regime A or B.** This algorithm only applies to heterogeneous sublattices (Regime C); for Regime A/B use `:multinomial` or `:recursive_stabilizer` (or `:auto`).
 
 ## See also
 

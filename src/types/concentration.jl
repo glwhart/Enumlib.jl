@@ -16,12 +16,12 @@
 
 A single concentration: per-species fractions summing to 1, stored as `Rational{Int}` for exact arithmetic.
 
-Three named constructors per chunk-2-review item 5 — pick the one that matches what you're holding in your head:
+Three named constructors — pick the one that matches what you're holding in your head:
 - `Concentration([1//4, 3//4])` — canonical: explicit fractions, fully specified.
 - `concentration_ratio([1, 3])` — *scale-free* integer ratio: 1:3 → `[1//4, 3//4]`. Non-coprime inputs work too — `[2, 6]` or `[3, 9]` all produce the same `Concentration(1//4, 3//4)` after normalization. Use when you care about the proportion, not the cell size.
 - `concentration_count([3, 9]; n_total = 12)` — *anchored* literal counts: 3 of A and 9 of B *in a 12-cell* → `[1//4, 3//4]`. Validates `sum(counts) == n_total`. Use when you've committed to a specific supercell size.
 
-The verbose names are deliberate (chunk-2-review item 5: clarity over brevity for one-time problem-setup code).
+A fourth constructor — `Concentration(sites, per_sublattice)` — is documented separately below; it's the natural form for Regime C (heterogeneous sublattices).
 """
 struct Concentration
     fractions::Vector{Rational{Int}}
@@ -191,7 +191,7 @@ n_species(c::Concentration) = length(c.fractions)
 """
     multiplicities(c::Concentration, n_total::Integer) -> Vector{Int}
 
-Resolve a concentration to integer per-species counts at a specific cell size. Throws `EmptyEnumerationError` (Phase 7 §7.5) if the fractions don't divide cleanly into `n_total` (e.g., `Concentration([1//3, 2//3])` at `n_total = 4`).
+Resolve a concentration to integer per-species counts at a specific cell size. Throws `EmptyEnumerationError` if the fractions don't divide cleanly into `n_total` (e.g., `Concentration([1//3, 2//3])` at `n_total = 4`).
 
 # Examples
 ```jldoctest
@@ -290,9 +290,9 @@ n_species(cr::ConcentrationRange) = length(cr.bounds)
 """
     concentrations_in_range(cr::ConcentrationRange, n_total::Integer) -> Vector{Concentration}
 
-Enumerate every integer-multiplicity vector `(a_1, ..., a_k)` with `sum(a_i) = n_total` and `lo_i ≤ a_i / n_total ≤ hi_i`, returning the corresponding `Concentration`s. Used by chunk-6's `enumerate(...)` to walk a concentration range.
+Enumerate every integer-multiplicity vector `(a_1, ..., a_k)` with `sum(a_i) = n_total` and `lo_i ≤ a_i / n_total ≤ hi_i`, returning the corresponding `Concentration`s. Used by `enumerate(...)` to walk a concentration range.
 
-Per Phase 7 §7.6, the chunk-6 default `partition_threshold = 100` checks the result of this function; if the count exceeds the threshold and `on_partition_overflow = :error`, `enumerate(...)` throws a `PartitionExplosionError` with a "narrow your range" message.
+The default `partition_threshold = 100` checks the result of this function; if the count exceeds the threshold and `on_partition_overflow = :error`, `enumerate(...)` throws a `PartitionExplosionError` with a "narrow your range" message.
 
 # Examples
 Asymmetric binary range — A in `[25%, 50%]`, B in `[50%, 75%]` — at a supercell size of 8 yields 3 partitions:

@@ -146,7 +146,7 @@ where `|fix(g) ∩ fix(H)|` is the number of labelings fixed by both `g` and eve
 
 This formulation is correct for non-normal H (subgroups of T need not be normal in G — e.g., for SNF `(1, 2, 2)` where `T = Z/2 × Z/2` is non-cyclic). Earlier sketches assumed H-normality and gave wrong counts on non-cyclic T.
 
-For our v0.2 sizes (|T| ≤ ~32), subgroup enumeration is cheap; the inner per-(g, H) joint-orbit computation is `O(n + |H|)` via union-find.
+At typical supercell sizes (|T| ≤ ~32), subgroup enumeration is cheap; the inner per-(g, H) joint-orbit computation is `O(n + |H|)` via union-find.
 
 # Examples
 Same cyclic `C_4` case as [`polya_count`](@ref), showing the aperiodic-vs-raw contrast. The SNF diagonal `(1, 1, 4)` says `T = Z/4` (the 1×1×4 supercell's translation subgroup).

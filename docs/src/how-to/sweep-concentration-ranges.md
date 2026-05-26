@@ -25,7 +25,7 @@ julia> length(e)
 94
 ```
 
-At n=8 with bounds 40–60%, only `(4, 4)` fits (counts must be integers); `(3, 5)` and `(5, 3)` are outside the range. So the result equals the chunk-6 reference for 50/50 FCC at n=8: 94 structures.
+At n=8 with bounds 40–60%, only `(4, 4)` fits (counts must be integers); `(3, 5)` and `(5, 3)` are outside the range. So the result equals the HF 2012 reference for 50/50 FCC at n=8: 94 structures.
 
 ## A sparse / dilute regime
 

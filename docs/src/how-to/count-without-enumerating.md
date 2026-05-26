@@ -1,6 +1,6 @@
 # Count without enumerating
 
-Use [`count_inequivalent`](@ref) when you want to know "how many structures *would* I get" without paying to materialize them. Internally this is Pólya / Burnside math — orbit counting via cycle structures — so the cost is `O(|G| · n)` per supercell. Sub-second across the chunk-6 / chunk-7 corpus, even at sizes where the matching `enumerate(...)` call would take minutes.
+Use [`count_inequivalent`](@ref) when you want to know "how many structures *would* I get" without paying to materialize them. Internally this is Pólya / Burnside math — orbit counting via cycle structures — so the cost is `O(|G| · n)` per supercell. Sub-second across the full reference corpus, even at sizes where the matching `enumerate(...)` call would take minutes.
 
 ## Setup
 

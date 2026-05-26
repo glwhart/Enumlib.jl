@@ -41,7 +41,7 @@ Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
   equivalencies: (none)
 ```
 
-**Coverage today:** `enumerate(...)` handles both single-site Bravais parents *and* uniform multilattices (the HCP / Diamond / etc. case where every dset position shares the same `allowed_labels`). The per-position **heterogeneous** case (perovskite-style — different labels per sublattice) is also supported via the `:recursive_stabilizer` algorithm with a site-mask filter (chunk 6.5b); it requires a `concentration` kwarg. See [enumerate-multilattice](enumerate-multilattice.md#heterogeneous-sublattices-regime-c) for the worked example.
+**Coverage.** `enumerate(...)` handles both single-site Bravais parents *and* uniform multilattices (the HCP / Diamond / etc. case where every dset position shares the same `allowed_labels`). The per-position **heterogeneous** case (perovskite-style — different labels per sublattice) is also supported via the `:recursive_stabilizer` algorithm with a site-mask filter; it requires a `concentration` kwarg. See [enumerate-multilattice](enumerate-multilattice.md#heterogeneous-sublattices-regime-c) for the worked example.
 
 ## Atomic-symbol labels
 

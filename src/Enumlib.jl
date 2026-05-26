@@ -65,7 +65,7 @@ export
 
 Get the average distance from the center of the unit cell `B` to its 8 corners. Used as a unit-cell size measure for the radius-based supercell selection ([`RadiusBound`](@ref)). Minkowski-reduces the basis first so the measure is independent of the user's cell representation (e.g., a skewed basis and its Minkowski-reduced equivalent get the same value).
 
-Renamed from `cellRadius` in chunk 4 — the original used max distance, but per chunk 2 review item 2 we switched to average distance. Average gives finer tie-breaking (8 corner distances rarely all match pairwise) and is more descriptive for elongated cells (max gets dominated by the longest direction; avg weights all axes smoothly). For a cube `avg ≈ max ≈ side·√3/2` so the difference only shows up for non-cubic cells.
+Average distance (rather than max) gives finer tie-breaking — 8 corner distances rarely all match pairwise — and is more descriptive for elongated cells (max gets dominated by the longest direction; avg weights all axes smoothly). For a cube `avg ≈ max ≈ side·√3/2` so the difference only shows up for non-cubic cells.
 
 # Examples
 A unit cube spans `[0, 1]^3`; its center is at `(0.5, 0.5, 0.5)`, equidistant from all 8 corners at `√3/2 ≈ 0.866`.
@@ -191,8 +191,7 @@ end
     coloring_hash(mul, c)
 
 Hash a coloring `c` of a tile into its base-`k` integer using the place values in
-`mul`. (Renamed from the original `hash` in chunk 2.1 to avoid shadowing `Base.hash`
-inside the Enumlib module — see `docs/notes/v0.2-plan.md`.)
+`mul`. The unconventional name avoids shadowing `Base.hash` inside the Enumlib module.
 """
 function coloring_hash(mul, c)
     return sum(mul .* c)
@@ -202,7 +201,7 @@ end
     coloring_unhash(idx, k, n)
 
 Inverse of [`coloring_hash`](@ref): convert a base-`k` integer `idx` back into a
-coloring of length `n` with `k` colors. (Renamed from `hash2coloring` in chunk 2.1.)
+coloring of length `n` with `k` colors.
 """
 function coloring_unhash(idx, k, n)
     coloring = zeros(Int64, n)
@@ -281,21 +280,20 @@ mask `fixingOps` selecting the rotations that fix the superlattice.
 
 For each fixing op `(N, t)`, applies the per-site action from the dset-mapping
 writeup (`docs/notes/multilattice_dset_mapping_writeup.pdf`) using the
-precomputed `(π, v_i)` cached on `parent` (R50.2a):
+precomputed `(π, v_i)` cached on `parent`:
 
     (d_i, g)  →  (d_{π(i)}, g')   with  g' = T·v_i + (T·N·T⁻¹)·g   (mod SNF diag)
 
-where `T` is the SNF left-transition matrix. Pure integer arithmetic (R50.2's L6
-lock — the precomputed `v_i` is integer-valued in lattice coords; no tolerance
-needed once we're in the SNF basis). Composes with the supercell translation
-subgroup `T_supercell` (each `τ ∈ G` acts as `(d_i, g) → (d_i, g+τ)`, same shift
-applied within every dset block).
+where `T` is the SNF left-transition matrix. Pure integer arithmetic — the
+precomputed `v_i` is integer-valued in lattice coords; no tolerance needed once
+we're in the SNF basis. Composes with the supercell translation subgroup
+`T_supercell` (each `τ ∈ G` acts as `(d_i, g) → (d_i, g+τ)`, same shift applied
+within every dset block).
 
-Site ordering (L3): `flat_idx(d_i, g) = (i-1)·n + g_idx` — "dset blocks", matching
+Site ordering: `flat_idx(d_i, g) = (i-1)·n + g_idx` — "dset blocks", matching
 the Fortran enumlib's convention in `get_rotation_perms_lists`. Single-lattice
-(n_D = 1) degenerates exactly to the legacy single-lattice path because the
-precomputed `π = [1]` and `v = [[0,0,0]]` (R50.2a) make the dset-permutation and
-shift terms trivial.
+(n_D = 1) degenerates exactly to the single-site path because the precomputed
+`π = [1]` and `v = [[0,0,0]]` make the dset-permutation and shift terms trivial.
 
 Returns `Vector{Vector{Int}}` — perm-group permutations of length `n_D · n`.
 """

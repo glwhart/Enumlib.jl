@@ -13,7 +13,7 @@ When you call `enumerate(parent, sites; supercells, concentration, algorithm = :
 
 The decision tree:
 
-1. **No concentration?** → `:recursive_stabilizer` (v0.3 default), with a synthesized full-range `ConcentrationRange` built internally. Bench Section 5 shows the tree beats `:exhaustive` by ~2-3× and uses ~½ the memory across FCC binary/ternary and HCP. The single exception is Regime-C unrestricted, which the validator rejects regardless of algorithm.
+1. **No concentration?** → `:recursive_stabilizer`, with a synthesized full-range `ConcentrationRange` built internally. Bench Section 5 shows the tree beats `:exhaustive` by ~2-3× and uses ~½ the memory across FCC binary/ternary and HCP. The single exception is Regime-C unrestricted, which the validator rejects regardless of algorithm.
 2. **Concentration present + Regime C (heterogeneous sublattices)?** → `:recursive_stabilizer`. The tree scales by the valid-colorings subspace; `:multinomial_restricted` iterates the full multinomial coefficient and runs ~9-60× slower on the Heusler / wurtzite / perovskite corpus (bench Section 4).
 3. **Concentration present + multinomial bitmap fits in 80% of `memory_budget`?** → `:multinomial`. The bitmap algorithm has tighter constants when the bitmap fits, and ties or narrowly trails the tree on FCC binary fixed-concentration (bench Section 2).
 4. **Concentration present + multinomial bitmap too big?** → `:recursive_stabilizer`. The tree algorithm doesn't materialize the bitmap.
@@ -25,7 +25,7 @@ The "80% of `memory_budget`" threshold leaves headroom for the output `Vector{En
 Pass an explicit `algorithm = :exhaustive` / `:multinomial` / `:multinomial_restricted` / `:recursive_stabilizer` symbol to override. Use cases:
 
 - **Benchmarking** — comparing wall-clock between algorithms on the same problem (this is how Section 5's "tree beats `:exhaustive`" finding was settled).
-- **Forcing the recursive-stabilizer tree** even when the bitmap would fit, e.g., to avoid heavy single allocations on a shared-memory cluster (`:auto` already does this for unrestricted enumeration as of v0.3).
+- **Forcing the recursive-stabilizer tree** even when the bitmap would fit, e.g., to avoid heavy single allocations on a shared-memory cluster (`:auto` already does this for unrestricted enumeration).
 - **Forcing `:exhaustive`** on a concentration-restricted problem if you want the unrestricted count for comparison (uncommon), or to cross-check the tree against the original HF 2008 bitmap.
 
 Invalid combinations error at validation time — e.g., `algorithm = :multinomial` without `concentration` throws `ArgumentError`.
@@ -59,7 +59,7 @@ Defaults to `max(2 GiB, 25% of Sys.total_memory())`. Pass an explicit byte count
 
 The resource check's count is the *aperiodic Pólya count* (see [polya-counting](polya-counting.md)), which matches what `enumerate(...)` will produce *with the same `include_superperiodic` policy*. So the predicted structure count is exact (up to BigInt arithmetic), and the predicted memory is an upper bound on what `enumerate` actually allocates.
 
-The chunk-7 / chunk-7.5 testsuites assert this alignment on the entire reference corpus: for every locked-count case, `count_inequivalent` and `length(enumerate(...))` agree, and `estimate_cost(...).peak_memory_bytes` ≥ the algorithm's actual peak.
+Enumlib's testsuite asserts this alignment on the entire reference corpus: for every locked-count case, `count_inequivalent` and `length(enumerate(...))` agree, and `estimate_cost(...).peak_memory_bytes` ≥ the algorithm's actual peak.
 
 ## See also
 

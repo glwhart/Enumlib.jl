@@ -1,6 +1,6 @@
 # Multinomial mixed-radix hash (HF 2012)
 
-The chunk-6 algorithm, drawn from Hart, Nelson, & Forcade, *Generating derivative structures at a fixed concentration*, Comp. Mat. Sci. 59, 101 (2012). When the user pins a concentration, iterate only the labelings at that concentration via a mixed-radix encoding over the multinomial coefficient — drastically cheaper than exhaustive when the multinomial is small relative to `k^n`.
+Drawn from Hart, Nelson, & Forcade, *Generating derivative structures at a fixed concentration*, Comp. Mat. Sci. 59, 101 (2012). When the user pins a concentration, iterate only the labelings at that concentration via a mixed-radix encoding over the multinomial coefficient — drastically cheaper than exhaustive when the multinomial is small relative to `k^n`.
 
 ## When this fires
 
@@ -65,7 +65,7 @@ Users who hit the threshold typically want to either tighten the range or pass `
 
 ## Multilattice extension
 
-For multilattice parents (`n_D ≥ 2`), the labeling space is `n_total = n_D · n` positions. The multinomial coefficient is `n_total! / (a_1! · ... · a_k!)` and the colex encoding is unchanged in shape — just with `n_total` in place of `n`. See R50.2c (bundled with R50.2b, 2026-05-15) for the multilattice cascade through `multiplicities(c, n_total)` and friends.
+For multilattice parents (`n_D ≥ 2`), the labeling space is `n_total = n_D · n` positions. The multinomial coefficient is `n_total! / (a_1! · ... · a_k!)` and the colex encoding is unchanged in shape — just with `n_total` in place of `n`. `multiplicities(c, n_total)` and friends resolve against the larger total.
 
 ## See also
 

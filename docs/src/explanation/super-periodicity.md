@@ -12,7 +12,7 @@ Concrete example. Take a 1×1×4 supercell and the binary coloring `[A, B, A, B]
 
 If you enumerate over a *range* of supercell volumes, super-periodic structures cause double-counting: the same physical derivative shows up once at every volume that's a multiple of its true period. For most workflows — CE training, convex-hull construction, structure-property mapping — you want one occurrence per physical structure, not one occurrence per `(volume, periodic-replica)` pair.
 
-Enumlib's default is `include_superperiodic = false`. Across a `VolumeRange(1:6)` sweep on the FCC binary, this gives 7140 distinct derivatives at volume 12 (the chunk-5 reference), all aperiodic at that volume. The 745 super-periodic colorings at volume 12 are excluded — they show up at volume 6, 4, 3, 2, or 1.
+Enumlib's default is `include_superperiodic = false`. Across a `VolumeRange(1:6)` sweep on the FCC binary, this gives 7140 distinct derivatives at volume 12 (matching HF 2008), all aperiodic at that volume. The 745 super-periodic colorings at volume 12 are excluded — they show up at volume 6, 4, 3, 2, or 1.
 
 ## When to keep them
 
@@ -34,7 +34,7 @@ On the Pólya / counting side, the **aperiodic orbit count** is what matches the
 
 ## Multilattice extension
 
-For multilattice parents, "translation" still means a pure supercell-lattice translation (translations don't move atoms between dset positions), and the filtering policy works the same. The translation subgroup `T` has size `n` (the supercell volume in Bravais cells), the same as the single-lattice case — it doesn't grow with `n_D`. See R50.2b for the implementation cascade.
+For multilattice parents, "translation" still means a pure supercell-lattice translation (translations don't move atoms between dset positions), and the filtering policy works the same. The translation subgroup `T` has size `n` (the supercell volume in Bravais cells), the same as the single-lattice case — it doesn't grow with `n_D`.
 
 ## See also
 

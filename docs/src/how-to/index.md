@@ -13,7 +13,7 @@ Task-oriented recipes. Each page answers a focused **"I have X, I want Y"** ques
 - [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md) — the three `Concentration` constructors.
 - [Sweep concentration ranges](sweep-concentration-ranges.md) — `ConcentrationRange` and the partition gate.
 - [Count without enumerating](count-without-enumerating.md) — Pólya / Burnside counts via `count_inequivalent`.
-- [Enumerate on a multilattice parent](enumerate-multilattice.md) — HCP, diamond, and other dset-bearing parents (HF 2009 / R50.2).
+- [Enumerate on a multilattice parent](enumerate-multilattice.md) — HCP, diamond, and other dset-bearing parents (HF 2009).
 - [Specify concentration per sublattice](specify-per-sublattice-concentration.md) — `Concentration(sites, per_sublattice)` for Regime C / perovskite / Heusler.
 
 ## Tune and control
@@ -24,4 +24,4 @@ Task-oriented recipes. Each page answers a focused **"I have X, I want Y"** ques
 
 ## Hand off to DFT / MLIPs
 
-- [Write POSCARs for DFT](write-poscars-for-dft.md) — `to_poscar`, `write_enumeration_archive`, `read_results`, `attach_results`. The v0.2.0 first-application story.
+- [Write POSCARs for DFT](write-poscars-for-dft.md) — `to_poscar`, `write_enumeration_archive`, `read_results`, `attach_results`.

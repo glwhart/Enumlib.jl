@@ -7,7 +7,7 @@ The position is in fractional coordinates of the parent lattice (`ParentLattice{
 
 A site is **inactive** if `length(allowed_labels) == 1` — only one species can occupy it, so it has no configurational freedom and gets stripped from the labeling space during enumeration. A site is **active** otherwise.
 
-`Site` does not validate the position against any specific `ParentLattice` (per chunk 2 design item 1). Cross-validation happens at the `enumerate(parent, sites)` boundary — keeps `Site` parametric on `D` only.
+`Site` does not validate the position against any specific `ParentLattice`. Cross-validation happens at the `enumerate(parent, sites)` boundary — keeps `Site` parametric on `D` only.
 
 # Examples
 A binary substitution site (active — two allowed labels) and a fixed-species site (inactive — one allowed label):

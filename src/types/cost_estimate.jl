@@ -5,14 +5,12 @@ Resource-cost prediction returned by [`estimate_cost`](@ref). The enumeration re
 
 Fields:
 
-- `total_count::BigInt` — predicted number of inequivalent structures, honoring the same `include_superperiodic` kwarg the user passed. Computed via the chunk-7 Pólya machinery.
+- `total_count::BigInt` — predicted number of inequivalent structures, honoring the same `include_superperiodic` kwarg the user passed. Computed via the Pólya machinery.
 - `peak_memory_bytes::Int` — worst-case peak memory for the chosen algorithm. For `:exhaustive`: max over HNFs of `bitmap_bytes(k^n) + output_so_far`. For `:multinomial`: max over (HNF, concentration) of `bitmap_bytes(C_multinomial) + output_so_far`. Output-buffer term is approximated by `total_count × sizeof(EnumeratedStructure{D, Vector{Int8}})` — a safe upper bound at end-of-run.
-- `chosen_algorithm::Symbol` — what `:auto` resolved to (or the explicit algorithm passed). One of `:exhaustive`, `:multinomial`.
+- `chosen_algorithm::Symbol` — what `:auto` resolved to (or the explicit algorithm passed). One of `:exhaustive`, `:multinomial`, `:multinomial_restricted`, `:recursive_stabilizer`.
 - `selection_kind::Symbol` — `:volume_range`, `:radius_bound`, or `:explicit_hnfs`. Lets error messages suggest an appropriately-shaped mitigation.
 - `partition_count::Int` — number of distinct multiplicity vectors when a `ConcentrationRange` was supplied; `1` otherwise.
 - `notes::Vector{String}` — advisory messages: which algorithm `:auto` picked, etc.
-
-Phase 7 §7.9 Q2 deferred `estimated_walltime_seconds` to v0.3 — hardware variance too high without a calibration pass.
 """
 struct EnumerationCostEstimate
     total_count::BigInt

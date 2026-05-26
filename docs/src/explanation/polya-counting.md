@@ -42,7 +42,7 @@ where `μ_T` is the Möbius function on the subgroup lattice of `T`, and `|fix(g
 
 This formulation is correct for **non-normal** subgroups `H` (subgroups of `T` need not be normal in `G` — e.g., for SNF `(1, 2, 2)` where `T = Z/2 × Z/2` is non-cyclic). Earlier sketches assumed `H`-normality and gave wrong counts on non-cyclic `T`.
 
-For Enumlib's v0.2 supercell sizes (`|T| ≤ ~32`), subgroup enumeration is cheap; the inner per-`(g, H)` joint-orbit computation is `O(n + |H|)` via union-find. See [`Enumlib.Polya.aperiodic_orbit_count`](@ref).
+At the supercell sizes Enumlib targets (`|T| ≤ ~32`), subgroup enumeration is cheap; the inner per-`(g, H)` joint-orbit computation is `O(n + |H|)` via union-find. See [`Enumlib.Polya.aperiodic_orbit_count`](@ref).
 
 ## Default policy match
 
@@ -51,11 +51,11 @@ Pólya / aperiodic count matches `length(enumerate(...))` byte-for-byte when bot
 - `count_inequivalent(...; include_superperiodic = false)` (default) = `length(enumerate(...; include_superperiodic = false))` (default).
 - `count_inequivalent(...; include_superperiodic = true)` = `length(enumerate(...; include_superperiodic = true))`.
 
-The chunk-7 testsuite asserts this cross-check on the entire chunk-6 reference corpus.
+The Pólya testsuite asserts this cross-check on the full fixed-concentration reference corpus.
 
 ## Multilattice extension
 
-For multilattice parents (`n_D ≥ 2`), the labeling space lives on `n_D · n` sites in the dset-blocks layout. The Pólya/aperiodic machinery extends straightforwardly: the permutation group acts on `n_D · n` positions; cycle counts of each `g` are computed on the larger position space; the translation subgroup `T` acts identically on each dset block (translations don't move atoms between dsets), so its perms are block-replicated. See R50.2c (bundled into R50.2b, 2026-05-15).
+For multilattice parents (`n_D ≥ 2`), the labeling space lives on `n_D · n` sites in the dset-blocks layout. The Pólya/aperiodic machinery extends straightforwardly: the permutation group acts on `n_D · n` positions; cycle counts of each `g` are computed on the larger position space; the translation subgroup `T` acts identically on each dset block (translations don't move atoms between dsets), so its perms are block-replicated.
 
 ## See also
 
