@@ -396,6 +396,7 @@ A sidecar `<stem>.toml` (same contents as the in-tarball `enumeration.toml`) is 
 - `species_symbols::Vector{String}` — length ≥ k. Default `["A", "B", "C", ...]` (one ASCII letter per color). Override at the call site if real chemistry is known at enumeration time; the calculator can also override at DFT-prep time.
 - `label::AbstractString` — descriptive component of the auto-named filename (e.g., `"FCC_AgPt_n32_15-17"`). If empty, defaults to `"enum"`.
 - `keep_directory::Bool = false` — if true, also keep the assembled directory next to the tarball at `<tarball-stem>/`. Useful for inspection or for users who'd rather not extract before editing.
+- `extra_per_structure::Union{Nothing,AbstractVector} = nothing` — optional per-structure extra manifest fields, parallel to `enumeration.structures` (length must match). Each entry is a `key => value` mapping merged into that structure's `[structure.<idx>]` table in `enumeration.toml`. Reserved keys the writer sets itself (`hnf_idx`, `concentration`, `radius`, `poscar_filename`, `hnf_matrix_columns`) are not overwritten. Intended for downstream callers (e.g. JuCE) to record per-config selection features — ordinal, `v`, `r`, `cv` — next to the geometry. To ship configs in a chosen order, reorder `enumeration.structures` before calling (POSCAR ids and manifest keys follow that order) and pass `extra_per_structure` in the same order.
 
 # Example
 
@@ -417,6 +418,7 @@ function write_enumeration_archive(
     species_symbols::Vector{String} = String[],
     label::AbstractString = "",
     keep_directory::Bool = false,
+    extra_per_structure::Union{Nothing,AbstractVector} = nothing,
 ) where {D,L}
     n_structures = length(enumeration.structures)
     n_structures > 0 || throw(
@@ -425,6 +427,21 @@ function write_enumeration_archive(
             "VolumeRange / concentration constraints.",
         ),
     )
+
+    # Optional per-structure extra manifest fields (parallel to
+    # `enumeration.structures`). Each entry is a key=>value mapping merged
+    # into that structure's `[structure.<idx>]` manifest table — used by
+    # callers (e.g. JuCE) to record per-config selection features
+    # (ordinal, v, r, cv, …) alongside the geometry the writer already
+    # records.
+    if extra_per_structure !== nothing
+        length(extra_per_structure) == n_structures || throw(
+            ArgumentError(
+                "extra_per_structure has length $(length(extra_per_structure)); " *
+                "must equal length(enumeration.structures) = $n_structures.",
+            ),
+        )
+    end
 
     # If the caller didn't pass species_symbols AND the Sites carries an
     # atomic-symbol mapping (Sites was constructed with `[:Al, :Ga, :As]`-
@@ -464,7 +481,13 @@ function write_enumeration_archive(
         # Persistent directory next to the tarball (no temp).
         isdir(stem) && rm(stem; recursive = true, force = true)
         mkpath(stem)
-        _build_enumeration_directory(stem, enumeration; super_periodic, species_symbols)
+        _build_enumeration_directory(
+            stem,
+            enumeration;
+            super_periodic,
+            species_symbols,
+            extra_per_structure,
+        )
         cp(joinpath(stem, "enumeration.toml"), sidecar_path; force = true)
         _tar_gzip_directory(stem, out_path)
     else
@@ -475,6 +498,7 @@ function write_enumeration_archive(
                 enumeration;
                 super_periodic,
                 species_symbols,
+                extra_per_structure,
             )
             cp(joinpath(temp_dir, "enumeration.toml"), sidecar_path; force = true)
             _tar_gzip_directory(temp_dir, out_path)
@@ -490,6 +514,7 @@ function _build_enumeration_directory(
     enumeration::Enumeration{D,L};
     super_periodic::Bool,
     species_symbols::Vector{String},
+    extra_per_structure::Union{Nothing,AbstractVector} = nothing,
 ) where {D,L}
     n_structures = length(enumeration.structures)
     # Pad the leading id to at least 5 digits so `ls`/`sort` over the
@@ -590,13 +615,21 @@ function _build_enumeration_directory(
             )
         end
 
-        structures_section[string(idx)] = Dict{String,Any}(
+        entry = Dict{String,Any}(
             "hnf_idx" => structure.supercell_id,
             "concentration" => concentration_str,
             "radius" => radius_str,
             "poscar_filename" => filename,
             "hnf_matrix_columns" => [collect(hnf.matrix[:, j]) for j = 1:D],
         )
+        # Merge caller-supplied extra fields (e.g. selection features).
+        # Reserved keys above win to keep the writer's own record intact.
+        if extra_per_structure !== nothing
+            for (key, value) in extra_per_structure[idx]
+                haskey(entry, string(key)) || (entry[string(key)] = value)
+            end
+        end
+        structures_section[string(idx)] = entry
     end
 
     manifest["structure"] = structures_section

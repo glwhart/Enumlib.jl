@@ -773,6 +773,57 @@ using Enumlib
         end
     end
 
+    @testset "extra_per_structure merges into manifest entries" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        extras = [
+            Dict("ordinal" => i, "v" => 4, "r" => 1.0 + 0.1i, "cv" => 0.5)
+            for i = 1:length(e)
+        ]
+        mktempdir() do tmp
+            out = write_enumeration_archive(
+                tmp, e; super_periodic = false, extra_per_structure = extras,
+            )
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
+                s1 = manifest["structure"]["1"]
+                @test s1["ordinal"] == 1
+                @test s1["v"] == 4
+                @test s1["r"] ≈ 1.1
+                @test s1["cv"] == 0.5
+                # Writer's own fields survive alongside the extras.
+                @test haskey(s1, "hnf_matrix_columns")
+                @test haskey(s1, "concentration")
+            end
+        end
+    end
+
+    @testset "extra_per_structure reserved keys are not overwritten" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        # Try to clobber a reserved key; writer's value must win.
+        extras = [Dict("concentration" => "BOGUS") for _ = 1:length(e)]
+        mktempdir() do tmp
+            out = write_enumeration_archive(
+                tmp, e; super_periodic = false, extra_per_structure = extras,
+            )
+            mktempdir() do extract_dir
+                run(pipeline(`tar -xzf $out -C $extract_dir`; stdout = devnull))
+                manifest = TOML.parsefile(joinpath(extract_dir, "enumeration.toml"))
+                @test manifest["structure"]["1"]["concentration"] != "BOGUS"
+            end
+        end
+    end
+
+    @testset "extra_per_structure length mismatch throws" begin
+        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        mktempdir() do tmp
+            @test_throws ArgumentError write_enumeration_archive(
+                tmp, e; super_periodic = false,
+                extra_per_structure = [Dict("ordinal" => 1)],  # too short
+            )
+        end
+    end
+
     @testset "explicit .tar.gz path is honored verbatim" begin
         e = enumerate(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
