@@ -644,14 +644,15 @@ end
 
 # Tar+gzip a directory's contents into the target path.
 function _tar_gzip_directory(dir::AbstractString, out_path::AbstractString)
-    open(out_path, "w") do io
-        gz_io = GzipCompressorStream(io)
-        try
-            Tar.create(dir, gz_io)
-        finally
-            close(gz_io)
-        end
-    end
+    # Use the system `tar` rather than `Tar.create` so real file mtimes
+    # are preserved in the archive. Tar.jl deliberately zeroes mtimes to
+    # produce byte-identical archives for identical content; for a
+    # collaborator-facing deliverable, human-readable timestamps are more
+    # useful and we don't rely on tarball-hash reproducibility here.
+    # Entries are packed relative to `dir` (matching the previous layout,
+    # modulo a leading "./" that the reader strips on extraction).
+    # COPYFILE_DISABLE suppresses macOS AppleDouble (._*) sidecar entries.
+    run(setenv(`tar -czf $out_path -C $dir .`, "COPYFILE_DISABLE" => "1"))
     return out_path
 end
 

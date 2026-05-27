@@ -2,6 +2,23 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.2 — 2026-05-27
+
+### Added
+
+- **Tutorial 04 — Multilattice with per-sublattice concentration.** Worked walkthrough of a half-Heusler `XYZ` enumeration (X=(Na,K) binary, Y=fixed-Mg, Z=fixed-F) using the per-sublattice `Concentration(sites, per_sublattice)` constructor end-to-end.
+- **How-to: Specify concentration per sublattice.** Recipe page for the per-sublattice constructor, with perovskite ABO₃ as the canonical example, gotchas list, and a "when to reach for it" comparison table (flat vs per-sublattice across Regimes A/B/C).
+- **`extra_per_structure` kwarg on `write_enumeration_archive`** for per-config manifest fields.
+
+### Changed
+
+- **Tarball mtimes preserved.** `write_enumeration_archive` now shells out to the system `tar` for archiving so file mtimes are preserved in the archive (Tar.jl deliberately zeroes them for reproducibility). For a collaborator-facing deliverable, human-readable timestamps are more useful and we don't rely on tarball-hash reproducibility.
+- **Docs scrubbed of version / chunk / review identifiers.** Tutorials, how-tos, explanation pages, and public docstrings now describe the present-tense capability rather than referencing release timing (`v0.3`, `as of v0.3`, `chunk 6`, `R50.2a`, `Phase 7 §7.6`, etc.). Version history lives in this CHANGELOG and `docs/notes/`; user-facing docs read like documentation of what exists.
+
+### Fixed
+
+- **CI deploy workflow nudged.** A docs-deploy trigger commit (818ed8c, then cea99bf) was needed to push the accumulated v0.3 documentation to `gh-pages`, since every v0.3 development commit had been tagged to skip CI per standing preference. Subsequent pushes deploy automatically as usual.
+
 ## v0.3.1 — 2026-05-23
 
 ### Added
