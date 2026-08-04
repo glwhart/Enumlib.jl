@@ -28,6 +28,7 @@ allcases = [
     ("A_bcc_binary",   bcc,  [[0.0,0,0]],                                   [[0,1]],        false),
     ("A_sc_binary",    sc,   [[0.0,0,0]],                                   [[0,1]],        false),
     ("B_hcp_binary",   hcp,  [[0.0,0,0],[1/3,2/3,1/2]],                     [[0,1],[0,1]],  false),
+    ("B_hcp_ternary",  hcp,  [[0.0,0,0],[1/3,2/3,1/2]],                     [[0,1,2],[0,1,2]], false),  # multilattice + multinary
     ("B_diamond",      fcc2, [[0.0,0,0],[0.25,0.25,0.25]],                  [[0,1],[0,1]],  false),
     ("C_zincblende",   fcc2, [[0.0,0,0],[0.25,0.25,0.25]],                  [[0,1],[2,3]],  true),
     ("C_halfHeusler",  fcc2, [[0.0,0,0],[0.25,0.25,0.25],[0.75,0.75,0.75]], [[0,1],[2],[2]],true),

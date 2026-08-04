@@ -313,6 +313,47 @@ Repro (transient scratchpad; needs pymatgen venv + `enum.x`/`makeStr.py` on PATH
 TODO: fold this into `test/integration/phase9/` with a README pointer (the fixtures come from the
 separate `materialsproject/pymatgen-test-files` repo, not a submodule).
 
+## 9c. Fork CI: pymatgen's own suite green against our enum.x (durable proof)
+
+The maintainer-convincing, wipe-proof artifact — pymatgen's unmodified enumlib suite runs
+**green on a public fork's GitHub Actions** with the Julia `enum.x`:
+
+- **CI run (success, 4 passed):** https://github.com/glwhart/pymatgen-core/actions/runs/30926741986
+- **Workflow:** https://github.com/glwhart/pymatgen-core/blob/enumlib-jl-ci/.github/workflows/enumlib-jl-dropin.yml
+- **Engine branch:** https://github.com/glwhart/Enumlib.jl/tree/phase9-pymatgen-dropin (`93fd3c9`)
+
+The workflow installs Julia 1.12 + released pymatgen, builds our `enum.x` from the phase9 branch
+(via `bin/enum.jl`, not the PackageCompiled binary — same proof, faster CI), puts it + `makeStr.py`
+on PATH, fetches `pymatgen-test-files`, and runs `tests/command_line/test_enumlib_caller.py`.
+Passed first try, no CI-env fixes needed. Anyone can re-run it; independent of the local scratchpad.
+
+## 9d. Multilattice + multinary coverage, and the one deliberate Fortran divergence (2026-08)
+
+Probing "is anything tested that is BOTH multilattice AND multinary (>2 species)?" found a real
+coverage gap (all prior multinary cases were single-lattice; all multilattice cases were binary or
+disjoint). Closed with head-to-head runs vs the local Fortran `enum.x`:
+
+- **hcp ternary — uniform multilattice (Regime B), both sublattices [0,1,2]: exact match**
+  (n=1..4 → 6 / 51 / 450 / 5568). The prime "multilattice + genuinely ternary" case. `count_inequivalent`
+  (Pólya) is exact here and projects n=5..9 → 30888 / 547568 / 2693562 / 49947870 / 335918026.
+  Extended head-to-head (SLURM 13046679, ~30-min budget): **agreed through n=8 = 49,947,870
+  structures** (Fortran enumerated ~50M in ~9.3 min; Julia counted it in 0.1 s; n=9 = 336M
+  exceeded the 18-min/volume Fortran budget). Every volume n=1..8 matched exactly.
+  Added to `test/test_struct_enum_io.jl` (294 tests).
+- **diamond [0,1,2,3] & [4,5] — heterogeneous (Regime C) with DISJOINT labels, one quaternary
+  sublattice: exact match** (n=1,2 → 8 / 50). Added to the suite.
+
+**The one deliberate divergence — for the MIGRATION GUIDE.** When two *symmetry-equivalent*
+sublattices are given *different/overlapping* species sets (e.g. diamond [0,1,2] & [0,1]), the codes
+disagree: diamond [0,1,2]&[0,1] → Julia 6 / 27 / 170 vs Fortran 5 / 23 / 151. This is the resolved
+decision in `chunk6.5-design.md §11` (option (c), 2026-05-19): a parent op that would swap two
+sublattices carrying *different* species is not a symmetry of the labeled configuration, so
+Enumlib.jl breaks it and returns **the mathematically correct count for the full space group**;
+the Fortran convention conflates them. A permanent, intended difference (same root cause as the
+wurtzite 3-vs-4 case). **Migration-guide action:** tell users moving from Fortran that a narrow
+class of cases (symmetry-equivalent sublattices with differing occupancy species) will not match
+old Fortran counts, and Enumlib.jl's are the correct ones. Disclosed in the pymatgen outreach email.
+
 ## 10. Packaging (chunk 9.2): standalone `enum.x` via PackageCompiler
 
 Built on the cluster (2026-07-17, SLURM job 12787273): `create_app` → `build/enum-app/bin/enum.x`.

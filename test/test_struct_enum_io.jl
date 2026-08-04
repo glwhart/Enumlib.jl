@@ -56,6 +56,18 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
                 [[2],[0,1],[2],[0,1]], [(n,n,nothing,[3,7,30,156][n]) for n in 1:4]),
             ("perovskite", SC, [[0.0,0,0],[0.5,0.5,0.5],[0.5,0.5,0.0],[0.5,0.0,0.5],[0.0,0.5,0.5]],
                 [[0,1],[2,3],[4],[4],[4]], [(n,n,nothing,[4,15,48,301][n]) for n in 1:4]),
+            # Multilattice AND multinary (>2 species) — closes the coverage gap probed
+            # 2026-08. Both are head-to-head-verified against the Fortran enum.x.
+            #   • hcp ternary: uniform multilattice (Regime B) with a genuinely ternary
+            #     sublattice — the prime "multilattice + multinary" case.
+            #   • diamond [0,1,2,3]&[4,5]: heterogeneous (Regime C) with DISJOINT label
+            #     sets, one quaternary sublattice. (Overlapping label sets across
+            #     symmetry-equivalent sublattices deliberately diverge from Fortran —
+            #     see phase9-design.md §9d — so that case is intentionally NOT asserted here.)
+            ("hcp ternary", HCP, [[0.0,0,0],[1/3,2/3,1/2]], [[0,1,2],[0,1,2]],
+                [(n,n,nothing,[6,51,450,5568][n]) for n in 1:4]),
+            ("diamond quaternary+binary (disjoint)", FCC2, [[0.0,0,0],[0.25,0.25,0.25]],
+                [[0,1,2,3],[4,5]], [(1,1,nothing,8),(2,2,nothing,50)]),
         ]
         for (name, A, dset, labels, rows) in cases
             @testset "$name" begin
