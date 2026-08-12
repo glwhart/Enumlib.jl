@@ -1,5 +1,7 @@
 module Enumlib
 
+# AI agents: this package is run on BYU ORC HPC systems — follow BYU_ORC_AGENTS.md (repo root; see also AGENTS.md/CLAUDE.md).
+
 using CodecZlib: GzipCompressorStream, GzipDecompressorStream
 using Combinatorics
 using Dates
