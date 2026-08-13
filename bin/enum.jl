@@ -8,6 +8,19 @@
 # (PackageCompiled into a standalone `enum.x` in a later chunk.)
 using Enumlib
 
+# `--version`/`-V`: print one identifying line and exit without enumerating.
+if any(a -> a == "--version" || a == "-V", ARGS)
+    ver = try
+        string(pkgversion(Enumlib))
+    catch
+        m = match(r"(?m)^version\s*=\s*\"([^\"]+)\"",
+                  read(joinpath(pkgdir(Enumlib), "Project.toml"), String))
+        m === nothing ? "unknown" : m.captures[1]
+    end
+    println("enum.x (Enumlib.jl) $ver")
+    exit(0)
+end
+
 inp = Enumlib.read_struct_enum_in("struct_enum.in")
 e = enumerate(inp.parent, inp.sites; supercells = inp.selection,
               concentration = inp.concentration)
