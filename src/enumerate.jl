@@ -712,6 +712,10 @@ Count symmetry-inequivalent derivative structures *without enumerating them*. P�
 - `breakdown = false` (default) returns the `BigInt` total.
 - `breakdown = true` returns `InequivalentCount{D}` with per-volume / per-concentration / per-HNF breakdowns.
 
+Heterogeneous `Sites` (per-site `allowed_labels` — zinc-blende, half/full-Heusler, perovskite, or any site pinned to one species) are counted with the label-restricted Pólya formulas, which intersect `allowed_labels` across each orbit. Uniform `Sites` keep the scalar-`k` fast path.
+
+An **unconstrained** `ConcentrationRange` (every species free over `[0, 1]`, as `read_struct_enum_in` synthesizes for `full` mode) is treated as no concentration constraint at all — exact, since every coloring has one concentration, and far cheaper than iterating every composition. Consequence: in that case the returned `by_concentration` is empty, because materializing it would mean enumerating every composition of the site count. Pass a narrower `ConcentrationRange` if you need that breakdown.
+
 Cost: O(|G| · n) per supercell for the unrestricted case; with Möbius correction add subgroup-enumeration of `T` (cheap at typical supercell sizes). Sub-second across the full reference corpus.
 
 See `research.md` §5.2.1 for the super-periodicity policy and `research.md` §4.6 / §7.2 for the underlying Pólya machinery.
@@ -761,6 +765,26 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
     parent_eff = _effective_parent(parent, sites)
     n_D = ndset(parent_eff)
 
+    # Heterogeneous `Sites` need the label-restricted Pólya counts: the scalar-`k`
+    # formulas assume every position may take any of the k labels, which overcounts
+    # zinc-blende / Heusler / perovskite-style inputs by orders of magnitude. Only
+    # take the restricted path when it is actually needed, so the uniform corpus
+    # keeps its existing (fast, reference-locked) behavior.
+    full_labels = BitSet(0:(k - 1))
+    uniform_labels = all(s -> s.allowed_labels == full_labels, sites.list)
+
+    # An unconstrained ConcentrationRange — every species free over [0, 1], which
+    # is what `read_struct_enum_in` synthesizes for `full` mode — imposes nothing,
+    # so a single Burnside evaluation is exact: every coloring has exactly one
+    # concentration, hence the unrestricted count equals the sum over all in-range
+    # concentrations. The per-partition path instead runs the dense DP once per
+    # composition of n_total into k parts: 92 s for perovskite n = 3, and still
+    # unfinished after 80 min at n = 4. This is the same shortcut `estimate_cost`
+    # already takes for its own synthesized range.
+    unconstrained_range = concentration isa ConcentrationRange &&
+                          all(b -> b == (0 // 1, 1 // 1), concentration.bounds)
+    concentration_eff = unconstrained_range ? nothing : concentration
+
     hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent_eff)
 
     total = BigInt(0)
@@ -774,40 +798,58 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
         n_total = n_D * n                # total sites = n_D · n
         snf_diag = (Int(sc.snf[1]), Int(sc.snf[2]), Int(sc.snf[3]))
 
+        # Per-position allowed labels, in the permutation domain's own layout:
+        # dset site i owns positions (i-1)·n+1 … i·n (see Polya._translation_perms,
+        # which block-replicates translations with offsets (i-1)·n).
+        allowed_pos = uniform_labels ? nothing :
+            BitSet[sites.list[fld(p - 1, n) + 1].allowed_labels for p in 1:n_total]
+
         # Resolve concentration(s) to enumerate at this supercell volume.
         # Multiplicities are resolved against the total site count n_total =
         # n_D · n, not n — for multilattice (n_D ≥ 2) the colorings live on
         # n_D · n supercell sites. Single-lattice (n_D = 1) is the degenerate
         # case where n_total = n.
-        concs_here = if concentration === nothing
+        concs_here = if concentration_eff === nothing
             Union{Concentration, Nothing}[nothing]
-        elseif concentration isa Concentration
+        elseif concentration_eff isa Concentration
             try
-                multiplicities(concentration, n_total)  # validates divisibility
-                Union{Concentration, Nothing}[concentration]
+                multiplicities(concentration_eff, n_total)  # validates divisibility
+                Union{Concentration, Nothing}[concentration_eff]
             catch e
                 e isa EmptyEnumerationError || rethrow()
                 Union{Concentration, Nothing}[]
             end
         else  # ConcentrationRange
-            Union{Concentration, Nothing}[c for c in concentrations_in_range(concentration, n_total)]
+            Union{Concentration, Nothing}[c for c in concentrations_in_range(concentration_eff, n_total)]
         end
 
         hnf_count = BigInt(0)
         for c in concs_here
+            # Four combinations: {no concentration, fixed concentration} ×
+            # {uniform labels → scalar k, restricted labels → allowed_pos}. The
+            # concentration itself pins the alphabet in the uniform case, so the
+            # scalar-k branch passes `mults` alone (its established signature).
             count_here = if c === nothing
-                # Unrestricted (no concentration).
-                if include_superperiodic
-                    Polya.polya_count(sc.permutation_group, k)
+                if allowed_pos === nothing
+                    include_superperiodic ?
+                        Polya.polya_count(sc.permutation_group, k) :
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, k)
                 else
-                    Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, k)
+                    include_superperiodic ?
+                        Polya.polya_count(sc.permutation_group, allowed_pos) :
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, allowed_pos)
                 end
             else
                 mults = multiplicities(c, n_total)
-                if include_superperiodic
-                    Polya.polya_count(sc.permutation_group, mults)
+                if allowed_pos === nothing
+                    include_superperiodic ?
+                        Polya.polya_count(sc.permutation_group, mults) :
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, mults)
                 else
-                    Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, mults)
+                    include_superperiodic ?
+                        Polya.polya_count(sc.permutation_group, allowed_pos, mults) :
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag,
+                                                    allowed_pos, mults)
                 end
             end
 

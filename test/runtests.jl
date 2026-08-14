@@ -23,6 +23,7 @@ include("test_cost_estimate.jl")
 include("test_recursive_stabilizer.jl")
 include("test_auto_dispatch.jl")
 include("test_poscar.jl")
+include("test_struct_enum_io.jl")
 include("test_legacy_import.jl")
 
 @testset "Colorings and HNF enumeration" begin

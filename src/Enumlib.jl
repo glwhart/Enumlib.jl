@@ -423,6 +423,8 @@ using .Polya: polya_count, cycle_structure, aperiodic_orbit_count
 include("enumerate.jl")
 # --- chunk 11a: POSCAR writer (must come after all types) ---
 include("io/poscar.jl")
+# --- chunk 9.1a: Fortran struct_enum.in reader for the drop-in enum.x CLI ---
+include("io/struct_enum.jl")
 
 # --- chunk 13b.1: deprecation shim for legacy I/O symbols ---
 #
@@ -457,5 +459,26 @@ for fn in _LEGACY
 end
 
 end # module LegacyImport
+
+# --- Precompilation workload -------------------------------------------------
+# Bake native code for the hot enumerate / to_poscar paths into the pkgimage so
+# the first call in a fresh session is fast (otherwise ~19 s of JIT on a cold
+# `enumerate`). The pkgimage is rebuilt automatically when this source changes,
+# so dev-tracking stays seamless. Covers single/multi-label sites, unrestricted
+# + ConcentrationRange enumeration, and the POSCAR writer.
+using PrecompileTools: @setup_workload, @compile_workload
+@setup_workload begin
+    @compile_workload begin
+        _p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+        _s = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        _e = enumerate(_p, _s; supercells = VolumeRange(1:2))
+        _io = IOBuffer()
+        _st = _e.structures[1]
+        _hnf = _e.supercells[_st.supercell_id].hnf
+        to_poscar(_io, _st, _p, _hnf; super_periodic = false)
+        _cr = ConcentrationRange([(0 // 1, 1 // 1), (0 // 1, 1 // 1)])
+        enumerate(_p, _s; supercells = VolumeRange(2:2), concentration = _cr)
+    end
+end
 
 end # module Enumlib
