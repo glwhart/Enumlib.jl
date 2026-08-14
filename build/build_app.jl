@@ -1,0 +1,59 @@
+# Build the standalone `enum.x` / `polya.x` app with PackageCompiler.
+#
+# This is what produces the pre-compiled binaries attached to a GitHub Release:
+# users (and the conda-forge feedstock) download a per-platform tarball instead of
+# installing Julia and the package. Driven by .github/workflows/release.yml, which
+# runs it on a clean runner per platform.
+#
+# Usage:
+#   julia --project=build build/build_app.jl [dest_dir]
+#
+# Default dest_dir is "build/app". The two executables are compiled from
+# `Enumlib.enum_main` / `Enumlib.polya_main` (src/cli.jl) — the same functions
+# bin/enum.jl and bin/polya.jl call, so the compiled and script paths cannot
+# diverge.
+#
+# Note on naming: create_app emits `enum` / `polya` (plus `.exe` on Windows). The
+# workflow renames them to `enum.x` / `polya.x`, the names the Fortran enumlib
+# used and that pymatgen's EnumlibAdaptor looks for on PATH.
+
+using PackageCompiler
+
+const REPO_ROOT = dirname(@__DIR__)
+const DEST = length(ARGS) >= 1 ? ARGS[1] : joinpath(REPO_ROOT, "build", "app")
+
+@info "Building Enumlib.jl app" REPO_ROOT DEST VERSION Sys.MACHINE
+
+isdir(DEST) && rm(DEST; recursive = true)
+
+elapsed = @elapsed create_app(
+    REPO_ROOT,
+    DEST;
+    executables = ["enum" => "enum_main", "polya" => "polya_main"],
+    # Precompilation is driven by the package's own PrecompileTools workload plus
+    # the smoke test below; incremental = false keeps the app self-contained.
+    incremental = false,
+    filter_stdlibs = false,
+    include_lazy_artifacts = true,
+    force = true,
+)
+
+@info "create_app finished" minutes = round(elapsed / 60; digits = 1)
+
+# --- Smoke test the freshly built binaries -------------------------------------
+# Cheap but load-bearing: proves the app actually launches and that `--version`
+# emits the exact token pymatgen's engine detection probes for. A build that
+# compiles but cannot print its version is useless to us.
+const EXE_SUFFIX = Sys.iswindows() ? ".exe" : ""
+const BINDIR = joinpath(DEST, "bin")
+
+for (exe, label) in (("enum", "enum.x"), ("polya", "polya.x"))
+    path = joinpath(BINDIR, exe * EXE_SUFFIX)
+    isfile(path) || error("expected executable not found: $path")
+    out = read(`$path --version`, String)
+    println("  $label --version → ", strip(out))
+    occursin("Enumlib.jl", out) ||
+        error("$label --version output lacks the 'Enumlib.jl' token: $(repr(out))")
+end
+
+@info "Smoke test passed" BINDIR

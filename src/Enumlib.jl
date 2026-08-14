@@ -426,6 +426,9 @@ include("io/poscar.jl")
 # --- chunk 9.1a: Fortran struct_enum.in reader for the drop-in enum.x CLI ---
 include("io/struct_enum.jl")
 
+# --- CLI entry points (enum.x / polya.x), compiled by PackageCompiler ---
+include("cli.jl")
+
 # --- chunk 13b.1: deprecation shim for legacy I/O symbols ---
 #
 # The Fortran-format file I/O (CEdataSupport.jl) is un-exported in v0.2 —

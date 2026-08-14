@@ -5,25 +5,10 @@
 # Fortran `enum.x` so pymatgen's `EnumlibAdaptor` uses it unchanged.
 #
 # Run:  julia --project=<Enumlib.jl> bin/enum.jl
-# (PackageCompiled into a standalone `enum.x` in a later chunk.)
+#
+# Thin wrapper only: the implementation is `Enumlib.enum_main()` in src/cli.jl, so
+# PackageCompiler's create_app compiles the identical code path into a standalone
+# `enum.x` (see build/build_app.jl).
 using Enumlib
 
-# `--version`/`-V`: print one identifying line and exit without enumerating.
-if any(a -> a == "--version" || a == "-V", ARGS)
-    ver = try
-        string(pkgversion(Enumlib))
-    catch
-        m = match(r"(?m)^version\s*=\s*\"([^\"]+)\"",
-                  read(joinpath(pkgdir(Enumlib), "Project.toml"), String))
-        m === nothing ? "unknown" : m.captures[1]
-    end
-    println("enum.x (Enumlib.jl) $ver")
-    exit(0)
-end
-
-inp = Enumlib.read_struct_enum_in("struct_enum.in")
-e = enumerate(inp.parent, inp.sites; supercells = inp.selection,
-              concentration = inp.concentration)
-open("struct_enum.out", "w") do io
-    Enumlib.write_struct_enum_out(io, e; input = inp, stdout_io = stdout)
-end
+exit(Enumlib.enum_main())

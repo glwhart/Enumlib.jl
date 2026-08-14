@@ -1,0 +1,117 @@
+name: Release binaries
+
+# Builds the standalone `enum.x` / `polya.x` app per platform with PackageCompiler
+# and attaches the tarballs to the GitHub Release for the tag.
+#
+# Two triggers:
+#   • push of a v* tag  — build, then upload the tarballs to that tag's Release
+#                         (creating the Release if it does not exist yet).
+#   • workflow_dispatch — build and upload as workflow artifacts ONLY. Nothing is
+#                         published. Use this to validate a build without cutting
+#                         a release.
+#
+# Why here and not on a workstation: create_app pulls the whole depot and compiles
+# a system image, which is heavy and platform-specific. Runners give us a clean
+# per-platform build with no local machine tied up.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (defaults to the branch this is run from)'
+        required: false
+        type: string
+
+permissions:
+  contents: write     # required to create/update a Release and upload assets
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+          - os: macos-latest
+            target: macos-aarch64
+          - os: windows-latest
+            target: windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'          # matches the [compat] floor used by CI.yml
+
+      - uses: julia-actions/cache@v2
+
+      - name: Instantiate build environment
+        run: julia --project=build -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Build app (create_app + --version smoke test)
+        run: julia --project=build build/build_app.jl
+
+      # create_app emits `enum` / `polya`; the Fortran names (and what pymatgen's
+      # EnumlibAdaptor looks for on PATH) are `enum.x` / `polya.x`.
+      - name: Rename executables to enum.x / polya.x
+        shell: bash
+        run: |
+          cd build/app/bin
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            mv enum.exe enum.x.exe
+            mv polya.exe polya.x.exe
+          else
+            mv enum enum.x
+            mv polya polya.x
+          fi
+          ls -la
+
+      - name: Package tarball + checksum
+        shell: bash
+        run: |
+          VERSION=$(julia -e 'm=match(r"(?m)^version\s*=\s*\"([^\"]+)\"", read("Project.toml", String)); print(m.captures[1])')
+          NAME="enumlib-jl-${VERSION}-${{ matrix.target }}"
+          mv build/app "$NAME"
+          tar -czf "${NAME}.tar.gz" "$NAME"
+          # Portable sha256 (shasum exists on macOS, sha256sum on Linux/Git-Bash).
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
+          else
+            shasum -a 256 "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
+          fi
+          cat "${NAME}.tar.gz.sha256"
+          echo "ASSET=${NAME}.tar.gz" >> "$GITHUB_ENV"
+          du -h "${NAME}.tar.gz"
+
+      # Dispatch runs stop here: artifacts only, nothing published.
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+          if-no-files-found: error
+
+      - name: Attach to the tag's Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Create the Release once; concurrent matrix jobs may race, so tolerate
+          # "already exists" and fall through to the upload.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" --notes "See CHANGELOG.md for what changed in $TAG." || true
+          gh release upload "$TAG" "$ASSET" "${ASSET}.sha256" \
+            --repo "$GITHUB_REPOSITORY" --clobber
