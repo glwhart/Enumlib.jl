@@ -8,14 +8,14 @@
 # Usage:
 #   julia --project=build build/build_app.jl [dest_dir]
 #
-# Default dest_dir is "build/app". The two executables are compiled from
-# `Enumlib.enum_main` / `Enumlib.polya_main` (src/cli.jl) — the same functions
-# bin/enum.jl and bin/polya.jl call, so the compiled and script paths cannot
-# diverge.
+# Default dest_dir is "build/app". The three executables are compiled from
+# `Enumlib.enum_main` / `Enumlib.polya_main` / `Enumlib.makestr_main` (src/cli.jl) —
+# the same functions bin/*.jl call, so the compiled and script paths cannot diverge.
 #
-# Note on naming: create_app emits `enum` / `polya` (plus `.exe` on Windows). The
-# workflow renames them to `enum.x` / `polya.x`, the names the Fortran enumlib
-# used and that pymatgen's EnumlibAdaptor looks for on PATH.
+# Note on naming: create_app emits `enum` / `polya` / `makestr` (plus `.exe` on
+# Windows). The workflow renames them to `enum.x` / `polya.x` / `makestr.x`, the
+# names the Fortran enumlib used and that pymatgen's EnumlibAdaptor looks for on
+# PATH. Together these are all three executables the conda-forge feedstock ships.
 
 using PackageCompiler
 
@@ -29,7 +29,8 @@ isdir(DEST) && rm(DEST; recursive = true)
 elapsed = @elapsed create_app(
     REPO_ROOT,
     DEST;
-    executables = ["enum" => "enum_main", "polya" => "polya_main"],
+    executables = ["enum" => "enum_main", "polya" => "polya_main",
+                   "makestr" => "makestr_main"],
     # Precompilation is driven by the package's own PrecompileTools workload plus
     # the smoke test below; incremental = false keeps the app self-contained.
     incremental = false,
@@ -47,7 +48,8 @@ elapsed = @elapsed create_app(
 const EXE_SUFFIX = Sys.iswindows() ? ".exe" : ""
 const BINDIR = joinpath(DEST, "bin")
 
-for (exe, label) in (("enum", "enum.x"), ("polya", "polya.x"))
+for (exe, label) in (("enum", "enum.x"), ("polya", "polya.x"),
+                     ("makestr", "makestr.x"))
     path = joinpath(BINDIR, exe * EXE_SUFFIX)
     isfile(path) || error("expected executable not found: $path")
     out = read(`$path --version`, String)

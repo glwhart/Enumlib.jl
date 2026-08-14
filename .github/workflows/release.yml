@@ -61,16 +61,18 @@ jobs:
 
       # create_app emits `enum` / `polya`; the Fortran names (and what pymatgen's
       # EnumlibAdaptor looks for on PATH) are `enum.x` / `polya.x`.
-      - name: Rename executables to enum.x / polya.x
+      - name: Rename executables to enum.x / polya.x / makestr.x
         shell: bash
         run: |
           cd build/app/bin
           if [ "$RUNNER_OS" = "Windows" ]; then
             mv enum.exe enum.x.exe
             mv polya.exe polya.x.exe
+            mv makestr.exe makestr.x.exe
           else
             mv enum enum.x
             mv polya polya.x
+            mv makestr makestr.x
           fi
           ls -la
 

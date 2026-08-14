@@ -35,7 +35,8 @@ for this whole approach, not the packaging mechanics.
   and `{{ compiler('fortran') }}`.
 - `skip: true  # [win]` — Linux and macOS only. Our `release.yml` also builds
   Windows, which is extra rather than required here.
-- Installs **three** executables: `enum.x`, `polya.x`, **`makestr.x`**.
+- Installs **three** executables: `enum.x`, `polya.x`, `makestr.x` — all three of
+  which Enumlib.jl now provides.
 - Tests with `enum.x struct_enum.in.fcc` — the input filename as a positional
   argument.
 - `recipe-maintainers: [jan-janssen]`.
@@ -45,7 +46,7 @@ Two consequences that shaped this repo:
 - **The positional filename is load-bearing.** A drop-in that only reads
   `./struct_enum.in` fails the feedstock's own test. Handled — see
   `Enumlib._cli_input_file` and the "CLI positional input file" testset.
-- **`makestr.x` has no Julia counterpart.** See the blockers below.
+- **`makestr.x` is now covered** by `Enumlib.makestr_main` (`bin/makestr.jl`).
 
 ## Open blockers
 
@@ -56,20 +57,19 @@ Two consequences that shaped this repo:
    now; the recipe lists `jan-janssen`. His advice was to skip identifying the
    maintainer and simply open a PR against the feedstock — CI runs, maintainer
    merges.
-3. **`makestr.x` is a genuine coverage gap.** The feedstock installs it and
-   pymatgen's `EnumlibAdaptor` requires it on `PATH`
-   (`which("makestr.x") or which("makeStr.x") or which("makeStr.py")`), but
-   Enumlib.jl ships no equivalent — there is no `makestr`/`makeStr` anywhere in
-   this repo. So Enumlib.jl currently replaces `enum.x` and `polya.x` but **not**
-   the whole feedstock: structure generation from `struct_enum.out` still comes
-   from the Fortran side. Fully retiring the Fortran means porting `makestr` or
-   confirming nobody depends on it. Until then, an `enumlib`-name takeover would
-   regress users who call `makestr.x`.
-4. **Size is estimated, not measured.** The ~655 MB raw / ~180–280 MB compressed
-   figures came from scoping, not from a build. `release.yml` prints `du -h` on the
-   tarball; use that number. For reference conda-forge's own `julia` package is
-   ~168 MB compressed and the hard limit is 1 GB/file, so there is headroom, but
-   confirm rather than assume.
+3. ~~`makestr.x` coverage gap.~~ **Closed.** `makestr.x` is now implemented
+   (`Enumlib.makestr_main`): it reads `struct_enum.out`, rebuilds each structure,
+   and writes `vasp.<n>` POSCARs via `to_poscar`. Verified byte-identical to what
+   the enumeration itself produces, and verified parseable by
+   `pymatgen.io.vasp.inputs.Poscar.from_str` with `index_species`, which is
+   exactly how `EnumlibAdaptor` consumes it. Enumlib.jl therefore now supplies all
+   three executables the feedstock ships, so an `enumlib`-name takeover no longer
+   regresses anyone.
+4. ~~Size is estimated, not measured.~~ **Measured** (first real build, 2026-08-14):
+   **417 MB** compressed for linux-x86_64, **289 MB** for macos-aarch64, **436 MB**
+   for windows-x86_64. The earlier 180–280 MB scoping figure was too low. The hard
+   limit is 1 GB/file (conda-forge's own `julia` package is ~168 MB compressed), so
+   there is headroom — but this is large, and reviewers will notice.
 
 ## Filling in the recipe
 

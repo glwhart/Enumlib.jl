@@ -115,6 +115,72 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
         end
     end
 
+    @testset "makestr.x — struct_enum.out → vasp.* POSCARs" begin
+        # Full CLI path: enum.x writes struct_enum.out, makestr.x reads it back and
+        # writes POSCARs. Pins the two contracts pymatgen's EnumlibAdaptor depends
+        # on — `vasp.<n>` naming, and the Fortran 0-based range convention it calls
+        # makestr.x with (`struct_enum.out 0 N-1`).
+        saved = copy(Base.ARGS)
+        try
+            mktempdir() do dir
+                cd(dir) do
+                    write("struct_enum.in",
+                          _sen(; A = FCC, dset = [[0.0,0,0]], labels = [[0,1]],
+                                 nmin = 1, nmax = 2, conc = nothing))
+
+                    empty!(Base.ARGS)
+                    @test Enumlib.enum_main() == 0
+                    @test isfile("struct_enum.out")
+
+                    out = Enumlib.read_struct_enum_out("struct_enum.out")
+                    @test out.nD == 1
+                    @test out.k == 2
+                    @test !isempty(out.structures)
+                    nstruct = length(out.structures)
+
+                    # Labelings survive the write→read round trip intact.
+                    e = enumerate(_readsen(read("struct_enum.in", String)).parent,
+                                  _readsen(read("struct_enum.in", String)).sites;
+                                  supercells = VolumeRange(1:2))
+                    @test [collect(Int.(to_labeling(s))) for s in e.structures] ==
+                          [collect(Int.(s.labeling)) for s in out.structures]
+
+                    # 0-based range, exactly as pymatgen invokes the Fortran binary.
+                    empty!(Base.ARGS)
+                    append!(Base.ARGS, ["struct_enum.out", "0", string(nstruct - 1)])
+                    @test Enumlib.makestr_main() == 0
+                    for n in 1:nstruct
+                        @test isfile("vasp.$n")
+                    end
+                    @test length(filter(f -> startswith(f, "vasp."), readdir())) == nstruct
+
+                    # Each POSCAR is byte-identical to what to_poscar produces
+                    # directly from the enumeration — one geometry path, not two.
+                    syms = ["A", "B"]
+                    for (strN, s) in Base.enumerate(e.structures)
+                        io = IOBuffer()
+                        to_poscar(io, s, e.parent, e.supercells[s.supercell_id].hnf;
+                                  super_periodic = false, species_symbols = syms,
+                                  enumlib_id = strN)
+                        @test strip(String(take!(io))) == strip(read("vasp.$strN", String))
+                    end
+
+                    # A single number selects one structure; out-of-range fails loudly.
+                    rm.(filter(f -> startswith(f, "vasp."), readdir()))
+                    empty!(Base.ARGS); append!(Base.ARGS, ["struct_enum.out", "1"])
+                    @test Enumlib.makestr_main() == 0
+                    @test readdir() |> fs -> count(startswith("vasp."), fs) == 1
+
+                    empty!(Base.ARGS)
+                    append!(Base.ARGS, ["struct_enum.out", string(nstruct + 50)])
+                    @test Enumlib.makestr_main() == 1
+                end
+            end
+        finally
+            empty!(Base.ARGS); append!(Base.ARGS, saved)
+        end
+    end
+
     @testset "CLI positional input file (Fortran driver contract)" begin
         # driver.f90 / driver_polya.f90: arg 1 is an optional input filename
         # defaulting to struct_enum.in, arg 2 a legacy algorithm switch we ignore.

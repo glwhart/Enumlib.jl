@@ -2,6 +2,13 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.4 — 2026-08-14
+
+### Added
+
+- **`makestr.x` — VASP POSCAR generation from `struct_enum.out`.** The third and last executable the Fortran `enumlib` shipped now has a Julia counterpart, so Enumlib.jl covers the whole conda-forge feedstock rather than just the enumeration half. `Enumlib.makestr_main` (`bin/makestr.jl`) reads `struct_enum.out` via the new `read_struct_enum_out`, rebuilds each listed structure as a `ParentLattice` + `HNF` + `EnumeratedStructure`, and writes one POSCAR per structure as `vasp.<n>` — the naming pymatgen's `EnumlibAdaptor` globs for. Structures are written with `to_poscar` rather than a separate geometry path, so a POSCAR from `makestr.x` is byte-identical to the one the enumeration itself would produce; a regression test asserts exactly that across a whole enumeration. Selection follows the file's own 1-based `start` column, and a range beginning at `0` is read as the Fortran `makestr.x` 0-based convention and shifted — so `makestr.x struct_enum.out 0 N-1` (how pymatgen invokes the Fortran binary) and `-input struct_enum.out 1 N` (how it invokes `makeStr.py`) select the same structures. Options: `-input FILE`, `--species A,B,…`, `--include-superperiodic`, `-h`, `-V`. Verified end-to-end that `pymatgen.io.vasp.inputs.Poscar.from_str(data, index_species)` parses every generated file, which is precisely how `EnumlibAdaptor` consumes them.
+- **`read_struct_enum_out`.** Parses a `struct_enum.out` file back into `(; parent, k, nD, latdim, structures)`, each structure carrying its `HNF`, labeling, orbit size, and supercell volume. Anchored on landmark lines rather than fixed offsets, since the header block grows when a concentration restriction is present.
+
 ## v0.3.3 — 2026-08-14
 
 ### Added

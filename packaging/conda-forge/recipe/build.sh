@@ -3,14 +3,14 @@ set -euxo pipefail
 
 # DRAFT — not submitted. See ../README.md.
 #
-# The source tarball is a PackageCompiler app: bin/ holds enum.x and polya.x, and
-# lib/ holds the bundled Julia runtime and shared libraries. The executables
+# The source tarball is a PackageCompiler app: bin/ holds enum.x, polya.x and
+# makestr.x, and lib/ holds the bundled Julia runtime and shared libraries. The executables
 # resolve their libraries relative to their own location, so the tree must be
 # installed intact and the launchers must stay next to it.
 #
 # Layout in $PREFIX:
 #   libexec/enumlib-jl/{bin,lib,share}   <- the app, unmodified
-#   bin/enum.x, bin/polya.x              <- thin launchers on PATH
+#   bin/{enum,polya,makestr}.x           <- thin launchers on PATH
 
 APPDIR="${PREFIX}/libexec/enumlib-jl"
 mkdir -p "${APPDIR}" "${PREFIX}/bin"
@@ -25,8 +25,9 @@ cp -R "${SRC}/." "${APPDIR}/"
 
 test -x "${APPDIR}/bin/enum.x"
 test -x "${APPDIR}/bin/polya.x"
+test -x "${APPDIR}/bin/makestr.x"
 
-for exe in enum.x polya.x; do
+for exe in enum.x polya.x makestr.x; do
   cat > "${PREFIX}/bin/${exe}" <<EOF
 #!/bin/bash
 # Launcher for the bundled Enumlib.jl app. exec keeps argv and the exit code

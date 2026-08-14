@@ -425,6 +425,7 @@ include("enumerate.jl")
 include("io/poscar.jl")
 # --- chunk 9.1a: Fortran struct_enum.in reader for the drop-in enum.x CLI ---
 include("io/struct_enum.jl")
+include("io/struct_enum_out.jl")
 
 # --- CLI entry points (enum.x / polya.x), compiled by PackageCompiler ---
 include("cli.jl")

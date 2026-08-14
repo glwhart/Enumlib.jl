@@ -1,9 +1,9 @@
 {% set name = "enumlib-jl" %}
-{% set version = "0.3.3" %}
+{% set version = "0.3.4" %}
 
 # DRAFT — not submitted. See ../README.md for the migration plan and the open
-# blockers (conda-forge/core must approve repackaging a prebuilt binary; the
-# `makestr.x` coverage gap; sha256 values below are placeholders).
+# blockers (conda-forge/core must approve repackaging a prebuilt binary; sha256
+# values below are placeholders until the v0.3.4 release build publishes).
 #
 # Repackages the PackageCompiler app built by .github/workflows/release.yml rather
 # than compiling in the feedstock: create_app needs the whole Julia depot at build
@@ -43,11 +43,15 @@ test:
     # probes to distinguish the Julia engine from the legacy Fortran enum.x.
     - enum.x --version | grep "Enumlib.jl"
     - polya.x --version | grep "Enumlib.jl"
+    - makestr.x --version | grep "Enumlib.jl"
     # Same invocation style the Fortran enumlib feedstock uses: input file as a
     # positional argument.
     - enum.x struct_enum.in.fcc
     - test -f struct_enum.out
     - polya.x struct_enum.in.fcc
+    # Structure generation, the third executable the Fortran feedstock ships.
+    - makestr.x struct_enum.out 1 1
+    - test -f vasp.1
 
 about:
   home: https://github.com/glwhart/Enumlib.jl
