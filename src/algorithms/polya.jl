@@ -142,7 +142,7 @@ Burnside on the aperiodic-labeling subspace, with the per-permutation count expa
 
     N_aperiodic = (1/|G|) · Σ_{g ∈ G} Σ_{H ⊆ T} μ_T(H) · |fix(g) ∩ fix(H)|
 
-where `|fix(g) ∩ fix(H)|` is the number of labelings fixed by both `g` and every element of `H` — equivalently, labelings constant on each joint orbit of `{g} ∪ H_perms` acting on supercell positions. For unrestricted k-colorings this is `k^(num joint orbits)`; for fixed multiplicities it's the polynomial-coefficient DP on the joint-orbit partition.
+where `|fix(g) ∩ fix(H)|` is the number of labelings fixed by both `g` and every element of `H` — equivalently, labelings constant on each joint orbit of `{g} ∪ H_perms` acting on supercell positions. For unrestricted k-colorings this is `k^(num joint orbits)`; for fixed multiplicities it's the polynomial-coefficient dynamic program on the joint-orbit partition.
 
 This formulation is correct for non-normal H (subgroups of T need not be normal in G — e.g., for SNF `(1, 2, 2)` where `T = Z/2 × Z/2` is non-cyclic). Earlier sketches assumed H-normality and gave wrong counts on non-cyclic T.
 
