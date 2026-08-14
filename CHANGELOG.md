@@ -2,7 +2,13 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
-## Unreleased
+## v0.3.3 — 2026-08-14
+
+### Added
+
+- **Fortran-compatible `struct_enum.in` / `struct_enum.out` I/O and a drop-in `enum.x` (Phase 9).** `read_struct_enum_in` parses the Fortran `struct_enum.in` format and `write_struct_enum_out` emits `struct_enum.out` alongside the Fortran-style progress table, so `bin/enum.jl` behaves like the Fortran `enum.x`: read the input from the working directory, enumerate, write the output. pymatgen's `EnumlibAdaptor` drives it unchanged — the file contract is identical and `makeStr.py` is reused, so only `enum.x` is swapped. Reader-to-enumerate parity is asserted against the suite's Fortran-anchored reference counts across fcc binary/ternary, hcp binary/ternary, diamond, zinc-blende, half- and full-Heusler, and perovskite corpora, including multilattice-plus-multinary cases; the deliberate Regime-C divergences from Fortran are documented rather than asserted.
+- **`enum.x --version` / `-V`.** Prints one identifying line — `enum.x (Enumlib.jl) <version>` — and exits without reading `struct_enum.in`, so it works from any directory. This is the token downstream tools probe to distinguish the Julia engine from the legacy Fortran `enum.x`, which has no `--version`: pymatgen's `EnumlibAdaptor` uses exactly this check to decide whether to recommend Enumlib.jl.
+- **`bin/polya.jl` — counting-only CLI.** Reads `struct_enum.in` and reports how many symmetrically inequivalent derivative superstructures it describes via `count_inequivalent`, generating no structures and writing nothing: the job the Fortran `polya.x` (`driver_polya.f90`, a thin wrapper passing `polya=.true.` into the same kernel) did. Together with `enum.x` this covers both enumeration executables the conda-forge `enumlib` feedstock ships. The output layout is deliberately *not* a copy of the Fortran's — only the functionality is carried forward. Flags: `-V`/`--version`, `-h`/`--help`, and `--include-superperiodic`.
 
 ### Fixed
 
