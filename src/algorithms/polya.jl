@@ -168,9 +168,9 @@ julia> aperiodic_orbit_count(c4, (1, 1, 4), [2, 2])
 ```
 """
 function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int}, k::Integer)::BigInt
-    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbit_sizes
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
         # Unrestricted k-coloring fixed-count: k^(num joint orbits).
-        BigInt(k)^length(orbit_sizes)
+        BigInt(k)^length(orbits)
     end
 end
 
@@ -189,10 +189,76 @@ function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
         throw(DimensionMismatch(
             "sum(multiplicities) = $sum_m ≠ n_D · prod(snf_diagonal) = $n_total " *
             "(n_D = $n_D inferred from permutation length)"))
-    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbit_sizes
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
         # Fixed-multiplicity fixed-count: polynomial coefficient on orbit sizes
         # (the "cycle structure" for the polynomial DP).
-        _fixed_colorings_at_concentration(orbit_sizes, multiplicities)
+        _fixed_colorings_at_concentration(length.(orbits), multiplicities)
+    end
+end
+
+"""
+    polya_count(perm_group, allowed_labels::AbstractVector{BitSet}) -> BigInt
+    polya_count(perm_group, allowed_labels::AbstractVector{BitSet}, multiplicities) -> BigInt
+
+Burnside-averaged orbit count for **label-restricted** positions. `allowed_labels[p]` is the
+set of labels (0-based, as in `Enumlib.Site`) permitted at supercell position `p`.
+
+A coloring fixed by `ρ` is constant on each cycle of `ρ`, so a cycle can only carry a label
+allowed at *every* position it visits: fix(ρ) = `∏_cycles |⋂ allowed_labels|`, and `0` when
+some cycle's intersection is empty. With a uniform `allowed_labels` this reproduces the
+scalar-`k` method exactly.
+
+This is the count that matches `length(enumerate(...))` whenever `Sites` are heterogeneous —
+zinc-blende, half/full-Heusler, perovskite, or any site pinned to one species. The scalar-`k`
+method assumes every position may take any of the `k` labels, and overcounts by orders of
+magnitude when that is false.
+"""
+function polya_count(perm_group, allowed_labels::AbstractVector{BitSet})::BigInt
+    isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
+    _check_allowed_length(perm_group, allowed_labels)
+    total = BigInt(0)
+    for perm in perm_group
+        total += _fixed_colorings_restricted(_cycle_members(perm), allowed_labels)
+    end
+    return total ÷ length(perm_group)
+end
+
+function polya_count(perm_group, allowed_labels::AbstractVector{BitSet},
+                     multiplicities::AbstractVector{<:Integer})::BigInt
+    isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
+    _check_allowed_length(perm_group, allowed_labels)
+    total = BigInt(0)
+    for perm in perm_group
+        total += _fixed_colorings_at_concentration(_cycle_members(perm), allowed_labels,
+                                                  multiplicities)
+    end
+    return total ÷ length(perm_group)
+end
+
+"""
+    aperiodic_orbit_count(perm_group, snf_diagonal, allowed_labels::AbstractVector{BitSet}) -> BigInt
+    aperiodic_orbit_count(perm_group, snf_diagonal, allowed_labels::AbstractVector{BitSet}, multiplicities) -> BigInt
+
+Label-restricted counterpart of [`aperiodic_orbit_count`](@ref). Identical Möbius inversion
+over the subgroup lattice of `T`; the per-`(g, H)` fixed-count intersects `allowed_labels`
+across each joint orbit instead of assuming all `k` labels everywhere.
+
+Use these whenever the `Sites` are heterogeneous — see the restricted [`polya_count`](@ref).
+"""
+function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
+                               allowed_labels::AbstractVector{BitSet})::BigInt
+    _check_allowed_length(perm_group, allowed_labels)
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
+        _fixed_colorings_restricted(orbits, allowed_labels)
+    end
+end
+
+function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
+                               allowed_labels::AbstractVector{BitSet},
+                               multiplicities::AbstractVector{<:Integer})::BigInt
+    _check_allowed_length(perm_group, allowed_labels)
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
+        _fixed_colorings_at_concentration(orbits, allowed_labels, multiplicities)
     end
 end
 
@@ -250,10 +316,97 @@ function _fixed_colorings_at_concentration(cycle_lengths::AbstractVector{<:Integ
     return state[ntuple(i -> multiplicities[i] + 1, k)...]
 end
 
+# Cycles of one permutation as member-position lists — the `_joint_orbits` shape
+# for a single permutation with no extra subgroup.
+function _cycle_members(perm::AbstractVector{<:Integer})::Vector{Vector{Int}}
+    n = length(perm)
+    visited = falses(n)
+    cycles = Vector{Vector{Int}}()
+    for i in 1:n
+        visited[i] && continue
+        cyc = Int[]
+        j = i
+        while !visited[j]
+            visited[j] = true
+            push!(cyc, j)
+            j = perm[j]
+        end
+        push!(cycles, cyc)
+    end
+    return cycles
+end
+
+# Labels usable by an entire orbit: intersection of its positions' allowed sets.
+# A fixed coloring is constant on the orbit, so it must be legal at every member.
+function _orbit_allowed(orbit::AbstractVector{Int},
+                        allowed_labels::AbstractVector{BitSet})::BitSet
+    acc = copy(allowed_labels[orbit[1]])
+    for idx in 2:length(orbit)
+        intersect!(acc, allowed_labels[orbit[idx]])
+        isempty(acc) && break
+    end
+    return acc
+end
+
+# Restricted fixed-count with no concentration constraint: ∏_orbits |⋂ allowed|.
+function _fixed_colorings_restricted(orbits,
+                                     allowed_labels::AbstractVector{BitSet})::BigInt
+    acc = BigInt(1)
+    for o in orbits
+        m = length(_orbit_allowed(o, allowed_labels))
+        m == 0 && return BigInt(0)
+        acc *= m
+    end
+    return acc
+end
+
+# Restricted fixed-count at fixed multiplicities: the same DP as the unrestricted
+# method, except each orbit may only take labels allowed at all of its positions.
+function _fixed_colorings_at_concentration(orbits::AbstractVector{<:AbstractVector{Int}},
+                                           allowed_labels::AbstractVector{BitSet},
+                                           multiplicities::AbstractVector{<:Integer})::BigInt
+    k = length(multiplicities)
+    k == 0 && return BigInt(1)
+    dims = ntuple(i -> multiplicities[i] + 1, k)
+    state = zeros(BigInt, dims...)
+    state[ntuple(_ -> 1, k)...] = BigInt(1)
+    for o in orbits
+        allow = _orbit_allowed(o, allowed_labels)
+        isempty(allow) && return BigInt(0)
+        c = length(o)
+        new_state = zeros(BigInt, dims...)
+        for I in CartesianIndices(state)
+            count = state[I]
+            iszero(count) && continue
+            for label in allow
+                color = label + 1              # allowed_labels are 0-based
+                (1 <= color <= k) || continue
+                new_idx = I[color] + c
+                new_idx > multiplicities[color] + 1 && continue
+                J = CartesianIndex(ntuple(j -> j == color ? new_idx : I[j], k))
+                new_state[J] += count
+            end
+        end
+        state = new_state
+    end
+    return state[ntuple(i -> multiplicities[i] + 1, k)...]
+end
+
+# allowed_labels must cover exactly the permutation domain.
+function _check_allowed_length(perm_group, allowed_labels::AbstractVector{BitSet})
+    isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
+    L = length(first(perm_group))
+    length(allowed_labels) == L ||
+        throw(DimensionMismatch(
+            "length(allowed_labels) = $(length(allowed_labels)) ≠ permutation length $L"))
+    return nothing
+end
+
 # Driver. Walks (g, H) pairs and sums μ_T(H) · |fix(g) ∩ fix(H)|. The closure
-# `fix_count(orbit_sizes::Vector{Int})` returns the labeling-fixed-count given
-# the joint-orbit partition: `k^(length)` for unrestricted, polynomial-DP for
-# fixed-multiplicity.
+# `fix_count(orbits::Vector{Vector{Int}})` returns the labeling-fixed-count given
+# the joint-orbit partition (each orbit as its member positions): `k^(length)`
+# for unrestricted, polynomial-DP for fixed-multiplicity, and the
+# allowed_labels-intersection variants when sites are label-restricted.
 function _aperiodic_orbit_count_impl(fix_count::Function, perm_group,
                                      snf_diagonal::NTuple{3,Int})::BigInt
     isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
@@ -279,8 +432,8 @@ function _aperiodic_orbit_count_impl(fix_count::Function, perm_group,
     total_sum = BigInt(0)
     for g in perm_group
         for (H_perms, mu) in H_perms_with_mu
-            orbit_sizes = _joint_orbit_partition(g, H_perms, n_total)
-            total_sum += mu * fix_count(orbit_sizes)
+            orbits = _joint_orbits(g, H_perms, n_total)
+            total_sum += mu * fix_count(orbits)
         end
     end
     return total_sum ÷ length(perm_group)
@@ -441,9 +594,9 @@ end
 #
 # Implementation: union-find. Initialize each position as its own component;
 # for each perm `p` (g and every H-perm) and each i, union(i, p[i]).
-function _joint_orbit_partition(g::AbstractVector{<:Integer},
-                                H_perms::AbstractVector,
-                                n::Int)::Vector{Int}
+function _joint_orbits(g::AbstractVector{<:Integer},
+                       H_perms::AbstractVector,
+                       n::Int)::Vector{Vector{Int}}
     parent = collect(1:n)
 
     function find(i)
@@ -472,13 +625,14 @@ function _joint_orbit_partition(g::AbstractVector{<:Integer},
         union(i, p[i])
     end
 
-    # Tally orbit sizes.
-    sizes = Dict{Int, Int}()
+    # Group positions by orbit root. Membership (not just sizes) is what the
+    # restricted-label fixed-counts need: a joint orbit's usable labels are the
+    # intersection of its positions' allowed_labels.
+    groups = Dict{Int, Vector{Int}}()
     for i in 1:n
-        r = find(i)
-        sizes[r] = get(sizes, r, 0) + 1
+        push!(get!(groups, find(i), Int[]), i)
     end
-    return collect(values(sizes))
+    return collect(values(groups))
 end
 
 end  # module Polya

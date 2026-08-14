@@ -30,6 +30,11 @@ _count(inp) = length(enumerate(inp.parent, inp.sites; supercells = inp.selection
                      concentration = inp.concentration,
                      partition_threshold = 1_000_000, skip_resource_check = true))
 
+# The counting-only path behind `bin/polya.jl` (the Fortran polya.x's job): the
+# Pólya/Burnside count must equal the number of structures enum.x actually writes.
+_polya(inp) = count_inequivalent(inp.parent, inp.sites; supercells = inp.selection,
+                     concentration = inp.concentration)
+
 const FCC  = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]     # test_enumerate / test_concentration
 const FCC2 = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]     # test_enumerate regime-C / diamond
 const SC   = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
@@ -37,7 +42,7 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
 
 @testset "struct_enum I/O (Phase 9 drop-in)" begin
 
-    @testset "reader → enumerate count parity (suite corpora)" begin
+    @testset "reader → enumerate / Pólya count parity (suite corpora)" begin
         # (name, A, dset, labels, [(nmin, nmax, conc, ref) ...])
         cases = [
             ("fcc binary", FCC, [[0.0,0,0]], [[0,1]], [
@@ -74,6 +79,7 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
                 for (nmin, nmax, conc, ref) in rows
                     inp = _readsen(_sen(; A, dset, labels, nmin, nmax, conc))
                     @test _count(inp) == ref
+                    @test _polya(inp) == ref     # bin/polya.jl path
                 end
             end
         end
