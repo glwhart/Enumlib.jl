@@ -16,11 +16,11 @@
 const ENUM_USAGE = """
 enum.x (Enumlib.jl) — enumerate derivative superstructures
 
-Usage: enum.x [options]
+Usage: enum.x [input_file] [options]
 
-Reads struct_enum.in from the current directory, enumerates, and writes
-struct_enum.out to the current directory, printing the progress table to
-stdout. Drop-in replacement for the Fortran enum.x.
+Reads the input file (default struct_enum.in) from the current directory,
+enumerates, and writes struct_enum.out to the current directory, printing the
+progress table to stdout. Drop-in replacement for the Fortran enum.x.
 
 Options:
   -h, --help     show this message and exit
@@ -30,10 +30,11 @@ Options:
 const POLYA_USAGE = """
 polya.x (Enumlib.jl) — count inequivalent derivative superstructures
 
-Usage: polya.x [options]
+Usage: polya.x [input_file] [options]
 
-Reads struct_enum.in from the current directory and prints the count per
-supercell volume plus the total. Writes nothing; generates no structures.
+Reads the input file (default struct_enum.in) from the current directory and
+prints the count per supercell volume plus the total. Writes nothing; generates
+no structures.
 
 Options:
   --include-superperiodic  also count super-periodic labelings (default: skip
@@ -41,6 +42,26 @@ Options:
   -h, --help               show this message and exit
   -V, --version            print version and exit
 """
+
+# The Fortran drivers (driver.f90 / driver_polya.f90) both take positional
+# arguments: arg 1 is an optional input filename defaulting to "struct_enum.in",
+# and arg 2 an optional Fortran logical selecting the legacy cross-out algorithm.
+# The filename is load-bearing, not cosmetic: conda-forge's enumlib feedstock
+# tests the package with `enum.x struct_enum.in.fcc`, so a drop-in that only ever
+# reads ./struct_enum.in fails that test.
+#
+# Arg 2 is accepted and ignored. It chose between two implementations of the same
+# enumeration in the Fortran; Enumlib.jl selects its algorithm automatically and
+# the resulting structures are unaffected, so ignoring it changes no answer.
+function _cli_input_file(exe::AbstractString, args)
+    positional = filter(a -> !startswith(a, "-"), args)
+    if length(positional) >= 2
+        @warn "$exe: ignoring legacy second argument $(repr(positional[2])) " *
+              "(the Fortran origCrossOutAlgorithm switch). Enumlib.jl chooses its " *
+              "algorithm automatically; the enumeration result is unaffected."
+    end
+    return isempty(positional) ? "struct_enum.in" : positional[1]
+end
 
 # Version string for the `--version` line. `pkgversion` works in a source
 # checkout and in a compiled app; the Project.toml fallback covers the case
@@ -87,7 +108,7 @@ function enum_main()::Cint
         return Cint(0)
     end
     try
-        inp = read_struct_enum_in("struct_enum.in")
+        inp = read_struct_enum_in(_cli_input_file("enum.x", args))
         e = enumerate(inp.parent, inp.sites; supercells = inp.selection,
                       concentration = inp.concentration)
         open("struct_enum.out", "w") do io
@@ -123,8 +144,10 @@ function polya_main()::Cint
         return Cint(0)
     end
 
+    # Reject unknown *flags* only; bare words are the positional input filename,
+    # matching the Fortran polya.x.
     known = ("--include-superperiodic",)
-    unknown = filter(a -> !(a in known), args)
+    unknown = filter(a -> startswith(a, "-") && !(a in known), args)
     if !isempty(unknown)
         println(stderr, "polya.x: unrecognized argument(s): ", join(unknown, " "))
         print(stderr, POLYA_USAGE)
@@ -133,7 +156,7 @@ function polya_main()::Cint
     include_superperiodic = "--include-superperiodic" in args
 
     try
-        inp = read_struct_enum_in("struct_enum.in")
+        inp = read_struct_enum_in(_cli_input_file("polya.x", args))
         counts = count_inequivalent(inp.parent, inp.sites;
                                    supercells = inp.selection,
                                    concentration = inp.concentration,

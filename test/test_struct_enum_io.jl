@@ -115,6 +115,23 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
         end
     end
 
+    @testset "CLI positional input file (Fortran driver contract)" begin
+        # driver.f90 / driver_polya.f90: arg 1 is an optional input filename
+        # defaulting to struct_enum.in, arg 2 a legacy algorithm switch we ignore.
+        # conda-forge's enumlib feedstock tests with `enum.x struct_enum.in.fcc`,
+        # so dropping the filename argument would fail that package's own test.
+        @test Enumlib._cli_input_file("enum.x", String[]) == "struct_enum.in"
+        @test Enumlib._cli_input_file("enum.x", ["mine.in"]) == "mine.in"
+        @test Enumlib._cli_input_file("polya.x", ["struct_enum.in.fcc"]) == "struct_enum.in.fcc"
+        # Flags are not filenames, whichever side of the positional they sit on.
+        @test Enumlib._cli_input_file("polya.x",
+                                      ["--include-superperiodic", "x.in"]) == "x.in"
+        @test Enumlib._cli_input_file("enum.x", ["-V"]) == "struct_enum.in"
+        # The legacy second positional is accepted, warned about, and ignored.
+        @test (@test_logs (:warn, r"origCrossOutAlgorithm") Enumlib._cli_input_file(
+            "enum.x", ["a.in", "F"])) == "a.in"
+    end
+
     @testset "reader rejects out-of-scope inputs (clear errors, not wrong answers)" begin
         base(; kw...) = _sen(; A = FCC, dset = [[0.0,0,0]], labels = [[0,1]],
                              nmin = 1, nmax = 2, conc = nothing, kw...)
