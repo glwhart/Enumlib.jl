@@ -91,20 +91,24 @@ If you use this package in published work, please cite:
 
 ## Relationship to the Fortran enumlib
 
-The Fortran [`enumlib`](https://github.com/msg-byu/enumlib) remains the reference implementation. As of the v0.2 pre-release, `Enumlib.jl` covers:
+The Fortran [`enumlib`](https://github.com/msg-byu/enumlib) is the original implementation, and `Enumlib.jl` is checked against counts harvested from it. Covered here:
 
 - HNF / SNF / supercell enumeration and Pólya counting (Hart-Forcade 2008).
-- Concentration-restricted enumeration via the multinomial-hash algorithm (Hart-Nelson-Forcade 2012).
+- Multilattices — HCP, diamond, zinc-blende, half- and full-Heusler, perovskite (Hart-Forcade 2009).
+- Site-restricted enumeration with per-site `allowed_labels` (heterogeneous sublattices).
+- Concentration-restricted enumeration via the multinomial-hash algorithm (Hart-Nelson-Forcade 2012), including per-sublattice concentrations.
 - Recursive-stabilizer tree enumeration for high-configurational-freedom cases (Morgan-Hart-Forcade 2017).
 - A pre-flight cost estimator + memory-budget gate.
+- Drop-in `enum.x`, `polya.x` and `makestr.x` command-line tools that read and write the Fortran `struct_enum.in` / `struct_enum.out` formats, available as standalone binaries (see [Installation](#standalone-binaries-no-julia-required)). pymatgen's `EnumlibAdaptor` drives them unchanged.
 
-Not yet covered (deferred to v0.3+):
+Not covered:
 
-- Multi-lattice / multi-site `Sites` (perovskite, half-Heusler, slab geometries).
-- Site-restricted (per-site `allowed_labels`) enumeration.
 - Displacement-direction ("arrow") enumeration.
+- Two-dimensional / surface enumeration (`surf` mode in `struct_enum.in`) — the reader rejects it with a clear error rather than guessing.
 
-Use the Fortran tool when you need those features or its stable command-line workflow; reach for `Enumlib.jl` when you want HNF, Pólya counting, and concentration-restricted enumeration as composable Julia functions inside a larger Julia program.
+One deliberate difference in results: for symmetry-equivalent sublattices with overlapping label sets, `Enumlib.jl` keeps symmetry operations that the Fortran drops, so the two can report different counts. The wurtzite case is worked through in `docs/notes/chunk6.5-design.md` §11.4.
+
+Reach for the Fortran tool if you need arrow or 2D enumeration; otherwise `Enumlib.jl` covers the same ground, either as composable Julia functions or through the drop-in executables.
 
 ## License
 
