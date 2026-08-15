@@ -2,6 +2,17 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.5 — 2026-08-15
+
+### Fixed
+
+- **Released binaries reported their version as `nothing`.** `enum.x --version` in the v0.3.4 (and v0.3.3) downloads printed `enum.x (Enumlib.jl) nothing` instead of a version number — reported by @shyuep and reproduced against the published macOS tarball. Cause: `pkgversion` has no package `Project.toml` to read inside a PackageCompiler app, and it *returns* `nothing` rather than throwing, so the `try`/`catch` around it never fired and `string(nothing)` produced the literal text. The version is now resolved once at precompile time into a `const`, where the Project.toml is present, and frozen into the app image. The `Enumlib.jl` token itself was always correct, so pymatgen's engine detection was unaffected — only the reported number was wrong.
+- **The release smoke test could not have caught it.** `build/build_app.jl` asserted only that `--version` output contained `Enumlib.jl`, which `(Enumlib.jl) nothing` satisfies. It now also asserts the exact version string from `Project.toml`, so a build that misreports its version fails on the runner instead of shipping.
+
+### Documented
+
+- **Standalone binary install instructions** in the README: the three bundled executables, the `.sha256` assets, and a note that no `LD_LIBRARY_PATH` / `DYLD_*` variable is needed because the executables resolve their bundled libraries relative to their own path. Also documents the macOS Gatekeeper quarantine that affects browser downloads, and the one-line `xattr -dr com.apple.quarantine` fix. The binaries are not yet code-signed or notarized.
+
 ## v0.3.4 — 2026-08-14
 
 ### Added

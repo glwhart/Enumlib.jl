@@ -21,6 +21,33 @@ Pkg.develop(path = "https://github.com/glwhart/Enumlib.jl")
 
 `Pkg.add("Enumlib")` will work after JuliaRegistrator publishes v0.2.0.
 
+### Standalone binaries (no Julia required)
+
+Each release attaches a per-platform tarball containing `enum.x`, `polya.x`, and
+`makestr.x` — the same three executables the Fortran enumlib provided — with the
+Julia runtime bundled in, so nothing else needs installing:
+
+```bash
+curl -sSL https://github.com/glwhart/Enumlib.jl/releases/latest/download/enumlib-jl-0.3.5-linux-x86_64.tar.gz | tar xz
+export PATH="$PWD/enumlib-jl-0.3.5-linux-x86_64/bin:$PATH"
+enum.x --version      # enum.x (Enumlib.jl) 0.3.5
+```
+
+Built for `linux-x86_64`, `macos-aarch64`, and `windows-x86_64`; each asset has a
+matching `.sha256`. The executables locate their bundled libraries relative to
+their own path, so no `LD_LIBRARY_PATH` / `DYLD_*` variable needs setting — keep
+`bin/` and `lib/` together and invoke `bin/enum.x` from anywhere.
+
+**macOS note.** The binaries are not yet code-signed or notarized. If you download
+through a browser, Gatekeeper quarantines the bundled `.dylib`s and the app will
+refuse to start. Clear the flag on the extracted tree once:
+
+```bash
+xattr -dr com.apple.quarantine enumlib-jl-0.3.5-macos-aarch64
+```
+
+Downloading with `curl` or `wget` avoids the quarantine flag entirely.
+
 ## Quick start (legacy lattice-coordinate API; pre-v0.2.0)
 
 Enumerate symmetry-inequivalent superlattices of FCC up to 8 sites, count the binary colorings per supercell:

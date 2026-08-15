@@ -92,24 +92,32 @@ function _cli_input_file(exe::AbstractString, args)
     return isempty(positional) ? "struct_enum.in" : positional[1]
 end
 
-# Version string for the `--version` line. `pkgversion` works in a source
-# checkout and in a compiled app; the Project.toml fallback covers the case
-# where neither is available (then "unknown" rather than an error).
-function _cli_version()
-    try
-        return string(pkgversion(@__MODULE__))
+# Version string for the `--version` line, resolved once at precompile time.
+#
+# This must be a `const`, not a runtime lookup. Inside a PackageCompiler app there
+# is no package Project.toml on disk, so `pkgversion` returns `nothing` — and it
+# *returns* it rather than throwing, so a try/catch does not help: `string(nothing)`
+# is the literal "nothing", which is exactly what v0.3.4's released binaries
+# printed. Precompilation does have the Project.toml, so resolving here freezes the
+# real number into the app image.
+const CLI_VERSION::String = let
+    v = try
+        pv = pkgversion(@__MODULE__)
+        pv === nothing ? nothing : string(pv)
     catch
-        try
-            dir = pkgdir(@__MODULE__)
-            dir === nothing && return "unknown"
-            m = match(r"(?m)^version\s*=\s*\"([^\"]+)\"",
-                      read(joinpath(dir, "Project.toml"), String))
-            return m === nothing ? "unknown" : m.captures[1]
-        catch
-            return "unknown"
-        end
+        nothing
+    end
+    if v === nothing || v == "nothing"
+        proj = normpath(joinpath(@__DIR__, "..", "Project.toml"))
+        m = isfile(proj) ?
+            match(r"(?m)^version\s*=\s*\"([^\"]+)\"", read(proj, String)) : nothing
+        m === nothing ? "unknown" : String(m.captures[1])
+    else
+        v
     end
 end
+
+_cli_version() = CLI_VERSION
 
 _asks_version(args) = any(a -> a == "--version" || a == "-V", args)
 _asks_help(args)    = any(a -> a == "--help" || a == "-h", args)

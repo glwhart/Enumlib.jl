@@ -48,6 +48,18 @@ elapsed = @elapsed create_app(
 const EXE_SUFFIX = Sys.iswindows() ? ".exe" : ""
 const BINDIR = joinpath(DEST, "bin")
 
+# The expected version, straight from Project.toml — the built app must report
+# exactly this. v0.3.4 shipped printing "(Enumlib.jl) nothing" because
+# `pkgversion` returns `nothing` inside an app and the old smoke test only
+# checked for the "Enumlib.jl" token, which was still present. Asserting the
+# actual number is what closes that hole.
+const EXPECTED_VERSION = let
+    m = match(r"(?m)^version\s*=\s*\"([^\"]+)\"",
+              read(joinpath(REPO_ROOT, "Project.toml"), String))
+    m === nothing && error("could not read version from Project.toml")
+    String(m.captures[1])
+end
+
 for (exe, label) in (("enum", "enum.x"), ("polya", "polya.x"),
                      ("makestr", "makestr.x"))
     path = joinpath(BINDIR, exe * EXE_SUFFIX)
@@ -56,6 +68,9 @@ for (exe, label) in (("enum", "enum.x"), ("polya", "polya.x"),
     println("  $label --version → ", strip(out))
     occursin("Enumlib.jl", out) ||
         error("$label --version output lacks the 'Enumlib.jl' token: $(repr(out))")
+    occursin(EXPECTED_VERSION, out) ||
+        error("$label reported the wrong version: expected $EXPECTED_VERSION, " *
+              "got $(repr(strip(out)))")
 end
 
 @info "Smoke test passed" BINDIR
