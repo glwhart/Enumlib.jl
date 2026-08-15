@@ -41,6 +41,22 @@ elapsed = @elapsed create_app(
 
 @info "create_app finished" minutes = round(elapsed / 60; digits = 1)
 
+# --- License text ---------------------------------------------------------------
+# create_app bundles third-party artifact licenses under
+# share/julia/artifacts/*/share/licenses, but not the app's own. Shipping binaries
+# with no copy of their MIT text is a real distribution gap, and conda-forge's
+# `license_file` additionally requires the file to exist in the source archive.
+cp(joinpath(REPO_ROOT, "LICENSE"), joinpath(DEST, "LICENSE"); force = true)
+write(joinpath(DEST, "NOTICE"), """
+Enumlib.jl standalone application.
+
+This bundle contains Enumlib.jl (see LICENSE, MIT) together with the Julia runtime
+and the third-party libraries Julia depends on. Licenses for the bundled
+components are under share/julia/artifacts/*/share/licenses/.
+
+Source: https://github.com/glwhart/Enumlib.jl
+""")
+
 # --- Smoke test the freshly built binaries -------------------------------------
 # Cheap but load-bearing: proves the app actually launches and that `--version`
 # emits the exact token pymatgen's engine detection probes for. A build that
@@ -72,5 +88,7 @@ for (exe, label) in (("enum", "enum.x"), ("polya", "polya.x"),
         error("$label reported the wrong version: expected $EXPECTED_VERSION, " *
               "got $(repr(strip(out)))")
 end
+
+isfile(joinpath(DEST, "LICENSE")) || error("LICENSE missing from the app bundle")
 
 @info "Smoke test passed" BINDIR

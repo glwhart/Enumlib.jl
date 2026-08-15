@@ -2,6 +2,12 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.6 — 2026-08-15
+
+### Fixed
+
+- **The standalone binaries shipped without any license text.** `create_app` bundles the third-party artifact licenses under `share/julia/artifacts/*/share/licenses/`, but not the application's own, so every release tarball to date distributed MIT-licensed code and a bundled Julia runtime with no copy of the MIT terms. The app bundle now carries `LICENSE` at its root plus a `NOTICE` pointing at the bundled components' licenses, and the release smoke test fails the build if `LICENSE` is absent. Found while preparing the conda-forge recipe, whose `license_file` requires the file to exist in the source archive.
+
 ## v0.3.5 — 2026-08-15
 
 ### Fixed

@@ -28,9 +28,9 @@ Each release attaches a per-platform tarball containing `enum.x`, `polya.x`, and
 Julia runtime bundled in, so nothing else needs installing:
 
 ```bash
-curl -sSL https://github.com/glwhart/Enumlib.jl/releases/latest/download/enumlib-jl-0.3.5-linux-x86_64.tar.gz | tar xz
-export PATH="$PWD/enumlib-jl-0.3.5-linux-x86_64/bin:$PATH"
-enum.x --version      # enum.x (Enumlib.jl) 0.3.5
+curl -sSL https://github.com/glwhart/Enumlib.jl/releases/latest/download/enumlib-jl-0.3.6-linux-x86_64.tar.gz | tar xz
+export PATH="$PWD/enumlib-jl-0.3.6-linux-x86_64/bin:$PATH"
+enum.x --version      # enum.x (Enumlib.jl) 0.3.6
 ```
 
 Built for `linux-x86_64`, `macos-aarch64`, and `windows-x86_64`; each asset has a
@@ -43,7 +43,7 @@ through a browser, Gatekeeper quarantines the bundled `.dylib`s and the app will
 refuse to start. Clear the flag on the extracted tree once:
 
 ```bash
-xattr -dr com.apple.quarantine enumlib-jl-0.3.5-macos-aarch64
+xattr -dr com.apple.quarantine enumlib-jl-0.3.6-macos-aarch64
 ```
 
 Downloading with `curl` or `wget` avoids the quarantine flag entirely.
