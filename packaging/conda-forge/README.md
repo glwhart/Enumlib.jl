@@ -4,7 +4,12 @@ Goal: make `conda install enumlib` deliver the Julia `enum.x` / `polya.x`, so us
 (and pymatgen's CI) get Enumlib.jl transparently and the Fortran `enumlib` can be
 retired.
 
-Everything here is a **draft**. Nothing has been submitted to conda-forge.
+**Submitted:** https://github.com/conda-forge/staged-recipes/pull/34550 (phase 1,
+the `enumlib-jl` staged recipe). The files here mirror what was submitted; keep them
+in sync if the review asks for changes.
+
+Note the recipe is in the **v1 `recipe.yaml`** format — staged-recipes deprecated the
+v0 `meta.yaml` for new recipes, and the old draft here has been replaced.
 
 ## Recommended approach: ship the prebuilt binary
 
@@ -21,9 +26,9 @@ for this whole approach, not the packaging mechanics.
 
 ## Two-phase migration
 
-1. **New `enumlib-jl` staged-recipe.** Gets conda-forge/core to rule on the
-   repackaging exception and proves the runtime works on their CI, without
-   disturbing the live Fortran package.
+1. **New `enumlib-jl` staged-recipe.** Submitted as staged-recipes#34550. Gets
+   conda-forge/core to rule on the repackaging exception and proves the runtime works
+   on their CI, without disturbing the live Fortran package.
 2. **Fold into the `enumlib` name** once validated (a major version bump), so
    `conda install enumlib` yields the Julia engine.
 
