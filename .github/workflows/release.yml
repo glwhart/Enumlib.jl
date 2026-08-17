@@ -56,8 +56,45 @@ jobs:
       - name: Instantiate build environment
         run: julia --project=build -e 'using Pkg; Pkg.instantiate()'
 
+      # Linux is built inside manylinux_2_28 (glibc 2.28) rather than on the
+      # runner. ubuntu-latest has glibc 2.39, and the app it produced bundled a
+      # libstdc++ requiring GLIBC_2.38 — so the binaries would not start on
+      # RHEL/Rocky 8-9, on typical HPC login/compute nodes, or in conda-forge's
+      # test image (glibc 2.34). Building against 2.28 covers all of those.
+      # macOS and Windows are unaffected and build directly on the runner.
+      - name: Build app in manylinux_2_28 (linux)
+        if: matrix.target == 'linux-x86_64'
+        run: |
+          docker run --rm -v "$PWD":/io -w /io \
+            quay.io/pypa/manylinux_2_28_x86_64 bash -euxo pipefail -c '
+              curl -fsSL "https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11-latest-linux-x86_64.tar.gz" | tar xz -C /opt
+              export PATH="$(echo /opt/julia-*/bin):$PATH"
+              julia --version
+              julia --project=build -e "using Pkg; Pkg.instantiate()"
+              julia --project=build build/build_app.jl
+            '
+          sudo chown -R "$(id -u):$(id -g)" build
+
       - name: Build app (create_app + --version smoke test)
+        if: matrix.target != 'linux-x86_64'
         run: julia --project=build build/build_app.jl
+
+      # Guard the reason the linux build moved into a container: if anything the
+      # app loads needs a newer glibc than 2.28, catch it here rather than in a
+      # user's shell on a cluster.
+      - name: Verify glibc floor (linux)
+        if: matrix.target == 'linux-x86_64'
+        shell: bash
+        run: |
+          MAXVER=$(find build/app -name '*.so*' -type f -print0 \
+            | xargs -0 -r objdump -T 2>/dev/null \
+            | grep -oE 'GLIBC_2\.[0-9]+' | sort -t. -k2 -n | tail -1)
+          echo "highest GLIBC symbol required: ${MAXVER:-none}"
+          MINOR="${MAXVER##GLIBC_2.}"
+          if [ -n "${MAXVER:-}" ] && [ "${MINOR:-0}" -gt 28 ]; then
+            echo "::error::app requires ${MAXVER}, above the glibc 2.28 floor"
+            exit 1
+          fi
 
       # create_app emits `enum` / `polya`; the Fortran names (and what pymatgen's
       # EnumlibAdaptor looks for on PATH) are `enum.x` / `polya.x`.

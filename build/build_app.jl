@@ -35,7 +35,11 @@ elapsed = @elapsed create_app(
     # the smoke test below; incremental = false keeps the app self-contained.
     incremental = false,
     filter_stdlibs = false,
-    include_lazy_artifacts = true,
+    # Lazy artifacts pulled in Qt, X11 and GR baggage that nothing in Enumlib's
+    # dependency closure actually loads — tens of MB and 79 static libraries in
+    # the v0.3.6 package. The smoke test below is what proves the app still runs
+    # without them.
+    include_lazy_artifacts = false,
     force = true,
 )
 
