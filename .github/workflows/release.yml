@@ -82,22 +82,34 @@ jobs:
       # Guard the reason the linux build moved into a container: if anything the
       # app loads needs a newer glibc than 2.28, catch it here rather than in a
       # user's shell on a cluster.
+      # Guard the reason the linux build moved into a container: if anything the
+      # app loads needs a newer glibc than 2.28, catch it here rather than in a
+      # user's shell on a cluster.
+      #
+      # Deliberately loop instead of piping through xargs: objdump exits non-zero
+      # on the non-ELF files that match *.so*, and with pipefail that aborts the
+      # step before it can report anything (which is exactly what happened the
+      # first time this ran).
       - name: Verify glibc floor (linux)
         if: matrix.target == 'linux-x86_64'
         shell: bash
         run: |
-          MAXVER=$(find build/app -name '*.so*' -type f -print0 \
-            | xargs -0 -r objdump -T 2>/dev/null \
-            | grep -oE 'GLIBC_2\.[0-9]+' | sort -t. -k2 -n | tail -1)
-          echo "highest GLIBC symbol required: ${MAXVER:-none}"
-          MINOR="${MAXVER##GLIBC_2.}"
-          if [ -n "${MAXVER:-}" ] && [ "${MINOR:-0}" -gt 28 ]; then
-            echo "::error::app requires ${MAXVER}, above the glibc 2.28 floor"
+          max=0
+          while IFS= read -r f; do
+            v=$(objdump -T "$f" 2>/dev/null \
+                  | grep -oE 'GLIBC_2\.[0-9]+' \
+                  | sed 's/.*\.//' | sort -n | tail -1) || v=""
+            if [ -n "$v" ] && [ "$v" -gt "$max" ]; then
+              max="$v"
+              echo "  new high: GLIBC_2.$v  ($f)"
+            fi
+          done < <(find build/app \( -name '*.so' -o -name '*.so.*' \) -o -path '*/bin/*' -type f)
+          echo "highest GLIBC symbol required by the app: GLIBC_2.${max}"
+          if [ "$max" -gt 28 ]; then
+            echo "::error::app requires GLIBC_2.${max}, above the glibc 2.28 floor"
             exit 1
           fi
 
-      # create_app emits `enum` / `polya`; the Fortran names (and what pymatgen's
-      # EnumlibAdaptor looks for on PATH) are `enum.x` / `polya.x`.
       - name: Rename executables to enum.x / polya.x / makestr.x
         shell: bash
         run: |
