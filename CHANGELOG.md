@@ -2,6 +2,16 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.7 — 2026-08-18
+
+### Fixed
+
+- **Linux binaries would not start on anything older than glibc 2.38.** Built on `ubuntu-latest` (glibc 2.39), the bundled runtime carried a `libstdc++.so.6` requiring `GLIBC_2.38`, so `enum.x` failed immediately on RHEL/Rocky 8–9, on typical HPC login and compute nodes, and in conda-forge's test image (glibc 2.34) with `/lib64/libc.so.6: version 'GLIBC_2.38' not found`. Surfaced by the conda-forge staged-recipes CI, not by local testing — the macOS build was unaffected and is what had been exercised by hand. The linux artifact is now built inside `quay.io/pypa/manylinux_2_28_x86_64` against the official Julia tarball, which brings the whole bundle down to a **`GLIBC_2.17`** floor (the executables themselves need only 2.14; the ceiling comes from a bundled `libglib-2.0.so`). A new release-workflow step walks every shared object and executable in the app and fails the build if anything requires a symbol above 2.28, so this cannot regress unnoticed. macOS and Windows were never affected.
+
+### Changed
+
+- **`create_app` no longer includes lazy artifacts.** `include_lazy_artifacts = true` pulled Qt, X11 and GR artifacts into the bundle that nothing in Enumlib's dependency closure loads, including 79 static libraries. Now `false`. Note this did **not** meaningfully reduce download size (424 MB vs ~417 MB for linux-x86_64) — `lib/julia/sys.so` at 551 MB dominates the bundle, so the artifacts were never the bulk.
+
 ## v0.3.6 — 2026-08-15
 
 ### Fixed
