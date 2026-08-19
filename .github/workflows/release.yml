@@ -14,6 +14,14 @@ name: Release binaries
 # a system image, which is heavy and platform-specific. Runners give us a clean
 # per-platform build with no local machine tied up.
 
+# CAUTION when writing the release commit message: GitHub matches the skip-ci
+# marker anywhere in a commit message, including inside prose that merely mentions
+# it, and the tag push shares that commit -- so a stray mention silently suppresses
+# this workflow and the release never builds. (This happened on v0.3.7: the commit
+# body contained a sentence explaining that the marker was deliberately absent,
+# which GitHub read as the marker itself.) Keep release commit messages free of the
+# token in any form.
+
 on:
   push:
     tags:
