@@ -2,6 +2,14 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.8 — 2026-08-19
+
+### Changed
+
+- **The bundled binaries no longer carry a plotting stack.** `Spacey` declared `Plots` in its `[deps]` without referencing it anywhere in `src/` or `test/` — a vestigial dependency that nevertheless pulled GR, Qt6, Cairo, FFMPEG, X11 and fonts into Enumlib's dependency closure, and therefore into the PackageCompiler app. In the conda-forge build of v0.3.7 that closure accounted for **0.60 GiB of a 1.41 GiB package (42%)** and all 79 of its static libraries, the latter being an obstacle to conda-forge packaging. Fixed upstream in [Spacey 0.9.1](https://github.com/glwhart/Spacey.jl); this release picks it up. `Plots`, `GR`, `GR_jll`, `Qt6Base_jll`, `Cairo_jll`, `FFMPEG_jll` and the Xorg JLLs are all gone from the manifest. Compat was already `Spacey = "0.9"`, so only the manifest changed. Full suite passes unchanged (2662 tests).
+
+  Note for the record: v0.3.7's `include_lazy_artifacts = false` was aimed at this same bloat and had **no effect** — those artifacts were eager dependencies of Plots, not lazy ones. The dependency itself had to go.
+
 ## v0.3.7 — 2026-08-18
 
 ### Fixed
