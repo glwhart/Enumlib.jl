@@ -34,5 +34,4 @@ Enumlib.Polya.aperiodic_orbit_count
 
 - Explanation: [Pólya counting](../explanation/polya-counting.md) — the Burnside, Möbius,
   and label-restriction math these methods implement.
-- How-to: [Count without enumerating](../how-to/count-without-enumerating.md),
-  [Count from the command line](../how-to/count-from-the-command-line.md).
+- How-to: [Count without enumerating](../how-to/count-without-enumerating.md).

@@ -109,5 +109,5 @@ That layout is also what indexes `allowed_labels` in the label-restricted formul
 - [Algorithm overview](algorithm-overview.md) — the three enumeration algorithms Pólya prices.
 - [Super-periodicity](super-periodicity.md) — the policy choice the Möbius correction implements.
 - [Count without enumerating](../how-to/count-without-enumerating.md) — recipe-oriented use, including the heterogeneous-`Sites` and unconstrained-range cases above.
-- [Count from the command line](../how-to/count-from-the-command-line.md) — the same count as a standalone `polya.x` executable.
+- [The drop-in executables](pymatgen-interop.md) — the `polya.x` command-line wrapper around this count, and why it exists.
 - [`count_inequivalent`](@ref), [`Enumlib.Polya.polya_count`](@ref), [`Enumlib.Polya.aperiodic_orbit_count`](@ref).
