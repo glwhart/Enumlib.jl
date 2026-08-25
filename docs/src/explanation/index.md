@@ -10,8 +10,8 @@ The "why" of Enumlib. Conceptual scaffolding for the underlying math, the algori
 ## The four algorithms
 
 - [Exhaustive enumeration (HF 2008)](exhaustive-2008.md) — the original algorithm. Iterate every coloring; canonicalize each. The reference implementation; not `:auto`'s default.
-- [Multinomial mixed-radix hash (HF 2012)](multinomial-2012.md) — iterate only colorings at the target concentration. Includes the §A.1 site-mask variant (`:multinomial_restricted`) for Regime C.
-- [Recursive stabilizer (Morgan-Hart 2017)](recursive-stabilizer-2017.md) — the tree. Doesn't need a bitmap; `:auto`'s default for almost everything.
+- [Multinomial mixed-radix hash (HF 2012)](multinomial-2012.md) — iterate only colorings at the target concentration. Includes the §A.1 site-mask variant (`:multinomial_restricted`) for [Regime C](glossary.md#Regime-A-/-B-/-C) (heterogeneous sublattices).
+- [Recursive stabilizer (Morgan-Hart 2017)](recursive-stabilizer-2017.md) — the tree. Doesn't need a [bitmap](glossary.md#Bitmap); `:auto`'s default for almost everything.
 
 ## Counting and the resource check
 

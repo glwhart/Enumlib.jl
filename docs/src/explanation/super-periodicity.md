@@ -30,7 +30,7 @@ In the exhaustive HF 2008 algorithm, super-periodicity is detected at the hash-c
 
 In the multinomial HF 2012 algorithm and the recursive-stabilizer 2017 algorithm, super-periodicity is detected the same way during partial-coloring expansion. The same kwarg flips the same behavior.
 
-On the Pólya / counting side, the **aperiodic orbit count** is what matches the filtered enumeration. See [polya-counting](polya-counting.md) for the Möbius-inversion machinery that makes it cheap to compute.
+On the Pólya / counting side, the **aperiodic orbit count** is what matches the filtered enumeration. See [polya-counting](polya-counting.md) for the [Möbius-inversion](glossary.md#Möbius-inversion) machinery that makes it cheap to compute — in short, inclusion–exclusion over the lattice of translation subgroups.
 
 ## Multilattice extension
 

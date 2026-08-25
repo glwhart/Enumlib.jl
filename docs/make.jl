@@ -38,6 +38,7 @@ makedocs(
             "how-to/specify-per-sublattice-concentration.md",
             "how-to/pick-an-algorithm.md",
             "how-to/count-without-enumerating.md",
+            "how-to/count-from-the-command-line.md",
             "how-to/estimate-cost.md",
             "how-to/handle-super-periodicity.md",
             "how-to/write-poscars-for-dft.md",

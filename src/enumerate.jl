@@ -827,7 +827,7 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
         for c in concs_here
             # Four combinations: {no concentration, fixed concentration} ×
             # {uniform labels → scalar k, restricted labels → allowed_pos}. The
-            # concentration itself pins the alphabet in the uniform case, so the
+            # concentration itself pins the label set in the uniform case, so the
             # scalar-k branch passes `mults` alone (its established signature).
             count_here = if c === nothing
                 if allowed_pos === nothing

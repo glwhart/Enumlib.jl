@@ -8,6 +8,7 @@
 - Sites with **distinct** species per sublattice: X = {Na, K} (two cation choices), Y = fixed Mg, Z = fixed F. (Hypothetical chemistry — the numbers are about the symmetry, not the bonding.)
 - A 50/50 composition on X with the per-sublattice constructor, then run [`enumerate`](@ref Base.enumerate) and inspect what comes back.
 - Compare to the flat-vector form to convince yourself they produce the same `Concentration`.
+- Size the run first with [`count_inequivalent`](@ref), which honors each sublattice's `allowed_labels`.
 
 By the end you'll see the [`Concentration(sites, per_sublattice)`](@ref) call shape and how it slots into the same `enumerate(...)` you already know from Tutorial 02.
 
@@ -69,7 +70,36 @@ julia> c == Concentration([1//6, 1//6, 1//3, 1//3])
 true
 ```
 
-## Step 3 — enumerate
+## Step 3 — ask how big it is before enumerating
+
+[`enumerate`](@ref Base.enumerate) allocates every configuration it finds. [`count_inequivalent`](@ref) takes the same arguments and returns the number that call *would* produce, by Pólya/Burnside orbit counting instead of construction — so it is the cheap pre-flight check before committing to a run:
+
+```jldoctest psl_tutorial
+julia> count_inequivalent(parent, sites; supercells = VolumeRange(2:2), concentration = c)
+2
+```
+
+Heterogeneous sublattices need no extra ceremony here. Each dset position contributes only the labels it allows — Mg never lands on X, Na never on Z — and where symmetry ties several positions together, the counter keeps only the species allowed at *every* one of them, rather than treating all four as available everywhere. That distinction is worth orders of magnitude on multi-sublattice parents; see [Pólya counting](../explanation/polya-counting.md).
+
+Widening the range shows both where the cost lives and where the composition doesn't fit:
+
+```jldoctest psl_tutorial
+julia> ic = count_inequivalent(parent, sites; supercells = VolumeRange(1:6),
+                                concentration = c, breakdown = true);
+
+julia> ic.total
+32
+
+julia> ic.by_volume
+3-element Vector{Tuple{Int64, BigInt}}:
+ (2, 2)
+ (4, 5)
+ (6, 25)
+```
+
+Odd volumes are *absent* rather than zero. `c` carries a denominator of 6 against 3 dset positions, so only even supercell volumes give whole atom counts; the rest are skipped as inapplicable, not enumerated and found empty. And volume 6 alone outweighs volumes 2 and 4 together — the usual shape of a volume sweep, and the reason to read this table before launching one.
+
+## Step 4 — enumerate
 
 The `concentration` kwarg accepts the per-sublattice-constructed value directly — `enumerate` doesn't know or care which constructor produced it:
 
@@ -81,7 +111,7 @@ Enumeration{3, Vector{Int8}} (2 configurations, 2 supercells, 3 sites)
 
 Two inequivalent configurations of `(NaK)MgF` at supercell volume 2. The Y and Z sublattices contribute one each per primitive cell, so a volume-2 supercell holds 2 Na/K + 2 Mg + 2 F = 6 atoms.
 
-## Step 4 — read off the configurations
+## Step 5 — read off the configurations
 
 Each [`EnumeratedStructure`](@ref) carries an integer labeling; [`to_atom_labeling`](@ref) maps it back to the symbols you specified:
 
@@ -107,7 +137,7 @@ julia> e.supercells[e[1].supercell_id].snf
 
 (The SNF diagonal `[1, 1, 2]` is the shape of this supercell's quotient group.)
 
-## Step 5 — asymmetric per-sublattice ratios
+## Step 6 — asymmetric per-sublattice ratios
 
 Two examples to anchor the spec:
 
@@ -129,6 +159,8 @@ Three concepts, three Enumlib calls:
 2. **Heterogeneous sublattices** with distinct species per position ([`Sites`](@ref), atomic-symbol form).
 3. **Per-sublattice concentration** stated per-position instead of globally ([`Concentration(sites, per_sublattice)`](@ref)).
 
+Plus one habit worth keeping: [`count_inequivalent`](@ref) before [`enumerate`](@ref Base.enumerate), so you learn the size of a run before paying for it.
+
 That's the whole Regime C user surface. The output [`Enumeration`](@ref) flows into POSCAR export ([Tutorial 03](03-dft-training-database.md)), cluster-expansion training (JuCE), and the rest of the downstream toolchain the same way single-lattice outputs do.
 
 ## Where to go next
@@ -137,3 +169,4 @@ That's the whole Regime C user surface. The output [`Enumeration`](@ref) flows i
 - **Generate POSCARs for the configurations above:** [Tutorial 03](03-dft-training-database.md) walks through the POSCAR roundtrip for DFT/MLIP training; the same `write_enumeration_archive` works on multilattice [`Enumeration`](@ref) values.
 - **Multi-sublattice with non-trivial concentrations on multiple sublattices** (perovskite ABO₃ at A 1:1, B 1:1; HEAs on multi-sublattice parents): [Specify concentration per sublattice](../how-to/specify-per-sublattice-concentration.md) recipe.
 - **Understand the dispatch:** [Dispatch and the resource check](../explanation/dispatch-and-cost-gate.md) — Regime C runs on the recursive-stabilizer tree by default.
+- **Size a run without one:** [Count without enumerating](../how-to/count-without-enumerating.md) covers the breakdown fields and the unconstrained-range case; [Count from the command line](../how-to/count-from-the-command-line.md) does the same from a `struct_enum.in` with the standalone `polya.x`.

@@ -21,16 +21,16 @@ Enumlib carries four algorithms with overlapping coverage. They differ in *what 
 
 | Algorithm | Iterates | Best when | Where |
 |---|---|---|---|
-| **Exhaustive** (HF 2008) | All `k^n` colorings | The bitmap memory profile is desired explicitly; cross-checks against the tree | [exhaustive-2008](exhaustive-2008.md) |
+| **Exhaustive** (HF 2008) | All `k^n` colorings | The [bitmap](glossary.md#Bitmap) memory profile is desired explicitly; cross-checks against the tree | [exhaustive-2008](exhaustive-2008.md) |
 | **Multinomial** (HF 2012) | Only colorings at the target concentration | A specific `Concentration` is fixed; multinomial coefficient fits the memory budget | [multinomial-2012](multinomial-2012.md) |
 | **Multinomial-restricted** (HF 2012 §A.1) | Multinomial space with a per-site mask | Regime-C dense-mask cases where most slots survive the mask | [multinomial-2012](multinomial-2012.md) (§A.1) |
-| **Recursive stabilizer** (Morgan-Hart 2017) | A tree of partial colorings | `:auto`'s default for almost everything — unrestricted enumeration, Regime C, and the large-bitmap fixed-concentration case | [recursive-stabilizer-2017](recursive-stabilizer-2017.md) |
+| **Recursive stabilizer** (Morgan-Hart 2017) | A tree of partial colorings | `:auto`'s default for almost everything — unrestricted enumeration, [Regime C](glossary.md#Regime-A-/-B-/-C), and the large-bitmap fixed-concentration case | [recursive-stabilizer-2017](recursive-stabilizer-2017.md) |
 
 All four produce the same set of symmetry-inequivalent structures for any given input; the choice is purely computational. The [dispatch and the resource check](dispatch-and-cost-gate.md) explanation covers how `algorithm = :auto` picks one.
 
 ## Pólya counting — pricing without enumerating
 
-[`count_inequivalent`](@ref) implements the Burnside / Pólya orbit count for the same problem. It doesn't materialize structures; it just averages "number of colorings fixed by each group element" over the permutation group. Cost is `O(|G|·n)` per supercell — milliseconds even for hundreds of supercells.
+[`count_inequivalent`](@ref) implements the [Burnside](glossary.md#Burnside's-lemma) / Pólya orbit count for the same problem. It doesn't materialize structures; it just averages "number of colorings fixed by each group element" over the permutation group. Cost is `O(|G|·n)` per supercell — milliseconds even for hundreds of supercells.
 
 Two reasons to use it:
 
