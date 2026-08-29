@@ -2,6 +2,12 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.3.9 — 2026-08-29
+
+### Fixed
+
+- **`MinkowskiReduction` had no `[compat]` entry, which blocked registration in the General registry.** The v0.1.0 registration attempt ([General#154300](https://github.com/JuliaRegistries/General/pull/154300), 2026-04-29) failed AutoMerge on exactly this guideline — every non-stdlib dependency needs an upper-bounded compat entry — and was never followed up, so the bot auto-closed it as stale on 2026-06-09 and the package has been unregistered since. Now `MinkowskiReduction = "1"`, which is what actually resolves (1.5.0): Spacey 0.9 constrains it to `1.2.0 - 1`, so the registered 2.x and 3.x were never reachable. Suite passes unchanged.
+
 ## v0.3.8 — 2026-08-19
 
 ### Changed
