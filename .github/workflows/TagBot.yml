@@ -1,0 +1,61 @@
+name: TagBot
+
+# Creates the git tag and GitHub Release for a version once it merges into the
+# General registry, so the registry and this repo's releases cannot drift apart.
+#
+# HOW THIS INTERACTS WITH release.yml -- read before relying on it:
+#
+# The established flow here is tag-first: you push a v* tag by hand, release.yml
+# builds the three-platform binaries and creates the Release with them attached.
+# When TagBot then runs for that version it finds the tag and Release already
+# present and does nothing. That is the intended steady state -- TagBot is a
+# safety net, not the primary path.
+#
+# The net only works because of the SSH deploy key. GitHub deliberately does not
+# fire `on: push` workflows for refs pushed with the default GITHUB_TOKEN, so if
+# TagBot created a tag with that token (a version registered without a tag having
+# been pushed), release.yml and Documentation.yml would NOT run for it, and the
+# Release would carry no binaries -- looking complete while being useless to
+# anyone downloading enum.x. Passing the key via `ssh:` makes the tag push come
+# from the key instead, which does trigger both workflows.
+#
+# DOCUMENTER_KEY is a write-enabled ed25519 deploy key on this repo
+# (SHA256:y8g5J8Sg4odoEqAgliGi5h5J9QLo6PVKKU9ZAKcPxYs), base64-encoded as
+# Documenter expects. Documentation.yml already reads the same secret, so docs
+# deploys use it too. If it is ever rotated, replace both the deploy key and the
+# secret.
+
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+    inputs:
+      lookback:
+        default: "3"
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  deployments: read
+  issues: read
+  discussions: read
+  packages: read
+  pages: read
+  pull-requests: read
+  repository-projects: read
+  security-events: read
+  statuses: read
+
+jobs:
+  TagBot:
+    # JuliaTagBot comments on an issue in this repo to trigger a run; the actor
+    # check keeps arbitrary commenters from starting one.
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: JuliaRegistries/TagBot@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh: ${{ secrets.DOCUMENTER_KEY }}
