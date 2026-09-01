@@ -80,7 +80,7 @@ Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
 After enumeration, [`to_atom_labeling`](@ref) gives you the labeling back as atomic symbols:
 
 ```julia
-e = enumerate(p_fcc, Sites(p_fcc, [:Al, :Ga]); supercells = VolumeRange(2:2))
+e = enumerate_structures(p_fcc, Sites(p_fcc, [:Al, :Ga]); supercells = VolumeRange(2:2))
 to_atom_labeling(e[1], sites)    # → Vector{Symbol} like [:Al, :Ga]
 ```
 
@@ -88,7 +88,7 @@ When you write POSCARs via [`write_enumeration_archive`](@ref), the symbol mappi
 
 ```julia
 sites = Sites(p_fcc, [:Al, :Ga])
-e = enumerate(p_fcc, sites; supercells = VolumeRange(2:2))
+e = enumerate_structures(p_fcc, sites; supercells = VolumeRange(2:2))
 write_enumeration_archive("batch", e; super_periodic = false)
 # Each POSCAR's species line reads "Al Ga", picked up from the Sites mapping.
 ```

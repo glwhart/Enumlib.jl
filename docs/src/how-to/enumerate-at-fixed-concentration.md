@@ -19,7 +19,7 @@ Pass a [`Concentration`](@ref) via the `concentration` kwarg. The constructor of
 ```jldoctest fixed_conc
 julia> c = concentration_count([4, 4]; n_total = 8);   # 4 A + 4 B in an 8-cell
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c);
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(8:8), concentration = c);
 
 julia> length(e)
 94

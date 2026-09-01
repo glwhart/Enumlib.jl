@@ -13,7 +13,7 @@ p     = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])   # FCC primitive
 sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])                  # binary
 c     = concentration_count([4, 4]; n_total = 8)                # 50/50
 
-e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c)
+e = enumerate_structures(p, sites; supercells = VolumeRange(8:8), concentration = c)
 ```
 
 `e` carries 94 `EnumeratedStructure`s — the canonical HF 2012 reference count for FCC binary 4:4 at n=8.
@@ -24,7 +24,8 @@ e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c)
 
 ```julia
 open("POSCAR_1", "w") do io
-    to_poscar(io, e[1], p, e.supercells[e[1].supercell_id].hnf)
+    to_poscar(io, e[1], p, e.supercells[e[1].supercell_id].hnf;
+              super_periodic = false)
 end
 ```
 

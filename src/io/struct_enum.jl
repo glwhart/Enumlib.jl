@@ -32,7 +32,7 @@ Parse a Fortran-enumlib `struct_enum.in` stream into Enumlib.jl inputs. Returns
 
     (; title, latdim, parent, sites, selection, concentration, eps, mode)
 
-ready to feed `enumerate(parent, sites; supercells = selection, concentration)`.
+ready to feed `enumerate_structures(parent, sites; supercells = selection, concentration)`.
 
 Scope (chunk 9.1, v0.3): `bulk` only; `full` mode only; single- and multilattice
 with per-d-vector allowed labels; optional concentration block. `surf`/2D, the
@@ -168,7 +168,7 @@ function write_struct_enum_out(io::IO, e::Enumeration{D}; input, stdout_io::IO =
                              A[1, j], A[2, j], A[3, j], j))
     end
     println(io, @sprintf(" %3d # Number of points in the multilattice", nD))
-    for (idx, s) in Base.enumerate(sl)
+    for (idx, s) in enumerate(sl)
         cart = A * s.position
         labs = join(sort(collect(s.allowed_labels)), "/")
         println(io, @sprintf(" %14.8f %14.8f %14.8f        # d%02d d-vector, labels: %s",
@@ -183,7 +183,7 @@ function write_struct_enum_out(io::IO, e::Enumeration{D}; input, stdout_io::IO =
     else
         println(io, "Concentration check:"); println(io, "    T")
         println(io, "Including only structures of which the concentration   of each atom is in the range:")
-        for (t, (lo, hi)) in Base.enumerate(input.concentration.bounds)
+        for (t, (lo, hi)) in enumerate(input.concentration.bounds)
             println(io, @sprintf("Type %d:    %d/  %d --    %d/  %d", t,
                                  numerator(lo), denominator(lo), numerator(hi), denominator(hi)))
         end
@@ -195,7 +195,7 @@ function write_struct_enum_out(io::IO, e::Enumeration{D}; input, stdout_io::IO =
     # ---- data rows (27 tokens each) ----
     volcount = Dict{Int,Int}()
     hnf_index = Dict{Int,Int}(); next_hnf = 0
-    for (strN, s) in Base.enumerate(e.structures)
+    for (strN, s) in enumerate(e.structures)
         sc = e.supercells[s.supercell_id]
         H  = sc.hnf.matrix
         n  = volume(sc.hnf)

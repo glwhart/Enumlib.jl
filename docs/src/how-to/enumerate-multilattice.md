@@ -2,7 +2,7 @@
 
 When the parent isn't a single-site Bravais lattice, it carries a **dset** — two or more basis sites per primitive cell. For example, HCP (2 atoms/cell), diamond (2 atoms), zincblende (2 atoms), perovskite ABO₃ (5 atoms), etc. Two cases:
 
-- **Uniform sublattices** (every dset position carries the same allowed labels) — handled by the HF 2009 multilattice extension. Unrestricted enumeration via [`enumerate(parent, sites; supercells)`] just works.
+- **Uniform sublattices** (every dset position carries the same allowed labels) — handled by the HF 2009 multilattice extension. Unrestricted enumeration via [`enumerate_structures(parent, sites; supercells)`] just works.
 - **Heterogeneous sublattices** (different allowed labels per dset position — perovskite-style A-site cation mixing while B-site stays fixed, etc.) — handled by `:recursive_stabilizer` with a site-mask filter. Requires a [`Concentration`](@ref) or [`ConcentrationRange`](@ref) kwarg (unrestricted heterogeneous enumeration isn't supported — Regime C only makes sense at fixed concentration).
 
 ## Setup — HCP binary
@@ -25,7 +25,7 @@ julia> ndset(p)
 Same call shape as the single-site case — the dispatcher detects the multilattice regime and routes through HF 2009:
 
 ```jldoctest mlat_recipe
-julia> e = enumerate(p, sites; supercells = VolumeRange(1:4));
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(1:4));
 
 julia> length(e)
 333
@@ -34,7 +34,7 @@ julia> length(e)
 The per-volume breakdown matches the Fortran enumlib reference values (full mode, no label-exchange elimination, drops super-periodic colorings — Enumlib's default):
 
 ```jldoctest mlat_recipe
-julia> [length(enumerate(p, sites; supercells = VolumeRange(n:n))) for n in 1:6]
+julia> [length(enumerate_structures(p, sites; supercells = VolumeRange(n:n))) for n in 1:6]
 6-element Vector{Int64}:
     3
    10
@@ -76,7 +76,7 @@ julia> p_d = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]]);
 
 julia> s_d = Sites(p_d, [0, 1]);   # label 0 = C, label 1 = B (uniform on both sublattices)
 
-julia> [length(enumerate(p_d, s_d; supercells = VolumeRange(n:n))) for n in 1:4]
+julia> [length(enumerate_structures(p_d, s_d; supercells = VolumeRange(n:n))) for n in 1:4]
 4-element Vector{Int64}:
    3
    7
@@ -106,7 +106,7 @@ using Enumlib
 A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
 p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
 sites = Sites(p, [0, 1])
-e = enumerate(p, sites; supercells = VolumeRange(1:4))
+e = enumerate_structures(p, sites; supercells = VolumeRange(1:4))
 
 # One POSCAR
 open("POSCAR_001", "w") do io
@@ -179,7 +179,7 @@ julia> # n = 2 supercell has 4 sites = 2 cations + 2 anions. For
        # mapping above determines the order):
        c = concentration_count([1, 1, 2]; n_total = 4);
 
-julia> length(enumerate(p, sites_het; supercells = VolumeRange(2:2), concentration = c))
+julia> length(enumerate_structures(p, sites_het; supercells = VolumeRange(2:2), concentration = c))
 2
 ```
 

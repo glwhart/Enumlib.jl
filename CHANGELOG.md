@@ -2,6 +2,25 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## v0.4.0 — 2026-09-01
+
+### Breaking
+
+- **`enumerate(parent, sites; …)` is now `enumerate_structures(parent, sites; …)`.** The old name extended `Base.enumerate`, giving a Base iterator function an unrelated meaning. It was not type piracy — both argument types belong to this package — but it forced the package's own code to write `Base.enumerate(...)` in `src/io/struct_enum.jl` just to get the iterator back, which is a fair sign the overload was costing more than it bought. Suggested by @goerz during registration review ([General#166515](https://github.com/JuliaRegistries/General/pull/166515)). There is no deprecation shim: `enumerate` now means what Base means by it, and nothing else. Call sites need the new name; nothing else about the signature or behaviour changed.
+
+### Removed
+
+- **The `papers/` directory.** It held eight published journal PDFs — 7.2 MB of a 9.7 MB source tarball that every `Pkg.add("Enumlib")` downloaded, and most of the package's total weight. Several were written by other people, and none of them are ours to redistribute under this package's MIT license. All are now cited by DOI in the README, and Hart's own papers are linked to their freely readable copies at bsg.byu.edu. Raised by @goerz in the same review.
+
+### Fixed
+
+- **The README's quick-start example could not run.** It still described a "v0.2 pre-release" and used the pre-v0.3 API: `Spacey.pointGroup` (renamed `pointgroup` in Spacey 0.9), and `getSymInequivHNFs` / `getFixingOps` / `getPermG` / `getUniqueColorings`, all unexported since v0.3. It also told readers the package was unregistered, pointed `Pkg.develop` at `path =` instead of `url =`, hardcoded `0.3.8` into a `/releases/latest/` download URL that breaks at every release, and cited four papers through `msg.byu.edu` links that all return 404 (the group's domain moved to `bsg.byu.edu`). Rewritten, and every example in it was executed before being committed.
+- **`docs/src/how-to/write-poscars-for-dft.md` showed a `to_poscar` call that throws** — `super_periodic` is a required keyword and the example omitted it. The how-to code blocks are `julia` rather than `jldoctest`, so nothing executed them; that is worth revisiting more broadly.
+
+### Added
+
+- **`RELEASING.md`**, documenting the release order: register first, let TagBot create the tag after the registry merges, and let the binary build follow from that tag push. The previous practice of tagging before registering is unsafe — a commit submitted for registration may need amending, leaving a tag pointing at something that was never registered. Also noted by @goerz.
+
 ## v0.3.9 — 2026-08-29
 
 ### Fixed

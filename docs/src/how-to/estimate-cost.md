@@ -35,7 +35,7 @@ The same `estimate_cost` call is made internally by `enumerate(...)`. If the pre
 
 ```jldoctest cost_recipe; filter = r"\d+\.\d+ MiB"
 julia> try
-           enumerate(p, sites; supercells = VolumeRange(20:20), memory_budget = 1)
+           enumerate_structures(p, sites; supercells = VolumeRange(20:20), memory_budget = 1)
        catch e
            e isa EnumerationTooLargeError || rethrow()
            format_bytes(e.estimate.peak_memory_bytes)

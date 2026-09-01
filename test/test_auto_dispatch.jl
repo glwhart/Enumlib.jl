@@ -50,7 +50,7 @@ using Enumlib
         c = concentration_count([6, 6]; n_total = 12)
         # Budget where multinomial bitmap (116 bytes) > budget × 0.8 (= 80 → 100 budget).
         # But the gate would also fire because output > 100. So bypass with skip_resource_check.
-        e = enumerate(parent, sites; supercells = VolumeRange(12:12), concentration = c,
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(12:12), concentration = c,
                                      memory_budget = 100, skip_resource_check = true)
         # We don't have a direct way to inspect chosen algorithm from Enumeration,
         # but we can verify the count matches the chunk-6 reference (which means
@@ -66,7 +66,7 @@ using Enumlib
         for (n, a, b, ref) in [(4, 2, 2, 5), (8, 4, 4, 94),
                                (8, 3, 5, 86), (12, 6, 6, 1552)]
             c = concentration_count([a, b]; n_total = n)
-            e_auto = enumerate(parent, sites; supercells = VolumeRange(n:n),
+            e_auto = enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                               concentration = c)
             @test length(e_auto) == ref
         end
@@ -85,9 +85,9 @@ using Enumlib
         ehnfs = ExplicitHNFs([best_h])
 
         cnt_count = count_inequivalent(parent, sites; supercells = ehnfs, concentration = c)
-        cnt_rs = length(enumerate(parent, sites; supercells = ehnfs, concentration = c,
+        cnt_rs = length(enumerate_structures(parent, sites; supercells = ehnfs, concentration = c,
                                                   algorithm = :recursive_stabilizer))
-        cnt_m = length(enumerate(parent, sites; supercells = ehnfs, concentration = c,
+        cnt_m = length(enumerate_structures(parent, sites; supercells = ehnfs, concentration = c,
                                                  algorithm = :multinomial))
         @test cnt_count == cnt_rs == cnt_m
     end

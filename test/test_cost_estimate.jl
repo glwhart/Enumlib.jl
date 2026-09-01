@@ -156,13 +156,13 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         # Default memory_budget is several GiB; FCC at n ≤ 12 is far smaller.
-        @test_nowarn enumerate(parent, sites; supercells = VolumeRange(12:12))
+        @test_nowarn enumerate_structures(parent, sites; supercells = VolumeRange(12:12))
     end
 
     @testset "memory_budget = 1 fires EnumerationTooLargeError" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        @test_throws EnumerationTooLargeError enumerate(parent, sites;
+        @test_throws EnumerationTooLargeError enumerate_structures(parent, sites;
                                                          supercells = VolumeRange(4:4),
                                                          memory_budget = 1)
     end
@@ -180,7 +180,7 @@ using Enumlib
     @testset "default budget fires for FCC binary :exhaustive n=30" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        @test_throws EnumerationTooLargeError enumerate(parent, sites;
+        @test_throws EnumerationTooLargeError enumerate_structures(parent, sites;
             supercells = VolumeRange(30:30), algorithm = :exhaustive)
         # Same case via estimate_cost — predicted peak far exceeds the
         # default 25%-of-RAM-or-2-GiB budget for any reasonable machine.
@@ -210,7 +210,7 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         e = @test_logs (:warn, r"exceeds memory_budget") match_mode = :any begin
-            enumerate(parent, sites; supercells = VolumeRange(4:4),
+            enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                      memory_budget = 1, on_overflow = :warn)
         end
         @test length(e) == 19   # ran to completion despite the warn
@@ -219,7 +219,7 @@ using Enumlib
     @testset "on_overflow = :ignore proceeds silently" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4),
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                      memory_budget = 1, on_overflow = :ignore)
         @test length(e) == 19
     end
@@ -229,7 +229,7 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         # Even with absurd budget = 1, skip_resource_check = true runs without
         # error because the gate is never consulted.
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4),
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                      memory_budget = 1, skip_resource_check = true)
         @test length(e) == 19
     end
@@ -239,7 +239,7 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         try
-            enumerate(parent, sites; supercells = VolumeRange(4:4), memory_budget = 1)
+            enumerate_structures(parent, sites; supercells = VolumeRange(4:4), memory_budget = 1)
             @test false   # should have thrown
         catch err
             @test err isa EnumerationTooLargeError

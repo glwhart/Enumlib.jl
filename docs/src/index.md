@@ -28,8 +28,7 @@ documentation tree:
 
 ```julia
 using Pkg
-Pkg.develop(url = "https://github.com/glwhart/Enumlib.jl")  # while unregistered
-# Pkg.add("Enumlib") # After the package is registered
+Pkg.add("Enumlib")
 using Enumlib
 ```
 
@@ -43,7 +42,7 @@ parent = ParentLattice([0.5 0.5 0.0;
                         0.0 0.5 0.5])             # FCC primitive
 sites  = Sites([Site([0.0, 0.0, 0.0], [0, 1])])   # binary case, one site
 
-enum = enumerate(parent, sites; supercells = VolumeRange(1:4))
+enum = enumerate_structures(parent, sites; supercells = VolumeRange(1:4))
 length(enum)
 ```
 

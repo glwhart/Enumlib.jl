@@ -8,18 +8,14 @@ Derivative-structure / superlattice enumeration in Julia. Generates the symmetry
 
 This package is a Julia successor to the Fortran [`enumlib`](https://github.com/msg-byu/enumlib) by Gus L. W. Hart and Rodney W. Forcade. The algorithms and conventions are the same; the implementation is from-scratch in Julia and integrates with the modern Julia ecosystem (`Pkg`, `Spacey`, `MinkowskiReduction`, `NormalForms`, etc.).
 
-> **Status: v0.2 pre-release (in active development).** The user-facing API has changed substantially across chunks 1–11. This README will be rewritten at the v0.2.0 release (Phase 12 of `docs/notes/v0.2-plan.md`); until then, the snippet below shows the legacy lattice-coordinate API. The new public API surface — `enumerate(parent, sites; supercells, concentration, …)`, `count_inequivalent`, `estimate_cost`, plus `Concentration`/`ConcentrationRange` types — is documented in source docstrings and in `docs/notes/v0.2-plan.md`.
+> **Status: 0.x.** The public API is settled enough to use and is covered by tests and docs, but minor releases may still make breaking changes. The full API reference lives at the [documentation site](https://glwhart.github.io/Enumlib.jl/dev).
 
 ## Installation
 
-While the package is unregistered, install via dev path:
-
 ```julia
 using Pkg
-Pkg.develop(path = "https://github.com/glwhart/Enumlib.jl")
+Pkg.add("Enumlib")
 ```
-
-`Pkg.add("Enumlib")` will work after JuliaRegistrator publishes v0.2.0.
 
 ### Standalone binaries (no Julia required)
 
@@ -28,9 +24,11 @@ Each release attaches a per-platform tarball containing `enum.x`, `polya.x`, and
 Julia runtime bundled in, so nothing else needs installing:
 
 ```bash
-curl -sSL https://github.com/glwhart/Enumlib.jl/releases/latest/download/enumlib-jl-0.3.8-linux-x86_64.tar.gz | tar xz
-export PATH="$PWD/enumlib-jl-0.3.8-linux-x86_64/bin:$PATH"
-enum.x --version      # enum.x (Enumlib.jl) 0.3.8
+VER=$(curl -fsSL https://api.github.com/repos/glwhart/Enumlib.jl/releases/latest \
+      | grep -o '"tag_name": *"v[^"]*"' | cut -d'"' -f4 | tr -d v)
+curl -fsSL "https://github.com/glwhart/Enumlib.jl/releases/download/v${VER}/enumlib-jl-${VER}-linux-x86_64.tar.gz" | tar xz
+export PATH="$PWD/enumlib-jl-${VER}-linux-x86_64/bin:$PATH"
+enum.x --version
 ```
 
 Built for `linux-x86_64`, `macos-aarch64`, and `windows-x86_64`; each asset has a
@@ -38,56 +36,76 @@ matching `.sha256`. The executables locate their bundled libraries relative to
 their own path, so no `LD_LIBRARY_PATH` / `DYLD_*` variable needs setting — keep
 `bin/` and `lib/` together and invoke `bin/enum.x` from anywhere.
 
-**macOS note.** The binaries are not yet code-signed or notarized. If you download
+**macOS note.** The binaries are not code-signed or notarized. If you download
 through a browser, Gatekeeper quarantines the bundled `.dylib`s and the app will
 refuse to start. Clear the flag on the extracted tree once:
 
 ```bash
-xattr -dr com.apple.quarantine enumlib-jl-0.3.8-macos-aarch64
+xattr -dr com.apple.quarantine enumlib-jl-*-macos-aarch64
 ```
 
 Downloading with `curl` or `wget` avoids the quarantine flag entirely.
 
-## Quick start (legacy lattice-coordinate API; pre-v0.2.0)
+## Quick start
 
-Enumerate symmetry-inequivalent superlattices of FCC up to 8 sites, count the binary colorings per supercell:
+Enumerate the symmetry-distinct binary decorations of FCC up to four atoms per cell:
 
 ```julia
 using Enumlib
-using Spacey: pointGroup
 
-# FCC parent lattice (columns are basis vectors)
-A = [0.0 0.5 0.5;
-     0.5 0.0 0.5;
-     0.5 0.5 0.0]
+parent = ParentLattice([0.5 0.5 0.0;
+                        0.5 0.0 0.5;
+                        0.0 0.5 0.5])              # FCC primitive cell
+sites  = Sites([Site([0.0, 0.0, 0.0], [0, 1])])    # one site, two species
 
-LG, _ = pointGroup(A)              # lattice-coordinate point group
-
-# All symmetry-distinct HNFs up to volume 8
-hnfs = vcat([getSymInequivHNFs(n, LG) for n in 1:8]...)
-@show length(hnfs)                 # 55
-
-# Count symmetry-distinct binary colorings per supercell
-counts = map(hnfs) do h
-    fixOps = getFixingOps(h, LG)   # renamed from getFixingLatticeOps in chunk 3
-    pG     = getPermG(h, fixOps, LG)
-    length(getUniqueColorings(2, pG))
-end
-sum(counts)                        # matches the table in Hart & Forcade 2008
+e = enumerate_structures(parent, sites; supercells = VolumeRange(1:4))
+length(e)                                          # 29
 ```
 
-`radiusEnumHNFs(A; maxVol=15)` returns HNFs sorted by Minkowski-reduced cell radius if you want enumeration capped by reach instead of volume. `getSymInequivHNFsByCellRadius(A, x)` filters by an explicit radius bound.
+Count without enumerating — the same number, without building the structures:
 
-For VASP-style structure I/O, the package also provides `enumStr`, `readStructenumout` (reads `struct_enum.out`), `readStrIn` (UNCLE `structures.in`), and `readEnergies`. These legacy I/O functions will move to `Enumlib.LegacyImport.foo(...)` at v0.2.0; the new POSCAR-based DFT/MLIP roundtrip workflow is in chunk 11 (`to_poscar`, `write_enumeration_archive`, `read_results`).
+```julia
+count_inequivalent(parent, sites; supercells = VolumeRange(1:4))   # 29
+```
+
+Restrict to a fixed concentration (equal parts, at volume 4):
+
+```julia
+c  = Concentration([1//2, 1//2])
+e2 = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = c)
+length(e2)                                         # 5
+```
+
+Write one of them as a VASP POSCAR:
+
+```julia
+s = e2[1]
+open("POSCAR.1", "w") do io
+    to_poscar(io, s, parent, e2.supercells[s.supercell_id].hnf;
+              super_periodic = false, species_symbols = ["Ag", "Au"])
+end
+```
+
+Before launching something large, ask what it will cost:
+
+```julia
+estimate_cost(parent, sites; supercells = VolumeRange(1:4))
+```
+
+For multilattices (HCP, perovskite, Heusler), per-sublattice concentrations, algorithm
+selection, and the DFT/MLIP round-trip workflow, see the
+[documentation](https://glwhart.github.io/Enumlib.jl/dev).
 
 ## Citing
 
-If you use this package in published work, please cite:
+If you use this package in published work, please cite the algorithm papers:
 
-- Gus L. W. Hart and Rodney W. Forcade, "[Algorithm for generating derivative structures](http://msg.byu.edu/docs/papers/GLWHart-enumeration.pdf)," *Phys. Rev. B* **77**, 224115 (2008).
-- Gus L. W. Hart and Rodney W. Forcade, "[Generating derivative structures from multilattices: Application to hcp alloys](http://msg.byu.edu/docs/papers/multi.pdf)," *Phys. Rev. B* **80**, 014120 (2009).
-- Gus L. W. Hart, Lance J. Nelson, and Rodney W. Forcade, "[Generating derivative structures at a fixed concentration](http://msg.byu.edu/docs/papers/enum3.pdf)," *Comp. Mat. Sci.* **59**, 101–107 (2012).
-- Wiley S. Morgan, Gus L. W. Hart, and Rodney W. Forcade, "[Generating derivative superstructures for systems with high configurational freedom](http://msg.byu.edu/docs/papers/recStabEnumeration.pdf)," *Comp. Mat. Sci.* **136**, 144–149 (2017).
+- Gus L. W. Hart and Rodney W. Forcade, "Algorithm for generating derivative structures," *Phys. Rev. B* **77**, 224115 (2008). [doi:10.1103/PhysRevB.77.224115](https://doi.org/10.1103/PhysRevB.77.224115) · [PDF](https://bsg.byu.edu/docs/papers/GLWHart-enumeration.pdf)
+- Gus L. W. Hart and Rodney W. Forcade, "Generating derivative structures from multilattices: Application to hcp alloys," *Phys. Rev. B* **80**, 014120 (2009). [doi:10.1103/PhysRevB.80.014120](https://doi.org/10.1103/PhysRevB.80.014120) · [PDF](https://bsg.byu.edu/docs/papers/multi.pdf)
+- Gus L. W. Hart, Lance J. Nelson, and Rodney W. Forcade, "Generating derivative structures at a fixed concentration," *Comp. Mat. Sci.* **59**, 101–107 (2012). [doi:10.1016/j.commatsci.2012.02.015](https://doi.org/10.1016/j.commatsci.2012.02.015) · [PDF](https://bsg.byu.edu/docs/papers/enum3.pdf)
+- Wiley S. Morgan, Gus L. W. Hart, and Rodney W. Forcade, "Generating derivative superstructures for systems with high configurational freedom," *Comp. Mat. Sci.* **136**, 144–149 (2017). [doi:10.1016/j.commatsci.2017.04.015](https://doi.org/10.1016/j.commatsci.2017.04.015) · [PDF](https://bsg.byu.edu/docs/papers/recStabEnumeration.pdf)
+
+The Pólya counting path additionally draws on Conrad W. Rosenbrock, Wiley S. Morgan, Gus L. W. Hart, Stefano Curtarolo, and Rodney W. Forcade, "Numerical algorithm for Pólya enumeration theorem," *ACM J. Exp. Algorithmics* **21**, 1.11 (2016). [doi:10.1145/2955094](https://doi.org/10.1145/2955094)
 
 ## Relationship to the Fortran enumlib
 
@@ -109,6 +127,10 @@ Not covered:
 One deliberate difference in results: for symmetry-equivalent sublattices with overlapping label sets, `Enumlib.jl` keeps symmetry operations that the Fortran drops, so the two can report different counts. The wurtzite case is worked through in `docs/notes/chunk6.5-design.md` §11.4.
 
 Reach for the Fortran tool if you need arrow or 2D enumeration; otherwise `Enumlib.jl` covers the same ground, either as composable Julia functions or through the drop-in executables.
+
+## Contributing and releasing
+
+Release procedure — register first, tag second — is documented in [RELEASING.md](RELEASING.md).
 
 ## License
 

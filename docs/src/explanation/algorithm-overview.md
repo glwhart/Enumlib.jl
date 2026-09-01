@@ -54,7 +54,7 @@ For example, FCC binary at volumes 1 through 3 cumulative = 10 structures (2 + 2
 ```julia
 parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
 sites = Sites(parent, [0, 1])
-length(enumerate(parent, sites; supercells = VolumeRange(1:3)))   # 10
+length(enumerate_structures(parent, sites; supercells = VolumeRange(1:3)))   # 10
 ```
 
 See [Tutorial 01](../tutorials/01-first-enumeration.md) for the walkthrough. HF 2008 Table 1 also covers BCC and HCP (the latter via HF 2009's multilattice extension); HCP at n = 1..6 produces `[3, 10, 50, 270, 651, 4793]` and diamond at n = 1..4 produces `[3, 7, 33, 171]`.

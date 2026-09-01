@@ -36,7 +36,8 @@ export
     # v0.2 type catalog (chunk 4)
     SupercellSelection, VolumeRange, RadiusBound, ExplicitHNFs,
     enumerate_hnfs,
-    # v0.2 type catalog (chunk 5) — Base.enumerate is extended, not exported separately
+    # v0.2 type catalog (chunk 5)
+    enumerate_structures,
     Enumeration, EnumeratedStructure,
     to_labeling, default_memory_budget,
     # v0.2 type catalog (chunk 6)
@@ -440,7 +441,7 @@ include("cli.jl")
 # The radius-based enumeration entry points (formerly in radiusEnumeration.jl —
 # `radiusEnumHNFs`, `getHNFColorings`, `radEnumByXcellRadius`,
 # `getSymInequivHNFsByCellRadius`, `estimatedTime`) were dropped in v0.3-prep
-# (2026-05-17) — superseded by `enumerate(..., supercells = RadiusBound(...))`
+# (2026-05-17) — superseded by `enumerate_structures(..., supercells = RadiusBound(...))`
 # in chunk 4. The legacy `getPermG(h, fixingOps, LG::Vector{Matrix{Int}})`
 # method was their only remaining single-lattice consumer; removed in the same
 # pass.
@@ -475,13 +476,13 @@ using PrecompileTools: @setup_workload, @compile_workload
     @compile_workload begin
         _p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
         _s = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        _e = enumerate(_p, _s; supercells = VolumeRange(1:2))
+        _e = enumerate_structures(_p, _s; supercells = VolumeRange(1:2))
         _io = IOBuffer()
         _st = _e.structures[1]
         _hnf = _e.supercells[_st.supercell_id].hnf
         to_poscar(_io, _st, _p, _hnf; super_periodic = false)
         _cr = ConcentrationRange([(0 // 1, 1 // 1), (0 // 1, 1 // 1)])
-        enumerate(_p, _s; supercells = VolumeRange(2:2), concentration = _cr)
+        enumerate_structures(_p, _s; supercells = VolumeRange(2:2), concentration = _cr)
     end
 end
 

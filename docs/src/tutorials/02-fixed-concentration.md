@@ -54,7 +54,7 @@ Pass the [`Concentration`](@ref) as the `concentration` kwarg. Reuse `Concentrat
 ```jldoctest concentration_tutorial
 julia> c = Concentration([1//4, 3//4]);
 
-julia> e = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c)
+julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(8:8), concentration = c)
 Enumeration{3, Vector{Int8}} (42 configurations, 20 supercells, 1 site)
   parent: 48-op space group, 1-element dset
 ```
@@ -80,7 +80,7 @@ Some concentrations don't fit on every supercell size. Asking for "1/3 of specie
 ```jldoctest concentration_tutorial
 julia> c_third = Concentration([1//3, 2//3]);
 
-julia> e_third = enumerate(parent, sites; supercells = VolumeRange(3:6), concentration = c_third);
+julia> e_third = enumerate_structures(parent, sites; supercells = VolumeRange(3:6), concentration = c_third);
 
 julia> sort(unique(length(to_labeling(s)) for s in e_third))   # volumes actually enumerated
 2-element Vector{Int64}:
@@ -114,7 +114,7 @@ julia> concentrations_in_range(cr, 4)
 Three in-range concentrations at volume 4: pure B (0:4), one A in four (1:3), and 50/50 (2:2). [`enumerate`](@ref) returns the union of configurations across them:
 
 ```jldoctest concentration_tutorial
-julia> length(enumerate(parent, sites;
+julia> length(enumerate_structures(parent, sites;
                          supercells = VolumeRange(4:4),
                          concentration = cr))
 12

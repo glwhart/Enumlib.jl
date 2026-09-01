@@ -54,7 +54,7 @@ using Enumlib
     # ---- to_poscar header line ----
 
     @testset "header line format and content" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, e.structures[1], parent, hnf; super_periodic = false, enumlib_id = 7)
@@ -75,7 +75,7 @@ using Enumlib
         # Radius = average of |±a ± b ± c|/2 with a, b, c the Mink-reduced
         # supercell basis vectors (4 unique values by inversion symmetry).
         # Verify against a direct computation.
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, e.structures[1], parent, hnf; super_periodic = false)
@@ -92,7 +92,7 @@ using Enumlib
     end
 
     @testset "header includes comment_extras between metadata and energy slot" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(
@@ -119,7 +119,7 @@ using Enumlib
         # VASP-5+ species count line). It's still visible on line 4+D
         # of the POSCAR (the "counts" line) — verify that line carries
         # the actual per-color counts from the labeling.
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         for i = 1:min(5, length(e))
             structure = e.structures[i]
             hnf = e.supercells[structure.supercell_id].hnf
@@ -140,7 +140,7 @@ using Enumlib
     end
 
     @testset "super_periodic field reflects the kwarg" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
 
         for sp in (false, true)
@@ -161,7 +161,7 @@ using Enumlib
         # fractional-position components) to fix chirality. We check the invariant:
         # written basis is right-handed, AND Cartesian positions match the original.
         using LinearAlgebra
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, e.structures[1], parent, hnf; super_periodic = false)
@@ -185,7 +185,7 @@ using Enumlib
         # stays stable. A monochromatic all-color-0 structure (achievable via
         # include_superperiodic=true) writes "A B\n2 0\n" — both species,
         # second count is zero.
-        e_full = enumerate(
+        e_full = enumerate_structures(
             parent,
             sites;
             supercells = VolumeRange(2:2),
@@ -222,7 +222,7 @@ using Enumlib
     end
 
     @testset "default species_symbols = letters [A, B, C, ...]" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, e.structures[1], parent, hnf; super_periodic = false)
@@ -233,7 +233,7 @@ using Enumlib
     end
 
     @testset "user-supplied species_symbols passes through" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(
@@ -249,7 +249,7 @@ using Enumlib
     end
 
     @testset "species_symbols too short throws ArgumentError" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         @test_throws ArgumentError to_poscar(
@@ -265,7 +265,7 @@ using Enumlib
     # ---- Coordinate mode + position grouping ----
 
     @testset "Direct (fractional) coordinates only" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         hnf = e.supercells[e.structures[1].supercell_id].hnf
         io = IOBuffer()
         to_poscar(io, e.structures[1], parent, hnf; super_periodic = false)
@@ -274,7 +274,7 @@ using Enumlib
     end
 
     @testset "atoms grouped by species, totals match counts" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         # Pick a structure with non-trivial concentration.
         for structure in e.structures[1:min(3, length(e))]
             hnf = e.supercells[structure.supercell_id].hnf
@@ -358,7 +358,7 @@ using Enumlib
     @testset "written basis is right-handed (default left-handed parent)" begin
         using LinearAlgebra
         @test det(parent.A) < 0    # confirm the test parent is left-handed
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         for structure in e.structures
             hnf = e.supercells[structure.supercell_id].hnf
             io = IOBuffer()
@@ -370,7 +370,7 @@ using Enumlib
     end
 
     @testset "Cartesian positions preserved (left-handed parent → swap)" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         for structure in e.structures
             hnf = e.supercells[structure.supercell_id].hnf
             io = IOBuffer()
@@ -405,7 +405,7 @@ using Enumlib
         parent_rh = ParentLattice([0.5 0.5 0.0; 0.0 0.5 0.5; 0.5 0.0 0.5])
         @test det(parent_rh.A) > 0
         sites_rh = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        e_rh = enumerate(parent_rh, sites_rh; supercells = VolumeRange(2:2))
+        e_rh = enumerate_structures(parent_rh, sites_rh; supercells = VolumeRange(2:2))
         for structure in e_rh.structures
             hnf = e_rh.supercells[structure.supercell_id].hnf
             io = IOBuffer()
@@ -421,7 +421,7 @@ using Enumlib
         # Read back the POSCAR's numerical content and verify the *Cartesian
         # geometry* matches the input. (Per Q8 + chunk-11b.1 chirality fix:
         # value-equality on Cartesian positions, not byte-for-byte on basis.)
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         for (idx, structure) in enumerate(e.structures[1:min(5, length(e))])
             hnf = e.supercells[structure.supercell_id].hnf
             io = IOBuffer()
@@ -464,7 +464,7 @@ using Enumlib
         A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
         parent_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
         sites_hcp = Sites(parent_hcp, [0, 1])
-        e = enumerate(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
         @test length(e) == 10   # locked Fortran corpus anchor
 
         for (idx, structure) in enumerate(e.structures)
@@ -541,7 +541,7 @@ using Enumlib
         fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
         parent_d = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
         sites_d = Sites(parent_d, [0, 1])
-        e = enumerate(parent_d, sites_d; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent_d, sites_d; supercells = VolumeRange(2:2))
         @test length(e) == 7   # locked Fortran corpus anchor
 
         for structure in e.structures
@@ -569,7 +569,7 @@ using Enumlib
         A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
         parent_hcp = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
         sites_hcp = Sites(parent_hcp, [0, 1])
-        e = enumerate(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent_hcp, sites_hcp; supercells = VolumeRange(2:2))
 
         mktempdir() do tmp
             out = write_enumeration_archive(
@@ -613,7 +613,7 @@ using Enumlib
     # ============================================================================
 
     @testset "write_enumeration_archive produces a valid tarball" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(
                 tmp,
@@ -630,7 +630,7 @@ using Enumlib
     end
 
     @testset "tarball contains one POSCAR per structure + manifest" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         mktempdir() do tmp
             out = write_enumeration_archive(
@@ -659,7 +659,7 @@ using Enumlib
     end
 
     @testset "manifest TOML is well-formed and has [enumeration] + [structure.N]" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(
                 tmp,
@@ -704,7 +704,7 @@ using Enumlib
     end
 
     @testset "manifest radius matches POSCAR header radius" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(
                 tmp,
@@ -729,7 +729,7 @@ using Enumlib
     end
 
     @testset "manifest carries enumlib_version, sites, equivalence_classes" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(tmp, e; super_periodic = false)
             mktempdir() do extract_dir
@@ -755,7 +755,7 @@ using Enumlib
     end
 
     @testset "sidecar TOML written next to tarball, matches in-tarball manifest" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(tmp, e; super_periodic = false)
             stem = replace(out, r"\.(tar\.gz|tgz)$" => "")
@@ -774,7 +774,7 @@ using Enumlib
     end
 
     @testset "extra_per_structure merges into manifest entries" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         extras = [
             Dict("ordinal" => i, "v" => 4, "r" => 1.0 + 0.1i, "cv" => 0.5)
             for i = 1:length(e)
@@ -799,7 +799,7 @@ using Enumlib
     end
 
     @testset "extra_per_structure reserved keys are not overwritten" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         # Try to clobber a reserved key; writer's value must win.
         extras = [Dict("concentration" => "BOGUS") for _ = 1:length(e)]
         mktempdir() do tmp
@@ -815,7 +815,7 @@ using Enumlib
     end
 
     @testset "extra_per_structure length mismatch throws" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             @test_throws ArgumentError write_enumeration_archive(
                 tmp, e; super_periodic = false,
@@ -825,7 +825,7 @@ using Enumlib
     end
 
     @testset "explicit .tar.gz path is honored verbatim" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             explicit_path = joinpath(tmp, "my_specific_name.tar.gz")
             out = write_enumeration_archive(explicit_path, e; super_periodic = false)
@@ -835,7 +835,7 @@ using Enumlib
     end
 
     @testset "auto-naming includes timestamp + label" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out =
                 write_enumeration_archive(tmp, e; super_periodic = false, label = "MyLabel")
@@ -848,7 +848,7 @@ using Enumlib
     end
 
     @testset "default label is 'enum'" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(tmp, e; super_periodic = false)
             @test startswith(basename(out), "enumlib_enum_")
@@ -856,7 +856,7 @@ using Enumlib
     end
 
     @testset "keep_directory leaves the assembled directory next to tarball" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         mktempdir() do tmp
             out = write_enumeration_archive(
                 joinpath(tmp, "kd_test.tar.gz"),
@@ -919,7 +919,7 @@ using Enumlib
     # ---- read_results ----
 
     @testset "read_results from directory: round-trip dict equality" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         mktempdir() do tmp
             out = write_enumeration_archive(
@@ -941,7 +941,7 @@ using Enumlib
     end
 
     @testset "read_results from tarball: extract + read" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         n = length(e)
         mktempdir() do tmp
             # Write archive + keep dir, fill energies, repack to a fresh tarball.
@@ -967,7 +967,7 @@ using Enumlib
     end
 
     @testset "read_results skips empty energy_eV= slots, @info on missing" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         mktempdir() do tmp
             out = write_enumeration_archive(
@@ -992,7 +992,7 @@ using Enumlib
     end
 
     @testset "read_results throws on malformed POSCAR header" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         mktempdir() do tmp
             out = write_enumeration_archive(
                 tmp,
@@ -1018,7 +1018,7 @@ using Enumlib
     end
 
     @testset "read_results throws on unparseable energy value" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         mktempdir() do tmp
             out = write_enumeration_archive(
                 tmp,
@@ -1076,7 +1076,7 @@ using Enumlib
     # ---- attach_results ----
 
     @testset "attach_results pairs IDs to structures" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         results = Dict(i => -i * 1.0 for i = 1:n)
         pairs = attach_results(e, results)
@@ -1090,14 +1090,14 @@ using Enumlib
     end
 
     @testset "attach_results out-of-range ID throws" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(2:2))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2))
         n = length(e)
         @test_throws KeyError attach_results(e, Dict(n + 1 => -1.0))
         @test_throws KeyError attach_results(e, Dict(0 => -1.0))
     end
 
     @testset "attach_results @infos missing IDs (partial fill)" begin
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
         n = length(e)
         # Provide energies for only odd IDs.
         partial = Dict(i => -i * 1.0 for i = 1:2:n)
@@ -1134,7 +1134,7 @@ using Enumlib
 
         # Step 3 — enumerate.
         enum =
-            enumerate(parent_t, sites_t; supercells = VolumeRange(4:4), concentration = c)
+            enumerate_structures(parent_t, sites_t; supercells = VolumeRange(4:4), concentration = c)
         @test length(enum) == 5
 
         mktempdir() do batch_dir
@@ -1186,7 +1186,7 @@ using Enumlib
     end
 
     @testset "End-to-end pipeline: enumerate → archive → fill → read → attach" begin
-        e = enumerate(
+        e = enumerate_structures(
             parent,
             sites;
             supercells = VolumeRange(4:4),

@@ -1,14 +1,14 @@
 """
-    enumerate(parent::ParentLattice{D}, sites::Sites{D};
-              supercells::SupercellSelection,
-              concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
-              algorithm::Symbol = :auto,
-              memory_budget::Int = default_memory_budget(),
-              on_overflow::Symbol = :error,
-              partition_threshold::Int = 100,
-              on_partition_overflow::Symbol = :error,
-              include_superperiodic::Bool = false,
-              skip_resource_check::Bool = false) -> Enumeration{D, Vector{Int8}}
+    enumerate_structures(parent::ParentLattice{D}, sites::Sites{D};
+                         supercells::SupercellSelection,
+                         concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
+                         algorithm::Symbol = :auto,
+                         memory_budget::Int = default_memory_budget(),
+                         on_overflow::Symbol = :error,
+                         partition_threshold::Int = 100,
+                         on_partition_overflow::Symbol = :error,
+                         include_superperiodic::Bool = false,
+                         skip_resource_check::Bool = false) -> Enumeration{D, Vector{Int8}}
 
 Enumerate symmetry-inequivalent derivative structures of `parent` decorated by labelings drawn from `sites.allowed_labels`, over the supercells specified by `supercells`, optionally constrained to a fixed `concentration` or `ConcentrationRange`.
 
@@ -44,7 +44,7 @@ julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 
 **Unrestricted enumeration** (no concentration): all 19 symmetry-inequivalent binary FCC structures at supercell volume 4.
 ```jldoctest enumerate_examples
-julia> e = enumerate(p, sites; supercells = VolumeRange(4:4));
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(4:4));
 
 julia> length(e)
 19
@@ -61,7 +61,7 @@ julia> to_labeling(e[1])
 ```jldoctest enumerate_examples
 julia> c = concentration_count([4, 4]; n_total = 8);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c);
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(8:8), concentration = c);
 
 julia> length(e)
 94
@@ -71,7 +71,7 @@ julia> length(e)
 ```jldoctest enumerate_examples
 julia> cr = ConcentrationRange([(1//12, 2//12), (10//12, 11//12)]);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(12:12), concentration = cr);
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(12:12), concentration = cr);
 
 julia> length(e)
 216
@@ -79,14 +79,14 @@ julia> length(e)
 
 **Explicit algorithm** — `:recursive_stabilizer` (Morgan 2017) on the same fixed-concentration case as before. Returns the same 94 structures; the algorithm-equivalence guarantee.
 ```jldoctest enumerate_examples
-julia> e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = c,
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(8:8), concentration = c,
                      algorithm = :recursive_stabilizer);
 
 julia> length(e)
 94
 ```
 """
-function Base.enumerate(parent::ParentLattice{D}, sites::Sites{D};
+function enumerate_structures(parent::ParentLattice{D}, sites::Sites{D};
                         supercells::SupercellSelection,
                         concentration::Union{Nothing, Concentration, ConcentrationRange} = nothing,
                         algorithm::Symbol = :auto,
@@ -734,7 +734,7 @@ julia> count_inequivalent(p, sites; supercells = VolumeRange(12:12))
 7140
 ```
 
-**Include super-periodics** — adds the 745 super-periodic orbits that the default policy drops (HF 2008 step 5d). Matches `length(enumerate(...; include_superperiodic = true))`.
+**Include super-periodics** — adds the 745 super-periodic orbits that the default policy drops (HF 2008 step 5d). Matches `length(enumerate_structures(...; include_superperiodic = true))`.
 ```jldoctest count_examples
 julia> count_inequivalent(p, sites; supercells = VolumeRange(12:12), include_superperiodic = true)
 7885
@@ -900,7 +900,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 
 julia> try
-           enumerate(p, sites; supercells = VolumeRange(20:20), memory_budget = 1)
+           enumerate_structures(p, sites; supercells = VolumeRange(20:20), memory_budget = 1)
        catch e
            e isa EnumerationTooLargeError || rethrow()
            format_bytes(e.estimate.peak_memory_bytes)

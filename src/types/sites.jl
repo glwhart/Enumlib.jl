@@ -499,7 +499,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 
 julia> sites = Sites(p, [:Al, :Ga]);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(1:1));
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(1:1));
 
 julia> to_atom_labeling(e[1], sites)
 1-element Vector{Symbol}:

@@ -22,7 +22,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(2:2),
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(2:2),
                      concentration = concentration_count([1, 1]; n_total = 2));
 
 julia> e[1].orbit_size            # the only orbit at this concentration has size |G|/|Stab|
@@ -62,7 +62,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
 
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(2:2));
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(2:2));
 
 julia> to_labeling(e[1])
 2-element Vector{Int8}:
@@ -78,7 +78,7 @@ julia> p = ParentLattice(A_bcc);
 
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(8:8),
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(8:8),
                      concentration = concentration_count([4, 4]; n_total = 8));
 
 julia> to_labeling(e[7])
@@ -118,12 +118,12 @@ end
 """
     Enumeration{D,L}
 
-The output of `enumerate(parent, sites; supercells, ...)`. Holds the full result of an enumeration call: the parent lattice, the sites description, the list of distinct supercells encountered (shared across structures by index), and the structures themselves.
+The output of `enumerate_structures(parent, sites; supercells, ...)`. Holds the full result of an enumeration call: the parent lattice, the sites description, the list of distinct supercells encountered (shared across structures by index), and the structures themselves.
 
 `Enumeration` is iterable and indexable:
 
 ```julia
-e = enumerate(parent, sites; supercells = VolumeRange(2:6))
+e = enumerate_structures(parent, sites; supercells = VolumeRange(2:6))
 for s in e
     digits = to_labeling(s)
     # ...

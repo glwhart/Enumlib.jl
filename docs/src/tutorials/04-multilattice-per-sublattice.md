@@ -104,7 +104,7 @@ Odd volumes are *absent* rather than zero. `c` carries a denominator of 6 agains
 The `concentration` kwarg accepts the per-sublattice-constructed value directly — `enumerate` doesn't know or care which constructor produced it:
 
 ```jldoctest psl_tutorial
-julia> e = enumerate(parent, sites; supercells = VolumeRange(2:2), concentration = c)
+julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2), concentration = c)
 Enumeration{3, Vector{Int8}} (2 configurations, 2 supercells, 3 sites)
   parent: 48-op space group, 3-element dset
 ```

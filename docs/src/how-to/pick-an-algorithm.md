@@ -55,10 +55,10 @@ For the math behind each, see [exhaustive-2008](../explanation/exhaustive-2008.m
 
 If Enumlib predicts the request will exceed your `memory_budget` (default `max(2 GiB, 25% of system RAM)`), it throws an `EnumerationTooLargeError` before any work starts. The error names the algorithm `:auto` was about to use, the predicted memory, and your budget. Three responses:
 
-1. **Raise the budget.** `enumerate(...; memory_budget = 16_000_000_000)` for 16 GB.
+1. **Raise the budget.** `enumerate_structures(...; memory_budget = 16_000_000_000)` for 16 GB.
 2. **Force `:recursive_stabilizer`.** It streams, so it has no bitmap memory dependence. Slower per config but finishes:
    ```julia
-   enumerate(parent, sites; supercells, concentration, algorithm = :recursive_stabilizer)
+   enumerate_structures(parent, sites; supercells, concentration, algorithm = :recursive_stabilizer)
    ```
 3. **Subset the request.** Shrink the supercell volume range or pin a stricter `concentration`; the resource check refused for a reason. You might need to make your problem smaller for it to fit in memory.
 

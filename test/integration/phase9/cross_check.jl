@@ -62,7 +62,7 @@ mktempdir() do base
         open(io -> gen_in(io, c), joinpath(jd, "struct_enum.in"), "w")
         cp(joinpath(jd, "struct_enum.in"), joinpath(fd, "struct_enum.in"))
         inp = Enumlib.read_struct_enum_in(joinpath(jd, "struct_enum.in"))
-        e = enumerate(inp.parent, inp.sites; supercells = inp.selection, concentration = inp.concentration,
+        e = enumerate_structures(inp.parent, inp.sites; supercells = inp.selection, concentration = inp.concentration,
                       partition_threshold = 1_000_000, skip_resource_check = true)
         open(io -> Enumlib.write_struct_enum_out(io, e; input = inp, stdout_io = devnull),
              joinpath(jd, "struct_enum.out"), "w")

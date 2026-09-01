@@ -25,9 +25,9 @@ let
     p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
     s = Sites(p, [0, 1])
     c = concentration_count([2, 2]; n_total = 4)
-    enumerate(p, s; supercells = VolumeRange(2:2))
-    enumerate(p, s; supercells = VolumeRange(4:4), concentration = c, algorithm = :multinomial)
-    enumerate(p, s; supercells = VolumeRange(4:4), concentration = c, algorithm = :recursive_stabilizer)
+    enumerate_structures(p, s; supercells = VolumeRange(2:2))
+    enumerate_structures(p, s; supercells = VolumeRange(4:4), concentration = c, algorithm = :multinomial)
+    enumerate_structures(p, s; supercells = VolumeRange(4:4), concentration = c, algorithm = :recursive_stabilizer)
     count_inequivalent(p, s; supercells = VolumeRange(4:4))
 
     # Regime C warmup — touches :multinomial_restricted and the Regime-C
@@ -37,10 +37,10 @@ let
     sC = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
                 Site([0.25, 0.25, 0.25], [2, 3])])
     crC = ConcentrationRange([(0//1, 1//1) for _ in 1:4])
-    enumerate(pC, sC; supercells = VolumeRange(1:1), concentration = crC,
+    enumerate_structures(pC, sC; supercells = VolumeRange(1:1), concentration = crC,
               algorithm = :multinomial_restricted,
               partition_threshold = 1_000_000, skip_resource_check = true)
-    enumerate(pC, sC; supercells = VolumeRange(1:1), concentration = crC,
+    enumerate_structures(pC, sC; supercells = VolumeRange(1:1), concentration = crC,
               algorithm = :recursive_stabilizer,
               partition_threshold = 1_000_000, skip_resource_check = true)
 end
@@ -68,7 +68,7 @@ let
     s = Sites(p, [0, 1])
     for n in (4, 8, 12)
         print("  FCC binary, VolumeRange($n:$n): ")
-        b = @benchmark enumerate($p, $s; supercells = VolumeRange($n:$n)) samples=5 evals=1
+        b = @benchmark enumerate_structures($p, $s; supercells = VolumeRange($n:$n)) samples=5 evals=1
         println(BenchmarkTools.prettytime(minimum(b).time),
                 "  (", BenchmarkTools.prettymemory(minimum(b).memory),
                 ", ", minimum(b).allocs, " allocs)")
@@ -102,7 +102,7 @@ let
         for alg in (:exhaustive, :multinomial, :recursive_stabilizer)
             print("    $(rpad(":$alg", 24))")
             kw = alg == :exhaustive ? (;) : (; concentration = c)
-            b = @benchmark enumerate($p, $s; supercells = VolumeRange($n:$n), algorithm = $alg, $kw...) samples=5 evals=1
+            b = @benchmark enumerate_structures($p, $s; supercells = VolumeRange($n:$n), algorithm = $alg, $kw...) samples=5 evals=1
             println(BenchmarkTools.prettytime(minimum(b).time),
                     "  (", BenchmarkTools.prettymemory(minimum(b).memory),
                     ", ", minimum(b).allocs, " allocs)")
@@ -136,7 +136,7 @@ let
         ("Diamond n=1..4 (214)", p_dia, s_dia, 1:4),
     )
         print("  $(rpad(name, 24))")
-        b = @benchmark enumerate($parent, $sites; supercells = VolumeRange($vols)) samples=5 evals=1
+        b = @benchmark enumerate_structures($parent, $sites; supercells = VolumeRange($vols)) samples=5 evals=1
         println(BenchmarkTools.prettytime(minimum(b).time),
                 "  (", BenchmarkTools.prettymemory(minimum(b).memory),
                 ", ", minimum(b).allocs, " allocs)")
@@ -179,7 +179,7 @@ let
         println("  zinc-blende n=$n  (dense mask: every position active)")
         for alg in (:multinomial_restricted, :recursive_stabilizer)
             print("    $(rpad(":$alg", 26))")
-            b = @benchmark enumerate($p_zb, $s_zb;
+            b = @benchmark enumerate_structures($p_zb, $s_zb;
                                      supercells = VolumeRange($n:$n),
                                      concentration = $cr_zb,
                                      algorithm = $alg,
@@ -203,7 +203,7 @@ let
         println("  half-Heusler Y=Z={2} n=$n  (sparse mask: 2/3 of positions fixed)")
         for alg in (:multinomial_restricted, :recursive_stabilizer)
             print("    $(rpad(":$alg", 26))")
-            b = @benchmark enumerate($p_hh, $s_hh;
+            b = @benchmark enumerate_structures($p_hh, $s_hh;
                                      supercells = VolumeRange($n:$n),
                                      concentration = $cr_hh,
                                      algorithm = $alg,
@@ -247,13 +247,13 @@ let
     for n in (4, 8, 12)
         println("  FCC binary n=$n  (2^$n = $(2^n) bitmap slots)")
         print("    $(rpad(":exhaustive", 26))")
-        b = @benchmark enumerate($p_b, $s_b;
+        b = @benchmark enumerate_structures($p_b, $s_b;
                                  supercells = VolumeRange($n:$n)) samples=5 evals=1
         println(BenchmarkTools.prettytime(minimum(b).time),
                 "  (", BenchmarkTools.prettymemory(minimum(b).memory),
                 ", ", minimum(b).allocs, " allocs)")
         print("    $(rpad(":recursive_stabilizer", 26))")
-        b = @benchmark enumerate($p_b, $s_b;
+        b = @benchmark enumerate_structures($p_b, $s_b;
                                  supercells = VolumeRange($n:$n),
                                  concentration = $cr_b,
                                  algorithm = :recursive_stabilizer,
@@ -272,13 +272,13 @@ let
     for n in (4, 6)
         println("  FCC ternary n=$n  (3^$n = $(3^n) bitmap slots)")
         print("    $(rpad(":exhaustive", 26))")
-        b = @benchmark enumerate($p_t, $s_t;
+        b = @benchmark enumerate_structures($p_t, $s_t;
                                  supercells = VolumeRange($n:$n)) samples=5 evals=1
         println(BenchmarkTools.prettytime(minimum(b).time),
                 "  (", BenchmarkTools.prettymemory(minimum(b).memory),
                 ", ", minimum(b).allocs, " allocs)")
         print("    $(rpad(":recursive_stabilizer", 26))")
-        b = @benchmark enumerate($p_t, $s_t;
+        b = @benchmark enumerate_structures($p_t, $s_t;
                                  supercells = VolumeRange($n:$n),
                                  concentration = $cr_t,
                                  algorithm = :recursive_stabilizer,
@@ -299,13 +299,13 @@ let
     for n in (3, 5)
         println("  HCP binary n=$n  (2^$(2n) = $(2^(2n)) bitmap slots — 2 dset sites)")
         print("    $(rpad(":exhaustive", 26))")
-        b = @benchmark enumerate($p_hcp, $s_hcp;
+        b = @benchmark enumerate_structures($p_hcp, $s_hcp;
                                  supercells = VolumeRange($n:$n)) samples=5 evals=1
         println(BenchmarkTools.prettytime(minimum(b).time),
                 "  (", BenchmarkTools.prettymemory(minimum(b).memory),
                 ", ", minimum(b).allocs, " allocs)")
         print("    $(rpad(":recursive_stabilizer", 26))")
-        b = @benchmark enumerate($p_hcp, $s_hcp;
+        b = @benchmark enumerate_structures($p_hcp, $s_hcp;
                                  supercells = VolumeRange($n:$n),
                                  concentration = $cr_hcp,
                                  algorithm = :recursive_stabilizer,
@@ -352,7 +352,7 @@ let
         println("  FCC binary n=$n $(a):$(b)  (multinomial C = $(Enumlib.multinomial_count([a, b])))")
         for alg in (:multinomial, :recursive_stabilizer)
             print("    $(rpad(":$alg", 26))")
-            bm = @benchmark enumerate($p, $s; supercells = VolumeRange($n:$n),
+            bm = @benchmark enumerate_structures($p, $s; supercells = VolumeRange($n:$n),
                                        concentration = $c, algorithm = $alg,
                                        skip_resource_check = true) samples=3 evals=1
             println(BenchmarkTools.prettytime(minimum(bm).time),

@@ -138,7 +138,7 @@ The standard disjoint-set data structure, used here to merge supercell positions
 
 ### Supercell selection
 
-A `VolumeRange`, `RadiusBound`, or `ExplicitHNFs` value passed as the `supercells = ...` kwarg to `enumerate(...)`. Determines which HNFs are enumerated over. See [the supercell-selection how-to](../how-to/select-supercells.md).
+A `VolumeRange`, `RadiusBound`, or `ExplicitHNFs` value passed as the `supercells = ...` kwarg to `enumerate_structures(...)`. Determines which HNFs are enumerated over. See [the supercell-selection how-to](../how-to/select-supercells.md).
 
 ## Materials-science background
 

@@ -46,7 +46,7 @@ Five configurations — small enough to ship in a single batch. (For production 
 ## Step 2 — enumerate
 
 ```julia
-e = enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = c)
+e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = c)
 length(e)   # 5
 ```
 

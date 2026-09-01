@@ -138,7 +138,7 @@ using Enumlib
     @testset "to_atom_labeling translates integer to symbol labeling" begin
         p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
         sites = Sites(p, [:Al, :Ga])
-        e = Enumlib.enumerate(p, sites; supercells = VolumeRange(2:2))
+        e = Enumlib.enumerate_structures(p, sites; supercells = VolumeRange(2:2))
         for struc in e.structures
             int_lbl = to_labeling(struc)
             sym_lbl = to_atom_labeling(struc, sites)
@@ -154,7 +154,7 @@ using Enumlib
     @testset "to_atom_labeling on integer-only Sites throws" begin
         p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
         sites = Sites(p, [0, 1])
-        e = Enumlib.enumerate(p, sites; supercells = VolumeRange(1:1))
+        e = Enumlib.enumerate_structures(p, sites; supercells = VolumeRange(1:1))
         @test_throws ArgumentError to_atom_labeling(e[1], sites)
     end
 
@@ -184,7 +184,7 @@ using Enumlib
     @testset "write_enumeration_archive defaults species_symbols from Sites" begin
         p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
         sites = Sites(p, [:Al, :Ga])
-        e = Enumlib.enumerate(p, sites; supercells = VolumeRange(2:2))
+        e = Enumlib.enumerate_structures(p, sites; supercells = VolumeRange(2:2))
         mktempdir() do tmp
             out = Enumlib.write_enumeration_archive(
                 tmp, e; super_periodic = false, keep_directory = true,
@@ -200,7 +200,7 @@ using Enumlib
     @testset "write_enumeration_archive: explicit species_symbols= wins" begin
         p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
         sites = Sites(p, [:Al, :Ga])
-        e = Enumlib.enumerate(p, sites; supercells = VolumeRange(2:2))
+        e = Enumlib.enumerate_structures(p, sites; supercells = VolumeRange(2:2))
         mktempdir() do tmp
             out = Enumlib.write_enumeration_archive(
                 tmp, e;
@@ -226,7 +226,7 @@ using Enumlib
         ])
         @test species_symbols(sites) == [:Al, :Ga, :As]
         c = concentration_count([1, 1, 2]; n_total = 4)
-        e = Enumlib.enumerate(p, sites; supercells = VolumeRange(2:2), concentration = c)
+        e = Enumlib.enumerate_structures(p, sites; supercells = VolumeRange(2:2), concentration = c)
         @test length(e) == 2
 
         # Every structure's atom labeling has 1 Al, 1 Ga, 2 As.

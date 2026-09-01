@@ -4,7 +4,7 @@ How `enumerate(...)`'s `algorithm = :auto` dispatch picks one of the four enumer
 
 ## `algorithm = :auto` (the default)
 
-When you call `enumerate(parent, sites; supercells, concentration, algorithm = :auto)` (the default), Enumlib decides among:
+When you call `enumerate_structures(parent, sites; supercells, concentration, algorithm = :auto)` (the default), Enumlib decides among:
 
 - `:exhaustive` — [HF 2008](exhaustive-2008.md). Iterates `k^(n_D·n)` labelings.
 - `:multinomial` — [HF 2012](multinomial-2012.md). Iterates the multinomial coefficient labelings at the target concentration.

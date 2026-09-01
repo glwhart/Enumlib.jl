@@ -9,7 +9,7 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         c = concentration_count([2, 2]; n_total = 4)
         # Should NOT throw the chunk-8-reserved ArgumentError.
-        @test_nowarn enumerate(parent, sites; supercells = VolumeRange(4:4),
+        @test_nowarn enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                               concentration = c,
                                               algorithm = :recursive_stabilizer)
     end
@@ -17,7 +17,7 @@ using Enumlib
     @testset ":recursive_stabilizer requires a concentration" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        @test_throws ArgumentError enumerate(parent, sites;
+        @test_throws ArgumentError enumerate_structures(parent, sites;
                                               supercells = VolumeRange(4:4),
                                               algorithm = :recursive_stabilizer)
     end
@@ -33,7 +33,7 @@ using Enumlib
         for (n, a, b, ref) in [(4, 2, 2, 5), (8, 4, 4, 94),
                                (8, 3, 5, 86), (12, 6, 6, 1552)]
             c = concentration_count([a, b]; n_total = n)
-            e_rs = enumerate(parent, sites; supercells = VolumeRange(n:n),
+            e_rs = enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                             concentration = c,
                                             algorithm = :recursive_stabilizer)
             @test length(e_rs) == ref
@@ -47,7 +47,7 @@ using Enumlib
         for (n, a, b, ref) in [(4, 2, 2, 13), (8, 4, 4, 146),
                                (8, 3, 5, 86), (12, 6, 6, 1739)]
             c = concentration_count([a, b]; n_total = n)
-            e_rs = enumerate(parent, sites; supercells = VolumeRange(n:n),
+            e_rs = enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                             concentration = c,
                                             algorithm = :recursive_stabilizer,
                                             include_superperiodic = true)
@@ -65,11 +65,11 @@ using Enumlib
         for n in [4, 8], a in 1:n-1
             c = concentration_count([a, n - a]; n_total = n)
             for sp in (false, true)
-                e_rs = enumerate(parent, sites; supercells = VolumeRange(n:n),
+                e_rs = enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                                 concentration = c,
                                                 algorithm = :recursive_stabilizer,
                                                 include_superperiodic = sp)
-                e_m = enumerate(parent, sites; supercells = VolumeRange(n:n),
+                e_m = enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                                 concentration = c,
                                                 algorithm = :multinomial,
                                                 include_superperiodic = sp)
@@ -135,11 +135,11 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         for n in [4, 8]
-            unrestricted = length(enumerate(parent, sites; supercells = VolumeRange(n:n)))
+            unrestricted = length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n)))
             tree_total = 0
             for a in 1:n-1
                 c = concentration_count([a, n - a]; n_total = n)
-                e = enumerate(parent, sites; supercells = VolumeRange(n:n),
+                e = enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                               concentration = c,
                                               algorithm = :recursive_stabilizer)
                 tree_total += length(e)

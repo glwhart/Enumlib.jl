@@ -19,7 +19,7 @@ Specify per-species `(min, max)` fractional bounds. The example below restricts 
 ```jldoctest range_recipe
 julia> cr = ConcentrationRange([(2//5, 3//5), (2//5, 3//5)]);     # 40%-60% on each species
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(8:8), concentration = cr);
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(8:8), concentration = cr);
 
 julia> length(e)
 94
@@ -34,7 +34,7 @@ Restrict the first species to 1 or 2 of 12 atoms — this is where `Concentratio
 ```jldoctest range_recipe
 julia> cr_dilute = ConcentrationRange([(1//12, 2//12), (10//12, 11//12)]);
 
-julia> e = enumerate(p, sites; supercells = VolumeRange(12:12), concentration = cr_dilute);
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(12:12), concentration = cr_dilute);
 
 julia> length(e)
 216
@@ -48,7 +48,7 @@ If a `ConcentrationRange` decomposes into many partitions per supercell, the cos
 julia> cr_wide = ConcentrationRange([(0//1, 1//1), (0//1, 1//1)]);   # totally unrestricted
 
 julia> try
-           enumerate(p, sites; supercells = VolumeRange(12:12),
+           enumerate_structures(p, sites; supercells = VolumeRange(12:12),
                      concentration = cr_wide, partition_threshold = 5)
        catch e
            e isa PartitionExplosionError ? :refused : rethrow()

@@ -16,7 +16,7 @@ A symmetry-inequivalent enumeration of binary configurations (composed of atoms 
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/glwhart/Enumlib.jl")  # while unregistered
+Pkg.add("Enumlib")
 using Enumlib
 ```
 
@@ -58,7 +58,7 @@ For a case where there is only one site in the unit cell (as in this tutorial), 
 The third input is the *supercell selection*: the user chooses which supercells to enumerate over. The simplest choice is a [`VolumeRange`](@ref):
 
 ```jldoctest first_enum
-julia> e = enumerate(parent, sites; supercells = VolumeRange(1:3))
+julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(1:3))
 Enumeration{3, Vector{Int8}} (10 configurations, 6 supercells, 1 site)
   parent: 48-op space group, 1-element dset
 ```

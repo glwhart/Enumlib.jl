@@ -4,7 +4,7 @@
 # Chunk 5 deletions (closes chunk-3-review item 3):
 # - struct SuperTile (3D variant; flagged "not yet used" in original) — removed.
 # - struct ColoredTile (depended on SuperTile) — removed.
-# - function coloringsOfHNFList(hnfs, k, LG) — supplanted by `enumerate(parent,
+# - function coloringsOfHNFList(hnfs, k, LG) — supplanted by `enumerate_structures(parent,
 #   sites; supercells=ExplicitHNFs(hnfs))` against the new public API.
 # The 2D analog SuperTile (in LatticeEnumeration2D.jl) is a separate orphaned
 # subsystem and is not affected by this cleanup.
@@ -213,6 +213,6 @@ function get_nonzero_index(m; reps=1e-13)
 end
 
 # `coloringsOfHNFList(hnfs, k, LG)` was deleted in chunk 5. Use the new public
-# entry `enumerate(parent, sites; supercells=ExplicitHNFs(hnfs))` instead — it
+# entry `enumerate_structures(parent, sites; supercells=ExplicitHNFs(hnfs))` instead — it
 # returns an Enumeration{D, Vector{Int8}} which carries the same labelings (and
 # more: per-structure metadata, supercell back-references).

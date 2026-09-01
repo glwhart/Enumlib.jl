@@ -80,7 +80,7 @@ julia> [count_inequivalent(zb, zb_sites; supercells = VolumeRange(n:n),
 Those are the numbers `enumerate` produces, not an upper bound on them:
 
 ```jldoctest count_recipe
-julia> length(enumerate(zb, zb_sites; supercells = VolumeRange(3:3), concentration = free4))
+julia> length(enumerate_structures(zb, zb_sites; supercells = VolumeRange(3:3), concentration = free4))
 52
 ```
 

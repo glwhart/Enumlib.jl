@@ -34,7 +34,7 @@ Concentration(1//10, 1//10, 1//10, 1//10, 3//5)
 The result is a plain [`Concentration`](@ref), so it flows into [`enumerate`](@ref Base.enumerate) the same way any other concentration does. `c.fractions[1] = 1//10` carries a denominator of 10, so the multiplicities only resolve cleanly when the total atom count `n_D * n` is a multiple of 10 — at n=1 you'd get zero structures (no integer multiplicities), at n=2 the math works:
 
 ```jldoctest psl_recipe
-julia> e = enumerate(p, sites; supercells = VolumeRange(2:2), concentration = c);
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(2:2), concentration = c);
 
 julia> length(e)
 3

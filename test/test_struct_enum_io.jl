@@ -26,7 +26,7 @@ function _sen(; A, dset, labels, nmin, nmax, conc)
 end
 
 _readsen(s) = Enumlib.read_struct_enum_in(IOBuffer(s))
-_count(inp) = length(enumerate(inp.parent, inp.sites; supercells = inp.selection,
+_count(inp) = length(enumerate_structures(inp.parent, inp.sites; supercells = inp.selection,
                      concentration = inp.concentration,
                      partition_threshold = 1_000_000, skip_resource_check = true))
 
@@ -91,7 +91,7 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
                 (HCP,  [[0.0,0,0],[1/3,2/3,1/2]],     [[0,1],[0,1]], 3),
                 (FCC2, [[0.0,0,0],[0.25,0.25,0.25]],  [[0,1],[2,3]], 2)]
             inp = _readsen(_sen(; A, dset, labels, nmin = n, nmax = n, conc = nothing))
-            e = enumerate(inp.parent, inp.sites; supercells = inp.selection,
+            e = enumerate_structures(inp.parent, inp.sites; supercells = inp.selection,
                           concentration = inp.concentration,
                           partition_threshold = 1_000_000, skip_resource_check = true)
             fbuf = IOBuffer(); sbuf = IOBuffer()
@@ -139,7 +139,7 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
                     nstruct = length(out.structures)
 
                     # Labelings survive the write→read round trip intact.
-                    e = enumerate(_readsen(read("struct_enum.in", String)).parent,
+                    e = enumerate_structures(_readsen(read("struct_enum.in", String)).parent,
                                   _readsen(read("struct_enum.in", String)).sites;
                                   supercells = VolumeRange(1:2))
                     @test [collect(Int.(to_labeling(s))) for s in e.structures] ==

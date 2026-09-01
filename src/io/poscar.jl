@@ -74,7 +74,7 @@ julia> parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]);
 
 julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
 
-julia> e = enumerate(parent, sites; supercells = VolumeRange(2:2));
+julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(2:2));
 
 julia> io = IOBuffer();
 
@@ -403,7 +403,7 @@ A sidecar `<stem>.toml` (same contents as the in-tarball `enumeration.toml`) is 
 ```julia
 parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
 sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-e = enumerate(parent, sites; supercells = VolumeRange(4:4))
+e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
 out = write_enumeration_archive("./batch1/", e;
                                   super_periodic = false,
                                   species_symbols = ["Ag", "Pt"],

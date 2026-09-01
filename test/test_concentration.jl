@@ -107,10 +107,10 @@ using Enumlib
         # The same perovskite n=1 enumeration computed via flat-vector and
         # per-sublattice Concentrations must produce the same count.
         n = 1
-        c_check_flat = enumerate(p, sites; supercells = VolumeRange(n:n),
+        c_check_flat = enumerate_structures(p, sites; supercells = VolumeRange(n:n),
                                   concentration = c_flat,
                                   skip_resource_check = true)
-        c_check_psl = enumerate(p, sites; supercells = VolumeRange(n:n),
+        c_check_psl = enumerate_structures(p, sites; supercells = VolumeRange(n:n),
                                  concentration = c_psl,
                                  skip_resource_check = true)
         @test length(c_check_flat) == length(c_check_psl)
@@ -203,22 +203,22 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
         # n=4 50% (2:2): 5 structures
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4),
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                        concentration = concentration_count([2, 2]; n_total = 4))
         @test length(e) == 5
 
         # n=8 50% (4:4): 94
-        e = enumerate(parent, sites; supercells = VolumeRange(8:8),
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(8:8),
                                        concentration = concentration_count([4, 4]; n_total = 8))
         @test length(e) == 94
 
         # n=8 3:5: 86
-        e = enumerate(parent, sites; supercells = VolumeRange(8:8),
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(8:8),
                                        concentration = concentration_count([3, 5]; n_total = 8))
         @test length(e) == 86
 
         # n=12 50% (6:6): 1552
-        e = enumerate(parent, sites; supercells = VolumeRange(12:12),
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(12:12),
                                        concentration = concentration_count([6, 6]; n_total = 12))
         @test length(e) == 1552
     end
@@ -247,7 +247,7 @@ using Enumlib
         # [2, 2, 2, 2, 2, 2, 1] instead.
         hnfs4 = enumerate_hnfs(VolumeRange(4:4), parent)
         c_22 = concentration_count([2, 2]; n_total = 4)
-        per_hnf_4 = [length(enumerate(parent, sites;
+        per_hnf_4 = [length(enumerate_structures(parent, sites;
                                        supercells = ExplicitHNFs([h]),
                                        concentration = c_22)) for h in hnfs4]
         @test per_hnf_4 == [1, 1, 1, 1, 1, 0, 0]
@@ -259,7 +259,7 @@ using Enumlib
         # (SNF=[1,2,2], |G|=24) is the highly-symmetric supercell whose
         # larger stabilizer collapses what would be two orbits on HNF #6
         # into one (0 → 1).
-        per_hnf_4_sp = [length(enumerate(parent, sites;
+        per_hnf_4_sp = [length(enumerate_structures(parent, sites;
                                           supercells = ExplicitHNFs([h]),
                                           concentration = c_22,
                                           include_superperiodic = true)) for h in hnfs4]
@@ -270,7 +270,7 @@ using Enumlib
         # machinery's behavior across HNF shapes.
         hnfs8 = enumerate_hnfs(VolumeRange(8:8), parent)
         c_44 = concentration_count([4, 4]; n_total = 8)
-        per_hnf_8 = [length(enumerate(parent, sites;
+        per_hnf_8 = [length(enumerate_structures(parent, sites;
                                        supercells = ExplicitHNFs([h]),
                                        concentration = c_44)) for h in hnfs8]
         @test per_hnf_8 == [6, 6, 6, 4, 6, 4, 6, 6, 6, 6,
@@ -286,11 +286,11 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         for n in [4, 8, 12]
-            unrestricted = length(enumerate(parent, sites; supercells = VolumeRange(n:n)))
+            unrestricted = length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n)))
             total_per_c = 0
             for a in 1:n-1   # exclude monochromatic (super-periodic for n ≥ 2)
                 c = concentration_count([a, n-a]; n_total = n)
-                ce = enumerate(parent, sites; supercells = VolumeRange(n:n), concentration = c)
+                ce = enumerate_structures(parent, sites; supercells = VolumeRange(n:n), concentration = c)
                 total_per_c += length(ce)
             end
             @test total_per_c == unrestricted
@@ -300,14 +300,14 @@ using Enumlib
     @testset "FCC ternary identity at n=4 (locked: 96)" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1, 2])])
-        unrestricted = length(enumerate(parent, sites; supercells = VolumeRange(4:4)))
+        unrestricted = length(enumerate_structures(parent, sites; supercells = VolumeRange(4:4)))
         @test unrestricted == 96
         total = 0
         for a in 0:4, b in 0:4-a
             c = 4 - a - b
             (a == 4 || b == 4 || c == 4) && continue
             conc = concentration_count([a, b, c]; n_total = 4)
-            ce = enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = conc)
+            ce = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = conc)
             total += length(ce)
         end
         @test total == 96
@@ -319,14 +319,14 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
 
         # No concentration → :auto routes to :exhaustive
-        e_auto = enumerate(parent, sites; supercells = VolumeRange(4:4))
-        e_exhaustive = enumerate(parent, sites; supercells = VolumeRange(4:4), algorithm = :exhaustive)
+        e_auto = enumerate_structures(parent, sites; supercells = VolumeRange(4:4))
+        e_exhaustive = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), algorithm = :exhaustive)
         @test length(e_auto) == length(e_exhaustive)
 
         # With concentration → :auto routes to :multinomial
         c = concentration_count([2, 2]; n_total = 4)
-        e_auto_c = enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = c)
-        e_mult = enumerate(parent, sites; supercells = VolumeRange(4:4),
+        e_auto_c = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = c)
+        e_mult = enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                             concentration = c, algorithm = :multinomial)
         @test length(e_auto_c) == length(e_mult)
     end
@@ -334,7 +334,7 @@ using Enumlib
     @testset ":multinomial without concentration errors" begin
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
-        @test_throws ArgumentError enumerate(parent, sites; supercells = VolumeRange(4:4),
+        @test_throws ArgumentError enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                               algorithm = :multinomial)
     end
 
@@ -344,10 +344,10 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         # Range covering all binary multiplicities at n=4: should equal unrestricted minus monochromatic.
         cr = ConcentrationRange([(1//4, 3//4), (1//4, 3//4)])  # excludes a=0 and a=4
-        e = enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = cr)
+        e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = cr)
         # Per-concentration: a=1 (1:3), a=2 (2:2), a=3 (3:1) = three Concentrations.
         # Each gives some count; sum should match the unrestricted minus monochromatic.
-        unrestricted = length(enumerate(parent, sites; supercells = VolumeRange(4:4)))
+        unrestricted = length(enumerate_structures(parent, sites; supercells = VolumeRange(4:4)))
         @test length(e) == unrestricted   # all 19, since monochromatic dropped already
     end
 
@@ -357,10 +357,10 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         cr = ConcentrationRange([(0//1, 1//1), (0//1, 1//1)])
         # At n=4, this decomposes into 5 partitions — well below default 100.
-        @test_nowarn enumerate(parent, sites; supercells = VolumeRange(4:4), concentration = cr)
+        @test_nowarn enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = cr)
 
         # With a tight threshold, it errors.
-        @test_throws PartitionExplosionError enumerate(parent, sites;
+        @test_throws PartitionExplosionError enumerate_structures(parent, sites;
             supercells = VolumeRange(4:4), concentration = cr, partition_threshold = 4)
     end
 
@@ -369,7 +369,7 @@ using Enumlib
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         cr = ConcentrationRange([(0//1, 1//1), (0//1, 1//1)])
         # 5 partitions at n=4, threshold 2, but :ignore lets it through.
-        @test_nowarn enumerate(parent, sites; supercells = VolumeRange(4:4),
+        @test_nowarn enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
                                                 concentration = cr,
                                                 partition_threshold = 2,
                                                 on_partition_overflow = :ignore)
@@ -384,8 +384,8 @@ using Enumlib
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
         c = concentration_count([3, 5]; n_total = 8)
-        e_aper = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c)
-        e_full = enumerate(parent, sites; supercells = VolumeRange(8:8), concentration = c,
+        e_aper = enumerate_structures(parent, sites; supercells = VolumeRange(8:8), concentration = c)
+        e_full = enumerate_structures(parent, sites; supercells = VolumeRange(8:8), concentration = c,
                                           include_superperiodic = true)
         @test length(e_aper) == length(e_full) == 86
     end
@@ -403,9 +403,9 @@ using Enumlib
                                               (8, 4, 4, 94, 146),
                                               (12, 6, 6, 1552, 1739)]
             c = concentration_count([a, b]; n_total = n)
-            @test length(enumerate(parent, sites; supercells = VolumeRange(n:n),
+            @test length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                                   concentration = c)) == aper_ref
-            @test length(enumerate(parent, sites; supercells = VolumeRange(n:n),
+            @test length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                                                   concentration = c,
                                                   include_superperiodic = true)) == full_ref
         end

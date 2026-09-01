@@ -80,7 +80,7 @@ function jl_count(A, dset, labels, hetero, n)
         # Use exhaustive enumerate for the exact restricted count (matches Fortran); it
         # materializes, so Regime C is volume-limited (won't climb as high as A/B).
         conc = ConcentrationRange([(0//1, 1//1) for _ in 1:(maximum(maximum.(labels))+1)])
-        return BigInt(length(enumerate(parent, sites; supercells = VolumeRange(n:n),
+        return BigInt(length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
                      concentration = conc, skip_resource_check = true, partition_threshold = 10^9)))
     else
         # Regime A/B: Pólya count_inequivalent is exact here and scales without materializing.

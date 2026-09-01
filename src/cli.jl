@@ -146,7 +146,7 @@ function enum_main()::Cint
     end
     try
         inp = read_struct_enum_in(_cli_input_file("enum.x", args))
-        e = enumerate(inp.parent, inp.sites; supercells = inp.selection,
+        e = enumerate_structures(inp.parent, inp.sites; supercells = inp.selection,
                       concentration = inp.concentration)
         open("struct_enum.out", "w") do io
             write_struct_enum_out(io, e; input = inp, stdout_io = stdout)

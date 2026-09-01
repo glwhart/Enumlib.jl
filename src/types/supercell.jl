@@ -15,7 +15,7 @@ A symmetry-inequivalent supercell representative: an `HNF{D}` plus the cached SN
 
 `Supercell(hnf::HNF{D}, parent::ParentLattice{D})` builds the SNF, finds the stabilizer subgroup of `parent.space_group`, and constructs the permutation group via `getPermG`. The permutation-group construction is cached at construction time — small memory cost (~kB per supercell) for substantial savings during the labeling enumeration loop, which consults `permutation_group` once per labeling check.
 
-`hnf_degeneracy` is computed on demand by counting the HNF's parent-point-group orbit at the given volume. For batch construction inside `enumerate(...)`, the degeneracy is precomputed via `getSymInequivHNFs_with_degeneracies` and passed in to skip the recomputation: `Supercell(hnf, parent; hnf_degeneracy = precomputed)`.
+`hnf_degeneracy` is computed on demand by counting the HNF's parent-point-group orbit at the given volume. For batch construction inside `enumerate_structures(...)`, the degeneracy is precomputed via `getSymInequivHNFs_with_degeneracies` and passed in to skip the recomputation: `Supercell(hnf, parent; hnf_degeneracy = precomputed)`.
 
 # Examples
 Building one of FCC's two symmetry-inequivalent volume-2 supercells:

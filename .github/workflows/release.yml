@@ -10,6 +10,13 @@ name: Release binaries
 #                         published. Use this to validate a build without cutting
 #                         a release.
 #
+# Normally that tag push comes from TagBot, after the version merges into the
+# General registry -- not from a human tagging ahead of registration. See
+# RELEASING.md for the order and why it is that way. TagBot pushes with the
+# DOCUMENTER_KEY deploy key precisely so this workflow fires; a tag pushed with
+# the default GITHUB_TOKEN would not trigger it, and the Release would end up with
+# no binaries attached.
+#
 # Why here and not on a workstation: create_app pulls the whole depot and compiles
 # a system image, which is heavy and platform-specific. Runners give us a clean
 # per-platform build with no local machine tied up.

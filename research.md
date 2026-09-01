@@ -1,5 +1,13 @@
 # Enumlib.jl — pre-refactor research
 
+> **Note (2026-09-01):** the `papers/` directory referenced throughout this log has
+> been removed from the repository. It held eight published journal PDFs that could
+> not be redistributed under this package's MIT license, and it accounted for 7.2 MB
+> of the 9.7 MB registered tarball that every `Pkg.add("Enumlib")` downloaded. Every
+> paper is cited by DOI below and in the README; Hart's own papers are also freely
+> readable at <https://bsg.byu.edu/docs/papers/> (the `msg.byu.edu` links in older
+> entries are dead — the group's domain changed).
+
 Living document. Built up phase by phase. Each phase ships a self-contained section; the **Status** column in the plan below is the source of truth for progress. Open questions accumulate at the bottom of each phase; the final phase rolls them up.
 
 ---
@@ -38,11 +46,11 @@ That all sounds great.
 **Papers to fetch:**
 - Morgan, Hart & Forcade, *Comp. Mat. Sci.* **136**, 144 (2017) — recursive-stabilizer enumeration. URL: http://msg.byu.edu/docs/papers/recStabEnumeration.pdf.
 
-> **Claude:** Will fetch via WebFetch in Phase 1.5 and store at `papers/MorganHartForcade2017_recStabEnumeration.pdf`. Confirmed will be available before Phase 4.
+> **Claude:** Will fetch via WebFetch in Phase 1.5 and store at the MorganHartForcade2017_recStabEnumeration.pdf source. Confirmed will be available before Phase 4.
 
 - Shinohara, **Seko**, Horiyama, Ishihata, Honda, Tanaka, *J. Chem. Phys.* **153**, 104109 (2020) — "Enumeration of nonequivalent substitutional structures using advanced data structure of binary decision diagram." Note: the paper you described as "the Seko paper" has Atsuto Seko as the *second* author; Shinohara is first. The algorithmic contribution is a Binary Decision Diagram (BDD) data structure for enumeration.
 
-> **Claude:** Found at `papers/ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf` in this repo. So it's actually 2020, not pre-2020 as you thought; that aligns with this being a refinement of the original enumeration line of work rather than a foundational predecessor. Will read carefully in Phase 4 with three explicit goals:
+> **Claude:** Found at the ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf source in this repo. So it's actually 2020, not pre-2020 as you thought; that aligns with this being a refinement of the original enumeration line of work rather than a foundational predecessor. Will read carefully in Phase 4 with three explicit goals:
 > 1. **The algorithm itself** — what the new dedup approach does and how it would slot into Enumlib.
 > 2. **Backward citation harvest** — the references in this paper are the most efficient way to discover other algorithmic improvements. I'll list each cited paper that looks relevant (anything on permutation groups, supercell enumeration, lattice deduplication, group-theoretic combinatorics) with a one-line note on why. You can pick the ones to chase.
 > 3. **Terminology calibration** — I'll build a small glossary subsection (Phase 4 output) of the formal vocabulary used across all four papers. Terms like "stabilizer," "labeling," "dset," "super-periodic," "g-space coordinates" mean specific things in this literature and I want to use them precisely in the design docs.
@@ -84,7 +92,7 @@ I'll mark each row as it advances and link to the corresponding section heading.
 
 2. **The Seko paper.** When you have a moment, point me at the citation if you find it — I can do a citation-graph search but a direct pointer saves real time.
 
-> **Claude:** Resolved above — `papers/ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf`. Will read in Phase 4.
+> **Claude:** Resolved above — the ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf source. Will read in Phase 4.
 
 3. **Pymatgen scope.** Phase 9 has two natural depths: (a) document the surface area of pymatgen's wrapper and what a drop-in would need to match; (b) actually prototype the swap. I'd plan for (a) only in this research phase; (b) becomes its own work item after the refactor lands.
 
@@ -196,7 +204,7 @@ Mechanical work that should be done before Phase 2 deep-reading begins, so we ha
 |---|---|---|
 | Migrate algorithm PDFs from `~/Drive/Work/codes/enumlib/support/` → `docs/notes/` | done | 5 files copied: interior_points, interior_points_reciprocal_space, multiperms, multilattice_dset_mapping_writeup, notes_cRangeAdjustment. |
 | Fetch Morgan, Hart & Forcade 2017 (recStabEnumeration) → `papers/` | done | Was blocked by stale URL — `msg.byu.edu` is the old domain; `bsg.byu.edu` is the current one. Fetched from `https://bsg.byu.edu/docs/papers/recStabEnumeration.pdf`. PDF v1.7, 11 pages. |
-| Confirm Seko 2020 PDF readable | done | `papers/ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf`, valid PDF v1.4, 10 pages, 2.84 MB. |
+| Confirm Seko 2020 PDF readable | done | the ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf source, valid PDF v1.4, 10 pages, 2.84 MB. |
 | Quick scan of `papers/` for anything else relevant | done | Only Seko 2020 there at the moment. Empty otherwise. |
 | Stub `docs/notes/glossary.tex` | done | Skeleton with stub entries grouped by topic. Populated during Phase 4. |
 
@@ -770,7 +778,7 @@ One section per paper. Each digest covers: problem statement, algorithmic contri
 
 ### 4.1 Hart & Forcade 2008 — *Algorithm for generating derivative structures*
 
-**Citation.** Gus L. W. Hart, Rodney W. Forcade, *Phys. Rev. B* **77**, 224115 (2008). DOI: 10.1103/PhysRevB.77.224115. PDF: `papers/HartForcade_2008_AlgorithmForGeneratingDerivativeStructures.pdf` (9 pages).
+**Citation.** Gus L. W. Hart, Rodney W. Forcade, *Phys. Rev. B* **77**, 224115 (2008). DOI: 10.1103/PhysRevB.77.224115.
 
 #### Problem
 
@@ -905,7 +913,7 @@ The paper says (Sec. II.A): "the implementation of the HNF-generating algorithm 
 
 ### 4.2 Hart & Forcade 2009 — *Generating derivative structures from multilattices: Algorithm and application to hcp alloys*
 
-**Citation.** Gus L. W. Hart, Rodney W. Forcade, *Phys. Rev. B* **80**, 014120 (2009). DOI: 10.1103/PhysRevB.80.014120. PDF: `papers/HartForcade_2009_DerivativeStructuresFromMultilattices.pdf` (8 pages).
+**Citation.** Gus L. W. Hart, Rodney W. Forcade, *Phys. Rev. B* **80**, 014120 (2009). DOI: 10.1103/PhysRevB.80.014120.
 
 #### Problem
 
@@ -1000,7 +1008,7 @@ Step 4 is where the 2009 paper's contribution lives. Steps 5–7 reuse the 2008 
 
 ### 4.3 Hart, Nelson & Forcade 2012 — *Generating derivative structures at a fixed concentration*
 
-**Citation.** Gus L. W. Hart, Lance J. Nelson, Rodney W. Forcade, *Comp. Mat. Sci.* **59**, 101–107 (2012). DOI: 10.1016/j.commatsci.2012.02.015. PDF: `papers/HartNelsonForcade_2012_DerivativeStructuresAtFixedConcentration.pdf` (7 pages).
+**Citation.** Gus L. W. Hart, Lance J. Nelson, Rodney W. Forcade, *Comp. Mat. Sci.* **59**, 101–107 (2012). DOI: 10.1016/j.commatsci.2012.02.015.
 
 #### Problem
 
@@ -1118,7 +1126,7 @@ Phase 5 (algorithm dispatch) needs to capture this decision tree explicitly. Pha
 
 ### 4.4 Morgan, Hart & Forcade 2017 — *Generating derivative superstructures for systems with high configurational freedom*
 
-**Citation.** Wiley S. Morgan, Gus L. W. Hart, Rodney W. Forcade, *Comp. Mat. Sci.* **136**, 144–149 (2017). DOI: 10.1016/j.commatsci.2017.04.015. PDF: `papers/MorganHartForcade2017_recStabEnumeration.pdf` (6 pages).
+**Citation.** Wiley S. Morgan, Gus L. W. Hart, Rodney W. Forcade, *Comp. Mat. Sci.* **136**, 144–149 (2017). DOI: 10.1016/j.commatsci.2017.04.015.
 
 #### Problem
 
@@ -1201,7 +1209,7 @@ Not implemented. Phase 6 design notes:
 
 1. **The Pólya pre-flight reference.** Section 3.1 says "a recently developed numerical algorithm for the Pólya enumeration theorem" (refs 16-18) — that's *Pólya, Read 2012*; *Pólya 1937*; **and Rosenbrock, Morgan, Hart, Curtarolo, Forcade *J. Exp. Algorithmics* 21, 1 (2016)**. This last reference is potentially in scope for Phase 8 — it's the numerical Pólya algorithm that powers the pre-flight estimator. Worth grabbing. I put it in the papers folder.
 
-> **Claude:** Renamed your `papers_polya.pdf` → `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf` per our naming convention. Confirmed first page: Rosenbrock, Morgan, Hart, Curtarolo, Forcade, *ACM J. Exp. Algorithmics* **21**, 1.11 (Aug 2016). DOI: 10.1145/2955094. This is the numerical Pólya implementation that the Morgan 2017 tree algorithm references for its pre-flight count. I'll digest it as **§4.6** in a follow-up Phase 4 commit (small addition; one paper). It directly enables Phase 7 (misuse mitigation) since the pre-flight count is the user-protection feature.
+> **Claude:** Renamed your `papers_polya.pdf` → the RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf source per our naming convention. Confirmed first page: Rosenbrock, Morgan, Hart, Curtarolo, Forcade, *ACM J. Exp. Algorithmics* **21**, 1.11 (Aug 2016). DOI: 10.1145/2955094. This is the numerical Pólya implementation that the Morgan 2017 tree algorithm references for its pre-flight count. I'll digest it as **§4.6** in a follow-up Phase 4 commit (small addition; one paper). It directly enables Phase 7 (misuse mitigation) since the pre-flight count is the user-protection feature.
 
 2. **The "smallest first" sort order**. Section 3 notes that placing colors smallest-first minimizes top-level branching. This is a heuristic, not proved optimal. Worth checking whether the Julia implementation should preserve this default and whether other orderings ever win. How would we test that?
 
@@ -1259,7 +1267,7 @@ Phase 5 dispatch needs to choose between these based on inputs. Phase 7 misuse m
 
 ### 4.5 Shinohara, Seko, Horiyama, Ishihata, Honda & Tanaka 2020 — *Enumeration of nonequivalent substitutional structures using advanced data structure of binary decision diagram*
 
-**Citation.** Kohei Shinohara, Atsuto Seko, Takashi Horiyama, Masakazu Ishihata, Junya Honda, Isao Tanaka, *J. Chem. Phys.* **153**, 104109 (2020). DOI: 10.1063/5.0021663. PDF: `papers/ShinoharaEtAl_2020_BinaryDecisionDiagram.pdf` (15 pages including references).
+**Citation.** Kohei Shinohara, Atsuto Seko, Takashi Horiyama, Masakazu Ishihata, Junya Honda, Isao Tanaka, *J. Chem. Phys.* **153**, 104109 (2020). DOI: 10.1063/5.0021663.
 
 **Note on attribution:** The paper user described as "the Seko paper" has Shinohara as first author and Seko as second. Both are at Kyoto University; Seko is the corresponding senior author, but Shinohara did the work.
 
@@ -1376,13 +1384,13 @@ For the immediate rewrite (v0.1 → v0.2), focus on Pólya counting + the 2008/2
 
 ### 4.6 Rosenbrock, Morgan, Hart, Curtarolo & Forcade 2016 — *Numerical Algorithm for Pólya Enumeration Theorem*
 
-**Citation.** Rosenbrock, Morgan, Hart, Curtarolo, Forcade, *ACM J. Exp. Algorithmics* **21**, 1.11 (Aug 2016). DOI: 10.1145/2955094. PDF: `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`. Reference implementation: <https://github.com/rosenbrockc/polya>.
+**Citation.** Rosenbrock, Morgan, Hart, Curtarolo, Forcade, *ACM J. Exp. Algorithmics* **21**, 1.11 (Aug 2016). DOI: 10.1145/2955094. Reference implementation: <https://github.com/rosenbrockc/polya>.
 
-Already cross-referenced from Phase 5 §5.3 and Phase 7 §7.2 — this is the algorithm powering the cost-estimator's `total_count`. Skipping a full digest here (would duplicate §7.2 prose); the substantive design implications were captured at the Phase 7 round when the algorithm was confirmed best-in-class. Open `papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf` if you want the full algorithm walkthrough; everything load-bearing for the Julia rewrite is already in §7.2.
+Already cross-referenced from Phase 5 §5.3 and Phase 7 §7.2 — this is the algorithm powering the cost-estimator's `total_count`. Skipping a full digest here (would duplicate §7.2 prose); the substantive design implications were captured at the Phase 7 round when the algorithm was confirmed best-in-class. Open the RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf source if you want the full algorithm walkthrough; everything load-bearing for the Julia rewrite is already in §7.2.
 
 ### 4.7 Bublikov 2011 — *Combinatorial Approach to the Simulation of Superstructures of the NaCl Type*
 
-**Citation.** D. N. Bublikov, *Crystallography Reports* **56**(1), 89–100 (2011). DOI: 10.1134/S106377451101007X. (Translated from Russian *Kristallografiya* **56**(1), 95–106, 2011.) Author affiliation: Southern State University, Bol'shaya Sadovaya ul. 105, Rostov-on-Don, 344006 Russia. PDF: `papers/Bublikov_2011_CombinatorialApproachNaClSuperstructures.pdf` (provided directly by the author, hard to find online).
+**Citation.** D. N. Bublikov, *Crystallography Reports* **56**(1), 89–100 (2011). DOI: 10.1134/S106377451101007X. (Translated from Russian *Kristallografiya* **56**(1), 95–106, 2011.) Author affiliation: Southern State University, Bol'shaya Sadovaya ul. 105, Rostov-on-Don, 344006 Russia.
 
 #### Problem
 
@@ -1428,7 +1436,7 @@ Useful confirmation, too: Bublikov surfaces no pre-2011 algorithmic technique th
 
 ### 4.8 Horiyama, Miyasaka & Sasaki 2018 — *Isomorphism Elimination by Zero-Suppressed Binary Decision Diagrams*
 
-**Citation.** Horiyama, Miyasaka, Sasaki, *Proc. 30th Canadian Conference on Computational Geometry (CCCG 2018)*, Winnipeg, Canada, August 8–10, 2018. PDF: `papers/HoriyamaMiyasakaSasaki_2018_IsomorphismEliminationZDD.pdf`. Open-access at <https://home.cs.umanitoba.ca/~cccg2018/papers/session7B-p2.pdf>.
+**Citation.** Horiyama, Miyasaka, Sasaki, *Proc. 30th Canadian Conference on Computational Geometry (CCCG 2018)*, Winnipeg, Canada, August 8–10, 2018. Open-access at <https://home.cs.umanitoba.ca/~cccg2018/papers/session7B-p2.pdf>.
 
 #### Problem
 
@@ -1658,7 +1666,7 @@ Plus pure counting (no enumeration generated):
 | Full Pólya | Pólya 1937 + Rosenbrock 2016 numerical implementation | Counts at all concentrations |
 | Fixed-concentration Pólya | HNF 2012 Appendix A.2 | Counts at a target multiplicity vector |
 
-The Rosenbrock 2016 paper (`papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`) provides the numerical algorithm that makes these counts cheap in practice — to be digested as §4.6 in a follow-up Phase 4 commit.
+The Rosenbrock 2016 paper (the RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf source) provides the numerical algorithm that makes these counts cheap in practice — to be digested as §4.6 in a follow-up Phase 4 commit.
 
 Is this algorithm something others might use? Should we put it in a separate package and share it? Or is it too niche?
 
@@ -3050,7 +3058,7 @@ end
 
 #### How each field is computed
 
-- **`total_count`** comes from the Rosenbrock 2016 numerical Pólya algorithm (`papers/RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf`), invoked per-supercell and summed over the HNF list. For the no-concentration case this is the cycle-index sum; for fixed-concentration it's the Pólya-with-multiplicity formula from HNF 2012 Appendix A.2. Cost: $O(\text{permutation group size} \cdot k)$ per supercell — milliseconds even for hundreds of supercells.
+- **`total_count`** comes from the Rosenbrock 2016 numerical Pólya algorithm (the RosenbrockEtAl_2016_NumericalPolyaEnumerationTheorem.pdf source), invoked per-supercell and summed over the HNF list. For the no-concentration case this is the cycle-index sum; for fixed-concentration it's the Pólya-with-multiplicity formula from HNF 2012 Appendix A.2. Cost: $O(\text{permutation group size} \cdot k)$ per supercell — milliseconds even for hundreds of supercells.
 - **`peak_memory_bytes`** is per-algorithm:
   - `:exhaustive`: `bitmap = total_count / 8` + `output_buffer = sum(sizeof(L) for s in unique_structures)` + per-supercell stabilizer/permutation caches.
   - `:multinomial`: same, with $C$ (multinomial coefficient sum) replacing $k^n$.
@@ -3341,7 +3349,7 @@ The "big ask" from `firstprompt.md`: enumlib has been cited hundreds of times; s
 
 This paper is hard to find online, it seems. I had a pdf copy in email from the author. I put it in the papers folder.
 
-> **Claude:** Got it — found `papers/CRRP89.pdf`, confirmed it's Bublikov 2011 *Crystallography Reports* **56**(1), 89–100 (DOI: 10.1134/S106377451101007X), renamed to `papers/Bublikov_2011_CombinatorialApproachNaClSuperstructures.pdf` per the naming convention, and digested as **§4.7** (added inline above the Phase 5 section). One-line summary of the digest's verdict: niche NaCl-only application paper, but it surfaces *one* genuinely useful design idea — user-supplied predicate filters during enumeration (`enumerate(..., predicate = my_filter)`) — that's worth queueing for v0.3+. The other algorithmic ideas in the paper don't survive the asymptotic comparison with enumlib's quotient-group machinery. Useful negative result on the citing-literature side: this paper *cites* but doesn't *upgrade* Hart-Forcade. See §4.7 for the full digest, including the v0.3+ predicate-filter feature spec.
+> **Claude:** Got it — found the CRRP89.pdf source, confirmed it's Bublikov 2011 *Crystallography Reports* **56**(1), 89–100 (DOI: 10.1134/S106377451101007X), renamed to the Bublikov_2011_CombinatorialApproachNaClSuperstructures.pdf source per the naming convention, and digested as **§4.7** (added inline above the Phase 5 section). One-line summary of the digest's verdict: niche NaCl-only application paper, but it surfaces *one* genuinely useful design idea — user-supplied predicate filters during enumeration (`enumerate(..., predicate = my_filter)`) — that's worth queueing for v0.3+. The other algorithmic ideas in the paper don't survive the asymptotic comparison with enumlib's quotient-group machinery. Useful negative result on the citing-literature side: this paper *cites* but doesn't *upgrade* Hart-Forcade. See §4.7 for the full digest, including the v0.3+ predicate-filter feature spec.
 
 ### 8.1 Scope and methodology
 

@@ -7,7 +7,7 @@
         # v0.3-prep: the radius-based enumeration symbols (radiusEnumHNFs,
         # getHNFColorings, radEnumByXcellRadius, getSymInequivHNFsByCellRadius,
         # estimatedTime) were removed when src/radiusEnumeration.jl was retired
-        # in favor of `enumerate(..., supercells = RadiusBound(...))` and the
+        # in favor of `enumerate_structures(..., supercells = RadiusBound(...))` and the
         # legacy `getPermG(h, fixingOps, LG::Vector{Matrix{Int}})` method was
         # dropped. Only the Fortran-format I/O symbols remain in the shim.
         for fn in (:enumStr, :readStructenumout, :readEnergies, :readStrIn)
