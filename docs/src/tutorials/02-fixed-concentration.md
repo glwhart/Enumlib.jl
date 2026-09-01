@@ -111,7 +111,7 @@ julia> concentrations_in_range(cr, 4)
  Concentration(1//2, 1//2)
 ```
 
-Three in-range concentrations at volume 4: pure B (0:4), one A in four (1:3), and 50/50 (2:2). [`enumerate`](@ref) returns the union of configurations across them:
+Three in-range concentrations at volume 4: pure B (0:4), one A in four (1:3), and 50/50 (2:2). [`enumerate_structures`](@ref) returns the union of configurations across them:
 
 ```jldoctest concentration_tutorial
 julia> length(enumerate_structures(parent, sites;

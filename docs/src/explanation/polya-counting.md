@@ -57,7 +57,7 @@ Counting a restricted position as free overcounts by orders of magnitude, and th
 | 3 | 52 | 2960 |
 | 4 | 290 | 64196 |
 
-Perovskite diverges faster still: 4, 15, 48 at volumes 1–3 against 875, 2272000, and 6002278500. The left column is what [`enumerate`](@ref) actually produces; the right is what the same permutation group yields if every position is treated as free over all `k` labels.
+Perovskite diverges faster still: 4, 15, 48 at volumes 1–3 against 875, 2272000, and 6002278500. The left column is what [`enumerate_structures`](@ref) actually produces; the right is what the same permutation group yields if every position is treated as free over all `k` labels.
 
 Because [`estimate_cost`](@ref) prices a run with the same count, the restricted formulas are also what keep the resource check from refusing a request that is in fact small.
 
@@ -85,9 +85,9 @@ The label restriction composes with this cleanly. The Möbius inversion is uncha
 
 A [`ConcentrationRange`](@ref) that leaves every species free over `[0, 1]` constrains nothing. Every coloring has exactly one concentration, so summing the per-concentration counts across all in-range concentrations reproduces the unrestricted Burnside count exactly. [`count_inequivalent`](@ref) therefore collapses such a range to a single evaluation instead of running the dense dynamic program once per composition of the site count into `k` parts. The shortcut is an identity, not an approximation.
 
-This is not an edge case. `Enumlib.read_struct_enum_in` synthesizes exactly that range for a `full`-mode `struct_enum.in`, and [`enumerate`](@ref) rejects *unrestricted* enumeration on heterogeneous sublattices — so "no concentration constraint" on such a parent has to be spelled as a full-range `ConcentrationRange` in the first place. Without the collapse, the per-composition walk dominates: it is the difference between milliseconds and tens of minutes on a perovskite of modest volume.
+This is not an edge case. `Enumlib.read_struct_enum_in` synthesizes exactly that range for a `full`-mode `struct_enum.in`, and [`enumerate_structures`](@ref) rejects *unrestricted* enumeration on heterogeneous sublattices — so "no concentration constraint" on such a parent has to be spelled as a full-range `ConcentrationRange` in the first place. Without the collapse, the per-composition walk dominates: it is the difference between milliseconds and tens of minutes on a perovskite of modest volume.
 
-One consequence is user-visible: with an unconstrained range, `count_inequivalent(...; breakdown = true)` returns an **empty `by_concentration`**, because materializing that field is precisely the per-composition walk being skipped. `total`, `by_volume`, and `by_hnf` are unaffected. Pass a narrower range when you want the per-concentration slice. The collapse is internal to `count_inequivalent`: [`enumerate`](@ref) still decomposes the same range into partitions, since it has to produce the structures.
+One consequence is user-visible: with an unconstrained range, `count_inequivalent(...; breakdown = true)` returns an **empty `by_concentration`**, because materializing that field is precisely the per-composition walk being skipped. `total`, `by_volume`, and `by_hnf` are unaffected. Pass a narrower range when you want the per-concentration slice. The collapse is internal to `count_inequivalent`: [`enumerate_structures`](@ref) still decomposes the same range into partitions, since it has to produce the structures.
 
 ## Default policy match
 

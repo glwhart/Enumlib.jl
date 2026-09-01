@@ -31,7 +31,7 @@ Concentration(1//10, 1//10, 1//10, 1//10, 3//5)
 
 "1:1 on A, 1:1 on B, fixed on O." The translation to the global flat-vector form — `[1//10, 1//10, 1//10, 1//10, 6//10]` (Julia auto-simplifies `6//10` to `3//5`) — is what you no longer have to do by hand.
 
-The result is a plain [`Concentration`](@ref), so it flows into [`enumerate`](@ref Base.enumerate) the same way any other concentration does. `c.fractions[1] = 1//10` carries a denominator of 10, so the multiplicities only resolve cleanly when the total atom count `n_D * n` is a multiple of 10 — at n=1 you'd get zero structures (no integer multiplicities), at n=2 the math works:
+The result is a plain [`Concentration`](@ref), so it flows into [`enumerate_structures`](@ref) the same way any other concentration does. `c.fractions[1] = 1//10` carries a denominator of 10, so the multiplicities only resolve cleanly when the total atom count `n_D * n` is a multiple of 10 — at n=1 you'd get zero structures (no integer multiplicities), at n=2 the math works:
 
 ```jldoctest psl_recipe
 julia> e = enumerate_structures(p, sites; supercells = VolumeRange(2:2), concentration = c);

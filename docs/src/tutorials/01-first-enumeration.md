@@ -1,6 +1,6 @@
 # Your first enumeration
 
-Build a parent lattice, declare substitution sites, run [`enumerate`](@ref) on a small supercell range, and inspect the results. End-to-end in five minutes on a binary alloy.
+Build a parent lattice, declare substitution sites, run [`enumerate_structures`](@ref) on a small supercell range, and inspect the results. End-to-end in five minutes on a binary alloy.
 
 ## What you'll build
 

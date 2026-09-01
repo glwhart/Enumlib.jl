@@ -1,6 +1,6 @@
 # Enumerate at fixed concentration
 
-Restrict [`enumerate`](@ref Base.enumerate) to labelings with a prescribed concentration (e.g., 4 A + 4 B in an 8-cell binary alloy).
+Restrict [`enumerate_structures`](@ref) to labelings with a prescribed concentration (e.g., 4 A + 4 B in an 8-cell binary alloy).
 
 ## Setup
 

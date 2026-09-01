@@ -22,7 +22,7 @@ Pass `include_superperiodic = true` when:
 - **You're validating against a reference that includes them** — the original HF 2008 paper, some legacy enumlib runs, etc.
 - **You want to measure** how much super-periodicity is dropping (the difference `length(enumerate(...; include_superperiodic=true)) - length(enumerate(...; include_superperiodic=false))` is the super-periodic count at that volume).
 
-Both [`enumerate`](@ref) and [`count_inequivalent`](@ref) carry the same kwarg, and the two stay byte-for-byte consistent: `length(enumerate(...; include_superperiodic = p)) == count_inequivalent(...; include_superperiodic = p)` for either policy.
+Both [`enumerate_structures`](@ref) and [`count_inequivalent`](@ref) carry the same kwarg, and the two stay byte-for-byte consistent: `length(enumerate(...; include_superperiodic = p)) == count_inequivalent(...; include_superperiodic = p)` for either policy.
 
 ## How filtering works algorithmically
 

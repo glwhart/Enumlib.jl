@@ -68,4 +68,4 @@ Enumlib's testsuite asserts this alignment on the entire reference corpus: for e
 - [Pick an algorithm](../how-to/pick-an-algorithm.md) — recipe.
 - [Estimate the cost](../how-to/estimate-cost.md) — recipe.
 - [Algorithm overview](algorithm-overview.md) — bird's-eye view.
-- [`enumerate`](@ref), [`estimate_cost`](@ref), [`EnumerationCostEstimate`](@ref), [`EnumerationTooLargeError`](@ref).
+- [`enumerate_structures`](@ref), [`estimate_cost`](@ref), [`EnumerationCostEstimate`](@ref), [`EnumerationTooLargeError`](@ref).

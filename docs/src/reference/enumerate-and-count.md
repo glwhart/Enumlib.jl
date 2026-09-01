@@ -3,7 +3,7 @@
 Authoritative signature, kwargs, and return-type documentation for the two top-level entry points.
 
 ```@docs
-Base.enumerate(::ParentLattice{D}, ::Sites{D}) where D
+enumerate_structures
 Enumeration
 EnumeratedStructure
 to_labeling

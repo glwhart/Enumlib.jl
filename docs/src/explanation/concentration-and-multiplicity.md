@@ -31,7 +31,7 @@ Concentration([1//3, 2//3])         # denominators are 3 — needs n_total divis
 Concentration([15//32, 17//32])     # needs n_total divisible by 32
 ```
 
-When [`enumerate`](@ref) or [`count_inequivalent`](@ref) encounter a `(concentration, n)` pair where the concentration doesn't resolve cleanly, they **skip that volume silently**. So `enumerate_structures(parent, sites; supercells = VolumeRange(3:6), concentration = c_third)` with `c_third = Concentration([1//3, 2//3])` only enumerates on volumes 3 and 6 (multiples of 3); volumes 4 and 5 emit nothing.
+When [`enumerate_structures`](@ref) or [`count_inequivalent`](@ref) encounter a `(concentration, n)` pair where the concentration doesn't resolve cleanly, they **skip that volume silently**. So `enumerate_structures(parent, sites; supercells = VolumeRange(3:6), concentration = c_third)` with `c_third = Concentration([1//3, 2//3])` only enumerates on volumes 3 and 6 (multiples of 3); volumes 4 and 5 emit nothing.
 
 This isn't an error — it's the natural semantics ("at this volume, this composition is impossible") and follows from `multiplicities` throwing [`EmptyEnumerationError`](@ref) on non-divisible inputs.
 

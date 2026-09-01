@@ -4,7 +4,7 @@ Drawn from Hart, Nelson, & Forcade, *Generating derivative structures at a fixed
 
 ## When this fires
 
-[`enumerate`](@ref) chooses the multinomial algorithm when:
+[`enumerate_structures`](@ref) chooses the multinomial algorithm when:
 
 - A [`Concentration`](@ref) is passed (so the multiplicity vector `[a_1, ..., a_k]` is known per supercell), AND
 - The bitmap for the multinomial coefficient `n! / (a_1! · ... · a_k!)` fits in the memory budget.

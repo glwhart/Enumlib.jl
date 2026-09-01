@@ -216,6 +216,6 @@ Two regime-discrimination errors you may hit:
 
 ## See also
 
-- Reference: [`ParentLattice`](@ref), [`Sites`](@ref), [`enumerate`](@ref), [`count_inequivalent`](@ref), [`to_poscar`](@ref), [`write_enumeration_archive`](@ref).
+- Reference: [`ParentLattice`](@ref), [`Sites`](@ref), [`enumerate_structures`](@ref), [`count_inequivalent`](@ref), [`to_poscar`](@ref), [`write_enumeration_archive`](@ref).
 - How-to: [Construct a parent lattice](construct-a-parent-lattice.md), [Describe substitution sites](describe-substitution-sites.md), [Write POSCARs for DFT](write-poscars-for-dft.md).
 - Explanation: [Algorithm overview](../explanation/algorithm-overview.md#multilattice-extension) — the HF 2009 multilattice extension at a conceptual level.

@@ -8,7 +8,7 @@ line. In particular, pymatgen's `EnumlibAdaptor` shells out to `enum.x` and `mak
 found on `PATH`, and works against these unmodified.
 
 !!! note "These are an integration surface, not a user API"
-    If you are writing Julia, do not shell out to them. [`enumerate`](@ref Base.enumerate)
+    If you are writing Julia, do not shell out to them. [`enumerate_structures`](@ref)
     and [`count_inequivalent`](@ref) do the same work in-process, faster, and hand back
     typed values instead of files you have to parse. The executables exist to satisfy
     callers that already speak the Fortran's file protocol. This page documents the bridge

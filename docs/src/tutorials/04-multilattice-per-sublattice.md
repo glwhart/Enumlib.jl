@@ -6,7 +6,7 @@
 
 - A half-Heusler-shape parent lattice: FCC with three dset positions `(0, 0, 0)`, `(1/4, 1/4, 1/4)`, `(3/4, 3/4, 3/4)`.
 - Sites with **distinct** species per sublattice: X = {Na, K} (two cation choices), Y = fixed Mg, Z = fixed F. (Hypothetical chemistry — the numbers are about the symmetry, not the bonding.)
-- A 50/50 composition on X with the per-sublattice constructor, then run [`enumerate`](@ref Base.enumerate) and inspect what comes back.
+- A 50/50 composition on X with the per-sublattice constructor, then run [`enumerate_structures`](@ref) and inspect what comes back.
 - Compare to the flat-vector form to convince yourself they produce the same `Concentration`.
 - Size the run first with [`count_inequivalent`](@ref), which honors each sublattice's `allowed_labels`.
 
@@ -72,7 +72,7 @@ true
 
 ## Step 3 — ask how big it is before enumerating
 
-[`enumerate`](@ref Base.enumerate) allocates every configuration it finds. [`count_inequivalent`](@ref) takes the same arguments and returns the number that call *would* produce, by Pólya/Burnside orbit counting instead of construction — so it is the cheap pre-flight check before committing to a run:
+[`enumerate_structures`](@ref) allocates every configuration it finds. [`count_inequivalent`](@ref) takes the same arguments and returns the number that call *would* produce, by Pólya/Burnside orbit counting instead of construction — so it is the cheap pre-flight check before committing to a run:
 
 ```jldoctest psl_tutorial
 julia> count_inequivalent(parent, sites; supercells = VolumeRange(2:2), concentration = c)
@@ -159,7 +159,7 @@ Three concepts, three Enumlib calls:
 2. **Heterogeneous sublattices** with distinct species per position ([`Sites`](@ref), atomic-symbol form).
 3. **Per-sublattice concentration** stated per-position instead of globally ([`Concentration(sites, per_sublattice)`](@ref)).
 
-Plus one habit worth keeping: [`count_inequivalent`](@ref) before [`enumerate`](@ref Base.enumerate), so you learn the size of a run before paying for it.
+Plus one habit worth keeping: [`count_inequivalent`](@ref) before [`enumerate_structures`](@ref), so you learn the size of a run before paying for it.
 
 That's the whole Regime C user surface. The output [`Enumeration`](@ref) flows into POSCAR export ([Tutorial 03](03-dft-training-database.md)), cluster-expansion training (JuCE), and the rest of the downstream toolchain the same way single-lattice outputs do.
 

@@ -90,6 +90,6 @@ julia> est.chosen_algorithm                          # explicit override sticks
 
 ## See also
 
-- Reference: [`Base.enumerate`](@ref), [`estimate_cost`](@ref), [`EnumerationCostEstimate`](@ref), [`Enumlib.Polya.polya_count`](@ref).
+- Reference: [`enumerate_structures`](@ref), [`estimate_cost`](@ref), [`EnumerationCostEstimate`](@ref), [`Enumlib.Polya.polya_count`](@ref).
 - How-to: [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md), [Estimate the cost of an enumeration](estimate-cost.md), [Sweep concentration ranges](sweep-concentration-ranges.md).
 - Explanation: [Dispatch and the resource check](../explanation/dispatch-and-cost-gate.md), [Algorithm overview](../explanation/algorithm-overview.md).

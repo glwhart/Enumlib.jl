@@ -125,7 +125,7 @@ julia> ic_band.by_concentration
  (Concentration(3//4, 1//4), 7)
 ```
 
-`total`, `by_volume`, and `by_hnf` are unaffected by the collapse. The shortcut is internal to `count_inequivalent`; [`enumerate`](@ref) still decomposes an unconstrained range into partitions, because it has to produce the structures — see [Sweep concentration ranges](sweep-concentration-ranges.md) for the partition gate that governs it.
+`total`, `by_volume`, and `by_hnf` are unaffected by the collapse. The shortcut is internal to `count_inequivalent`; [`enumerate_structures`](@ref) still decomposes an unconstrained range into partitions, because it has to produce the structures — see [Sweep concentration ranges](sweep-concentration-ranges.md) for the partition gate that governs it.
 
 ## Super-periodic policy
 
