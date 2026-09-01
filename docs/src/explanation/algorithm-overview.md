@@ -51,10 +51,15 @@ Hart & Forcade 2008 Table 1 lists the unrestricted derivative-structure counts (
 
 For example, FCC binary at volumes 1 through 3 cumulative = 10 structures (2 + 2 + 6 — matching HF 2008 Table 1's third column). Reproduce with:
 
-```julia
-parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
-sites = Sites(parent, [0, 1])
-length(enumerate_structures(parent, sites; supercells = VolumeRange(1:3)))   # 10
+```jldoctest
+julia> using Enumlib
+
+julia> parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);
+
+julia> sites = Sites(parent, [0, 1]);
+
+julia> length(enumerate_structures(parent, sites; supercells = VolumeRange(1:3)))
+10
 ```
 
 See [Tutorial 01](../tutorials/01-first-enumeration.md) for the walkthrough. HF 2008 Table 1 also covers BCC and HCP (the latter via HF 2009's multilattice extension); HCP at n = 1..6 produces `[3, 10, 50, 270, 651, 4793]` and diamond at n = 1..4 produces `[3, 7, 33, 171]`.

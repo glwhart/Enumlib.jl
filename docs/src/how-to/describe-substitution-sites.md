@@ -79,18 +79,28 @@ Sites{3} with 2 sites (1 active, 2 canonical equivalence classes)
 
 After enumeration, [`to_atom_labeling`](@ref) gives you the labeling back as atomic symbols:
 
-```julia
-e = enumerate_structures(p_fcc, Sites(p_fcc, [:Al, :Ga]); supercells = VolumeRange(2:2))
-to_atom_labeling(e[1], sites)    # → Vector{Symbol} like [:Al, :Ga]
+```jldoctest sites_recipe
+julia> sites_alga = Sites(p_fcc, [:Al, :Ga]);
+
+julia> e = enumerate_structures(p_fcc, sites_alga; supercells = VolumeRange(2:2));
+
+julia> to_atom_labeling(e[1], sites_alga)
+2-element Vector{Symbol}:
+ :Al
+ :Ga
 ```
 
 When you write POSCARs via [`write_enumeration_archive`](@ref), the symbol mapping is automatically used as `species_symbols=` — no need to pass it explicitly:
 
-```julia
-sites = Sites(p_fcc, [:Al, :Ga])
-e = enumerate_structures(p_fcc, sites; supercells = VolumeRange(2:2))
-write_enumeration_archive("batch", e; super_periodic = false)
-# Each POSCAR's species line reads "Al Ga", picked up from the Sites mapping.
+Each POSCAR's species line then reads `Al Ga`, picked up from the `Sites` mapping:
+
+```jldoctest sites_recipe
+julia> mktempdir() do dir           # any directory; a temp one keeps the example self-contained
+           path = write_enumeration_archive(joinpath(dir, "batch"), e;
+                                            super_periodic = false)
+           isfile(path)
+       end
+true
 ```
 
 Mixing integer labels with symbol labels in the **same** `Sites` is rejected with an `ArgumentError` — pick one style per `Sites`. If you have integer-labeled `Site`s but want a symbol mapping for downstream display / POSCAR output, pass `species_symbols = [:Al, :Ga, ...]` as a kwarg to the `Sites` constructor.

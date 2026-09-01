@@ -45,11 +45,12 @@ Atomic-symbol labels (`:Na`, `:K`, …) are a convenience — Enumlib maps them 
 
 50/50 on X, fixed on Y and Z. One way is to write the global flat-vector by hand:
 
-```julia
-# X has 1 of label 0 + 1 of label 1; Y has 1 of label 2; Z has 1 of label 3.
-# Per primitive cell that's [1/2, 1/2, 1, 1] atoms; divided by 3 dset positions
-# gives [1/6, 1/6, 1/3, 1/3].
-c_flat = Concentration([1//6, 1//6, 1//3, 1//3])
+```jldoctest psl_tutorial
+julia> # X has 1 of label 0 + 1 of label 1; Y has 1 of label 2; Z has 1 of label 3.
+       # Per primitive cell that's [1/2, 1/2, 1, 1] atoms; divided by 3 dset
+       # positions gives [1/6, 1/6, 1/3, 1/3].
+       c_flat = Concentration([1//6, 1//6, 1//3, 1//3])
+Concentration(1//6, 1//6, 1//3, 1//3)
 ```
 
 The mental gymnastics in that comment is the whole problem the per-sublattice constructor solves. Same `Concentration`, stated directly:

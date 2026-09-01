@@ -45,9 +45,12 @@ Five configurations — small enough to ship in a single batch. (For production 
 
 ## Step 2 — enumerate
 
-```julia
-e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4), concentration = c)
-length(e)   # 5
+```jldoctest dft_tutorial
+julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(4:4),
+                                concentration = c);
+
+julia> length(e)
+5
 ```
 
 `e` is an [`Enumeration`](@ref) carrying the 5 [`EnumeratedStructure`](@ref) values — same shape as Tutorial 01, just smaller and concentration-restricted.
@@ -58,12 +61,16 @@ length(e)   # 5
 
 [^3]: Pass `label = "..."` to add a descriptive component to the auto-name; pass an explicit `.tar.gz` path to skip auto-naming. See [`write_enumeration_archive`](@ref).
 
-```julia
-out = write_enumeration_archive("./batch1/", e;
-                                 super_periodic = false,
-                                 species_symbols = ["Ag", "Pt"],
-                                 label = "FCC_AgPt_n4_2-2")
-# out: "./batch1/enumlib_FCC_AgPt_n4_2-2_2026-05-16T14-30-00.tar.gz"
+```jldoctest dft_tutorial
+julia> out = mktempdir() do dir      # in real use, your own batch directory
+           basename(write_enumeration_archive(dir, e;
+                                              super_periodic = false,
+                                              species_symbols = ["Ag", "Pt"],
+                                              label = "FCC_AgPt_n4_2-2"))
+       end;
+
+julia> startswith(out, "enumlib_FCC_AgPt_n4_2-2_") && endswith(out, ".tar.gz")
+true
 ```
 
 Inside the tarball:

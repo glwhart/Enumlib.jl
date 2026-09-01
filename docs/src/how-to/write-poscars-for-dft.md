@@ -2,45 +2,62 @@
 
 The DFT/MLIP **roundtrip workflow**: enumerate structures → write VASP-format POSCAR files for downstream DFT or MLIP runs → ship the directory to a collaborator → receive POSCARs back with energies filled in → attach the energies to your `Enumeration` for cluster-expansion fitting.
 
-The code examples below are **prose snippets**, not jldoctests — they touch the filesystem (timestamped archive names, temporary directories), which doesn't doctest cleanly. Treat them as a template; the file-format details are locked by the reference docstrings.
+Most of the examples below are executed as doctests, writing into a temporary directory so they stay self-contained. The two that read energies back are prose: they need a collaborator (or a calculator) to have filled the `energy_eV=` slots first, and faking that inline would obscure the point. That round-trip is covered by the test suite instead.
 
 ## Setup
 
-```julia
-using Enumlib
+```jldoctest poscar_recipe
+julia> using Enumlib
 
-p     = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])   # FCC primitive
-sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])                  # binary
-c     = concentration_count([4, 4]; n_total = 8)                # 50/50
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);   # FCC primitive
 
-e = enumerate_structures(p, sites; supercells = VolumeRange(8:8), concentration = c)
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);               # binary
+
+julia> c = concentration_count([4, 4]; n_total = 8);                 # 50/50
+
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(8:8),
+                                concentration = c);
+
+julia> length(e)
+94
 ```
 
-`e` carries 94 `EnumeratedStructure`s — the canonical HF 2012 reference count for FCC binary 4:4 at n=8.
+That 94 is the canonical HF 2012 reference count for FCC binary 4:4 at n=8.
 
 ## One POSCAR for one structure
 
 [`to_poscar`](@ref) writes a single structure to an IO stream. The header line carries the enumeration metadata plus an empty `energy_eV=` slot for the calculator to fill in:
 
-```julia
-open("POSCAR_1", "w") do io
-    to_poscar(io, e[1], p, e.supercells[e[1].supercell_id].hnf;
-              super_periodic = false)
-end
-```
+```jldoctest poscar_recipe
+julia> poscar = sprint(io -> to_poscar(io, e[1], p,
+                                       e.supercells[e[1].supercell_id].hnf;
+                                       super_periodic = false));
 
-The header looks like:
-
-```
-# enumlib_id=1 hnf=1 concentration=4:4 super_periodic=false energy_eV=
+julia> print(join(first(split(poscar, "\n"), 8), "\n"))
+# radius=2.3714 enumlib_id=0 hnf=1 super_periodic=false energy_eV=
 1.0
-   0.0   0.5   0.5
-   0.5   0.0   0.5
-   0.5   0.5   0.0
+        0.000000000000        0.500000000000        0.500000000000
+        0.500000000000        0.000000000000        0.500000000000
+        3.000000000000        2.500000000000       -2.500000000000
 A B
-   4   4
+4 4
 Direct
-   ...
+```
+
+Rows 3–5 are the *supercell* basis, not the parent's. `enumlib_id` is 0 here
+because a one-off `to_poscar` call has no batch to number against; pass
+`enumlib_id =` yourself, or use the archive writer below, which numbers them.
+To write it to disk, hand `to_poscar` a real stream:
+
+```jldoctest poscar_recipe
+julia> mktempdir() do dir
+           open(joinpath(dir, "POSCAR_1"), "w") do io
+               to_poscar(io, e[1], p, e.supercells[e[1].supercell_id].hnf;
+                         super_periodic = false)
+           end
+           filesize(joinpath(dir, "POSCAR_1")) > 0
+       end
+true
 ```
 
 VASP-5+ format (the species-symbols line was added at v4→v5; that format is unchanged through VASP 6).
@@ -49,10 +66,19 @@ VASP-5+ format (the species-symbols line was added at v4→v5; that format is un
 
 [`write_enumeration_archive`](@ref) writes every structure into a single `.tar.gz` containing all the POSCARs plus a TOML manifest mapping `structure_id ↔ poscar_filename`:
 
-```julia
-archive_path = write_enumeration_archive("ag-pt-4-4-n8", e)
-# → "ag-pt-4-4-n8_2026-05-14_103045.tar.gz" (timestamp auto-appended)
+```jldoctest poscar_recipe
+julia> mktempdir() do dir
+           path = write_enumeration_archive(dir, e; super_periodic = false,
+                                            label = "ag-pt-4-4-n8")
+           startswith(basename(path), "enumlib_ag-pt-4-4-n8_") &&
+               endswith(path, ".tar.gz")
+       end
+true
 ```
+
+Passing a **directory** auto-names the tarball
+`enumlib_<label>_<yyyy-mm-ddTHH-MM-SS>.tar.gz`, so repeated runs cannot collide.
+Pass a path ending in `.tar.gz` instead and it is written exactly there.
 
 ### Species symbols
 

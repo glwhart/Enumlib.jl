@@ -34,16 +34,19 @@ using Enumlib
 
 ## Quick taste
 
-```julia
-using Enumlib
+```jldoctest
+julia> using Enumlib
 
-parent = ParentLattice([0.5 0.5 0.0;
-                        0.5 0.0 0.5;
-                        0.0 0.5 0.5])             # FCC primitive
-sites  = Sites([Site([0.0, 0.0, 0.0], [0, 1])])   # binary case, one site
+julia> parent = ParentLattice([0.5 0.5 0.0;
+                              0.5 0.0 0.5;
+                              0.0 0.5 0.5]);      # FCC primitive
 
-enum = enumerate_structures(parent, sites; supercells = VolumeRange(1:4))
-length(enum)
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])]);   # binary, one site
+
+julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(1:4));
+
+julia> length(e)
+29
 ```
 
 For more, head to the [first-enumeration tutorial](tutorials/01-first-enumeration.md).

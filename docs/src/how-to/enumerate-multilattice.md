@@ -100,27 +100,33 @@ So for HCP at `n = 2` (4-site labeling), labeling `[0, 0, 1, 1]` means **every**
 
 [`to_poscar`](@ref) and [`write_enumeration_archive`](@ref) emit the atomic positions in the same dset-blocks order as the labeling above — sublattice-1 atoms first, then sublattice-2, etc. The POSCAR's per-species count line (line 4+D) groups atoms by species across the whole supercell, so the file is valid VASP regardless of which sublattices each species lives on.
 
-```julia
-using Enumlib
+```jldoctest mlat_poscar
+julia> using Enumlib
 
-A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)]
-p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])
-sites = Sites(p, [0, 1])
-e = enumerate_structures(p, sites; supercells = VolumeRange(1:4))
+julia> A_hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)];
 
-# One POSCAR
-open("POSCAR_001", "w") do io
-    to_poscar(io, e[1], p, e.supercells[e[1].supercell_id].hnf;
-              super_periodic = false,
-              species_symbols = ["Ti", "V"],
-              enumlib_id = 1)
-end
+julia> p = ParentLattice(A_hcp, [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]]);
 
-# Or the whole batch as a tarball
-write_enumeration_archive("hcp-ti-v", e;
-                          super_periodic = false,
-                          species_symbols = ["Ti", "V"],
-                          label = "HCP_TiV_n1-4")
+julia> sites = Sites(p, [0, 1]);
+
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(1:4));
+
+julia> mktempdir() do dir
+           # one POSCAR
+           open(joinpath(dir, "POSCAR_001"), "w") do io
+               to_poscar(io, e[1], p, e.supercells[e[1].supercell_id].hnf;
+                         super_periodic = false,
+                         species_symbols = ["Ti", "V"],
+                         enumlib_id = 1)
+           end
+           # or the whole batch as a tarball
+           tar = write_enumeration_archive(dir, e;
+                                           super_periodic = false,
+                                           species_symbols = ["Ti", "V"],
+                                           label = "HCP_TiV_n1-4")
+           isfile(joinpath(dir, "POSCAR_001")) && endswith(tar, ".tar.gz")
+       end
+true
 ```
 
 A representative HCP `n = 2` POSCAR looks like:
