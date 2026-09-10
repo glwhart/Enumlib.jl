@@ -26,9 +26,20 @@ const DEST = length(ARGS) >= 1 ? ARGS[1] : joinpath(REPO_ROOT, "build", "app")
 
 isdir(DEST) && rm(DEST; recursive = true)
 
+# create_app ignores the JULIA_CPU_TARGET environment variable: it has its own
+# `cpu_target` keyword, defaulting to PackageCompiler.default_app_cpu_target(),
+# which on x86_64 is already Julia's multi-versioning string
+# ("generic;sandybridge,-xsaveopt,clone_all;haswell,-rdrnd,base(1)"). Setting the
+# environment variable and expecting it to matter -- as both this project's
+# release workflow and the conda recipe did -- silently changed nothing. Thread it
+# through explicitly so the knob works where it is documented to.
+const CPU_TARGET = get(ENV, "JULIA_CPU_TARGET", PackageCompiler.default_app_cpu_target())
+@info "create_app cpu_target" CPU_TARGET
+
 elapsed = @elapsed create_app(
     REPO_ROOT,
     DEST;
+    cpu_target = CPU_TARGET,
     executables = ["enum" => "enum_main", "polya" => "polya_main",
                    "makestr" => "makestr_main"],
     # Precompilation is driven by the package's own PrecompileTools workload plus
