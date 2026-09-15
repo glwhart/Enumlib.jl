@@ -24,7 +24,7 @@ The composition of a coloring: the fraction (or count) of each species. See [`Co
 
 ### Configuration
 
-A supercell paired with a coloring — what an [`EnumeratedStructure`](@ref) value represents. The output of `enumerate(...)` is a list of symmetry-inequivalent configurations. We avoid the word *structure* in body prose because of the collision with Julia's `struct` and the type name `EnumeratedStructure`; the original HF 2008 paper calls these *derivative structures*.
+A supercell paired with a coloring — what an [`EnumeratedStructure`](@ref) value represents. The output of `enumerate_structures(...)` is a list of symmetry-inequivalent configurations. We avoid the word *structure* in body prose because of the collision with Julia's `struct` and the type name `EnumeratedStructure`; the original HF 2008 paper calls these *derivative structures*.
 
 ### Cycle index
 
@@ -44,7 +44,7 @@ For a multilattice, the list of basis-site fractional coordinates in the primiti
 
 ### Enumeration
 
-The full set of symmetry-inequivalent derivative structures for a given (parent, sites, supercell selection) tuple. Returned by `enumerate(...)`; see [`Enumeration`](@ref).
+The full set of symmetry-inequivalent derivative structures for a given (parent, sites, supercell selection) tuple. Returned by `enumerate_structures(...)`; see [`Enumeration`](@ref).
 
 ### Exhaustive algorithm
 

@@ -1,8 +1,8 @@
 # Count without enumerating
 
-Use [`count_inequivalent`](@ref) when you want to know "how many structures *would* I get" without actually generating them. Instead of building every coloring and throwing away the duplicates, it works out how many distinct ones there must be directly from the supercell's symmetry group — the [Pólya count](../explanation/glossary.md#Pólya-count), an application of [Burnside's lemma](../explanation/glossary.md#Burnside's-lemma), unpacked in [Pólya counting](../explanation/polya-counting.md). The cost is `O(|G| · n)` per supercell: sub-second across the full reference corpus, even at sizes where the matching `enumerate(...)` call would take minutes.
+Use [`count_inequivalent`](@ref) when you want to know "how many structures *would* I get" without actually generating them. Instead of building every coloring and throwing away the duplicates, it works out how many distinct ones there must be directly from the supercell's symmetry group — the [Pólya count](../explanation/glossary.md#Pólya-count), an application of [Burnside's lemma](../explanation/glossary.md#Burnside's-lemma), unpacked in [Pólya counting](../explanation/polya-counting.md). The cost is `O(|G| · n)` per supercell: sub-second across the full reference corpus, even at sizes where the matching `enumerate_structures(...)` call would take minutes.
 
-That makes it the natural **pre-flight check**: run it first, look at the number, then decide whether to enumerate, narrow the volume range, or add a concentration constraint. The count is exact, not an estimate — it matches `length(enumerate(...))` for the same arguments.
+That makes it the natural **pre-flight check**: run it first, look at the number, then decide whether to enumerate, narrow the volume range, or add a concentration constraint. The count is exact, not an estimate — it matches `length(enumerate_structures(...))` for the same arguments.
 
 ## Setup
 
@@ -24,7 +24,7 @@ julia> count_inequivalent(p, sites; supercells = VolumeRange(12:12)) # the canon
 7140
 ```
 
-The matching `length(enumerate(...))` calls would return the same numbers — but `enumerate` actually allocates the structures, while `count_inequivalent` is closed-form.
+The matching `length(enumerate_structures(...))` calls would return the same numbers — but `enumerate` actually allocates the structures, while `count_inequivalent` is closed-form.
 
 ## A breakdown across volumes
 

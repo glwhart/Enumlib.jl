@@ -142,7 +142,7 @@ julia> ic.by_concentration
 
 `12 = 0 + 7 + 5`. The 0 at the pure-B concentration is the default *super-periodicity* policy at work: all-B on a volume-4 supercell is a periodic replica of all-B on volume 1, so it's dropped to avoid double-counting across a volume sweep. Pass `include_superperiodic = true` to keep it.[^3]
 
-[^3]: `count_inequivalent` and `length(enumerate(...))` agree byte-for-byte by construction — both use the same Pólya machinery internally to apply the super-periodicity policy.
+[^3]: `count_inequivalent` and `length(enumerate_structures(...))` agree byte-for-byte by construction — both use the same Pólya machinery internally to apply the super-periodicity policy.
 
 ## What just happened
 

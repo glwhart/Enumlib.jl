@@ -1,9 +1,9 @@
 # Estimate the cost of an enumeration
 
-[`estimate_cost`](@ref) predicts how big a planned `enumerate(...)` call will be — total structure count, peak memory, chosen algorithm — *without* actually allocating or running it. Two use cases:
+[`estimate_cost`](@ref) predicts how big a planned `enumerate_structures(...)` call will be — total structure count, peak memory, chosen algorithm — *without* actually allocating or running it. Two use cases:
 
 1. **You** call it to size a request before launching a multi-day job.
-2. **`enumerate(...)` itself** calls it internally as the *enumeration resource check* — and refuses to proceed if the prediction exceeds `memory_budget`.
+2. **`enumerate_structures(...)` itself** calls it internally as the *enumeration resource check* — and refuses to proceed if the prediction exceeds `memory_budget`.
 
 ## Setup
 
@@ -31,7 +31,7 @@ Inspect any field of the returned [`EnumerationCostEstimate`](@ref) (`total_coun
 
 ## When the resource check refuses
 
-The same `estimate_cost` call is made internally by `enumerate(...)`. If the prediction exceeds `memory_budget`, the default policy throws [`EnumerationTooLargeError`](@ref) — *before* any allocation happens. Below, demonstrate the error by forcing it with an artificially tiny `memory_budget = 1` byte:
+The same `estimate_cost` call is made internally by `enumerate_structures(...)`. If the prediction exceeds `memory_budget`, the default policy throws [`EnumerationTooLargeError`](@ref) — *before* any allocation happens. Below, demonstrate the error by forcing it with an artificially tiny `memory_budget = 1` byte:
 
 ```jldoctest cost_recipe; filter = r"\d+\.\d+ MiB"
 julia> try

@@ -55,7 +55,7 @@ For FCC binary 4:4 at `n = 8`: `M = C(8, 4) = 70`, runtime is sub-second. For bi
 
 A [`ConcentrationRange`](@ref) at a given supercell volume decomposes into one [`Concentration`](@ref) per multiplicity vector in the range. For binary at `n = 32` with the full range `[(0,1), (0,1)]`, that's 33 individual concentrations (`a_1 = 0, 1, 2, ..., 32`). For ternary at `n = 12` with the full range, that's `C(12+2, 2) = 91` multiplicity vectors. The count grows roughly like `C(n+k-1, k-1)`.
 
-Enumlib limits this with a `partition_threshold` kwarg on `enumerate(...)` (default: 50). If the range decomposes into more partitions than the threshold, the response is one of:
+Enumlib limits this with a `partition_threshold` kwarg on `enumerate_structures(...)` (default: 50). If the range decomposes into more partitions than the threshold, the response is one of:
 
 - `:error` (default) — throw `PartitionExplosionError` with the decomposition count.
 - `:warn` — `@warn` and continue.

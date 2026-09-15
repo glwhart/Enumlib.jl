@@ -35,9 +35,9 @@ All four produce the same set of symmetry-inequivalent structures for any given 
 Two reasons to use it:
 
 1. **Sizing.** Before running a million-structure enumeration, ask Pólya how many structures you're about to get. See [Count without enumerating](../how-to/count-without-enumerating.md).
-2. **The resource check.** `enumerate(...)` internally calls Pólya (via [`estimate_cost`](@ref)) to decide whether the predicted memory usage fits the budget, and refuses to start if it doesn't.
+2. **The resource check.** `enumerate_structures(...)` internally calls Pólya (via [`estimate_cost`](@ref)) to decide whether the predicted memory usage fits the budget, and refuses to start if it doesn't.
 
-By default Pólya returns the **aperiodic** orbit count — orbits whose stabilizer in the translation subgroup is trivial. That matches `length(enumerate(...; include_superperiodic = false))`. Pass `include_superperiodic = true` for the raw Burnside count.
+By default Pólya returns the **aperiodic** orbit count — orbits whose stabilizer in the translation subgroup is trivial. That matches `length(enumerate_structures(...; include_superperiodic = false))`. Pass `include_superperiodic = true` for the raw Burnside count.
 
 ## Multilattice extension
 

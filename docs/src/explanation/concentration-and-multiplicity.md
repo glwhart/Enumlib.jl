@@ -19,7 +19,7 @@ Four constructors land on the same `Concentration`:
 | `concentration_count([n₁, n₂, ...]; n_total = N)` | Anchored counts | You have a specific supercell in mind; validates `sum == n_total`. |
 | `Concentration(sites, [[r₁₁, r₁₂, ...], [r₂₁, ...], ...])` | Per-sublattice ratios | Regime C (heterogeneous sublattices). Stating "1:1 on A, 1:1 on B, fixed on O" directly is much less error-prone than computing the global flat-vector by hand. |
 
-They're interchangeable downstream: `enumerate(...; concentration = c)` takes any of them.
+They're interchangeable downstream: `enumerate_structures(...; concentration = c)` takes any of them.
 
 ## The divisibility constraint
 

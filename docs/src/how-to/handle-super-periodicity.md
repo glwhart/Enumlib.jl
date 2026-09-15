@@ -42,7 +42,7 @@ The extra 22 are labelings whose true period is 1 or 2 — they would already be
 - You're cross-checking against a paper that quotes the complete count.
 
 
-The same kwarg works on `enumerate(...)` directly — pass `include_superperiodic = true` to get back the larger `Enumeration`.
+The same kwarg works on `enumerate_structures(...)` directly — pass `include_superperiodic = true` to get back the larger `Enumeration`.
 
 ## Asymmetric-concentration trip-wire
 

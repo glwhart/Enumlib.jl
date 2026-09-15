@@ -91,10 +91,10 @@ One consequence is user-visible: with an unconstrained range, `count_inequivalen
 
 ## Default policy match
 
-Pólya / aperiodic count matches `length(enumerate(...))` byte-for-byte when both use the same super-periodicity policy:
+Pólya / aperiodic count matches `length(enumerate_structures(...))` byte-for-byte when both use the same super-periodicity policy:
 
-- `count_inequivalent(...; include_superperiodic = false)` (default) = `length(enumerate(...; include_superperiodic = false))` (default).
-- `count_inequivalent(...; include_superperiodic = true)` = `length(enumerate(...; include_superperiodic = true))`.
+- `count_inequivalent(...; include_superperiodic = false)` (default) = `length(enumerate_structures(...; include_superperiodic = false))` (default).
+- `count_inequivalent(...; include_superperiodic = true)` = `length(enumerate_structures(...; include_superperiodic = true))`.
 
 This holds for heterogeneous `Sites` as well as uniform ones — it is the reason the label-restricted formulas exist, rather than being an optimization. The Pólya testsuite asserts the cross-check on the full fixed-concentration reference corpus, and the `struct_enum.in` corpus asserts it per locked reference row across the fcc, hcp, diamond, zinc-blende, half- and full-Heusler, and perovskite families.
 

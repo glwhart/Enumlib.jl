@@ -47,7 +47,7 @@ Concentration(1//4, 3//4)
 
 - **Divisibility:** the concentration's fractions must each multiply by the supercell volume to an integer. For example, `Concentration([1//3, 2//3])` works at volumes that are multiples of 3 (3, 6, 9, …) but not at volume 4. Volumes that don't divide cleanly are silently skipped — `enumerate` returns whatever structures the *compatible* volumes produced.
 
-    **Caveat:** if *every* volume in the range is incompatible, you get back an `Enumeration` of length 0 with no error raised. Calling `multiplicities(c, n)` directly *does* throw an `EmptyEnumerationError` — only the `enumerate(...)` path catches it per-volume.
+    **Caveat:** if *every* volume in the range is incompatible, you get back an `Enumeration` of length 0 with no error raised. Calling `multiplicities(c, n)` directly *does* throw an `EmptyEnumerationError` — only the `enumerate_structures(...)` path catches it per-volume.
 - `:auto` algorithm dispatch picks `:multinomial` for fixed concentration, or `:recursive_stabilizer` if the multinomial bitmap would exceed `memory_budget × 0.8`. See [Pick an algorithm](pick-an-algorithm.md).
 - Super-periodic labelings are dropped by default. See [Handle super-periodicity](handle-super-periodicity.md).
 

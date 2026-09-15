@@ -10,7 +10,7 @@
 - Compare to the flat-vector form to convince yourself they produce the same `Concentration`.
 - Size the run first with [`count_inequivalent`](@ref), which honors each sublattice's `allowed_labels`.
 
-By the end you'll see the [`Concentration(sites, per_sublattice)`](@ref) call shape and how it slots into the same `enumerate(...)` you already know from Tutorial 02.
+By the end you'll see the [`Concentration(sites, per_sublattice)`](@ref) call shape and how it slots into the same `enumerate_structures(...)` you already know from Tutorial 02.
 
 ## Setup
 

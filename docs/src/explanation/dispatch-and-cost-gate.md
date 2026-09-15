@@ -1,6 +1,6 @@
 # Dispatch and the resource check
 
-How `enumerate(...)`'s `algorithm = :auto` dispatch picks one of the four enumeration algorithms, how the enumeration resource check uses Pólya / [`estimate_cost`](@ref) to refuse oversized requests, and how to override each step.
+How `enumerate_structures(...)`'s `algorithm = :auto` dispatch picks one of the four enumeration algorithms, how the enumeration resource check uses Pólya / [`estimate_cost`](@ref) to refuse oversized requests, and how to override each step.
 
 ## `algorithm = :auto` (the default)
 
@@ -32,7 +32,7 @@ Invalid combinations error at validation time — e.g., `algorithm = :multinomia
 
 ## The enumeration resource check
 
-`enumerate(...)` consults [`estimate_cost`](@ref) before allocating anything substantial:
+`enumerate_structures(...)` consults [`estimate_cost`](@ref) before allocating anything substantial:
 
 1. **Pólya estimates the structure count** (`count_inequivalent` internally — milliseconds).
 2. **`_predict_peak_memory` estimates peak memory** for the chosen algorithm: `BitVector` size for `:exhaustive` / `:multinomial`, or `output_count × n × overhead` for `:recursive_stabilizer`.
@@ -57,11 +57,11 @@ Defaults to `max(2 GiB, 25% of Sys.total_memory())`. Pass an explicit byte count
 
 ## Resource check ↔ Pólya ↔ algorithm alignment
 
-The resource check's count is the *aperiodic Pólya count* (see [polya-counting](polya-counting.md)), which matches what `enumerate(...)` will produce *with the same `include_superperiodic` policy*. So the predicted structure count is exact (up to BigInt arithmetic), and the predicted memory is an upper bound on what `enumerate` actually allocates.
+The resource check's count is the *aperiodic Pólya count* (see [polya-counting](polya-counting.md)), which matches what `enumerate_structures(...)` will produce *with the same `include_superperiodic` policy*. So the predicted structure count is exact (up to BigInt arithmetic), and the predicted memory is an upper bound on what `enumerate` actually allocates.
 
 That exactness extends to heterogeneous sublattices: the count is taken with the label-restricted Pólya formulas, which honor each position's `allowed_labels` instead of assuming every position is free over all `k` species. Without that, the gate would price a zinc-blende or perovskite run orders of magnitude above its true size and could refuse a request that comfortably fits.
 
-Enumlib's testsuite asserts this alignment on the entire reference corpus: for every locked-count case, `count_inequivalent` and `length(enumerate(...))` agree, and `estimate_cost(...).peak_memory_bytes` ≥ the algorithm's actual peak.
+Enumlib's testsuite asserts this alignment on the entire reference corpus: for every locked-count case, `count_inequivalent` and `length(enumerate_structures(...))` agree, and `estimate_cost(...).peak_memory_bytes` ≥ the algorithm's actual peak.
 
 ## See also
 
