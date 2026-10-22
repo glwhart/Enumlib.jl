@@ -555,3 +555,41 @@ libraries create_app copies out of your julia package carry rpaths from julia's
 own build environment, and patchelf can't rewrite them into our longer prefix. It
 isn't fatal and the tests pass, but I don't know if it matters at a different
 install prefix. If it does I'd rather sort it before merge.
+
+---
+---
+
+# Draft 8 — answering the vendoring follow-ups
+
+Replying to: https://github.com/conda-forge/staged-recipes/pull/34550#issuecomment-6070989318
+("Is there any reason we could not just add julia as a dependency and use the
+libraries distributed in that package? ... Do we need the stock system image
+since you are building a non-incremental system image yourself? I'm also
+surprised that we need libjulia-codegen ... Anyways, I think these are issues we
+can refine in the feedstock.")
+
+He is not blocking the merge, he is parking these for the feedstock. Two of his
+premises are slightly off and the third idea is better than he may realise: "just
+depend on julia" and the `incremental = true` he suggested earlier are the same
+idea, and that half already built here (15.1 min, create_app completed). We never
+got a package size from it because that run died later on the missing libraries.
+
+Status: **draft—not posted**
+
+---
+
+It would seem best if we could refine in the feedstock. That said, this is all far outside my comfort zone, so whatever you suggest, I'm going to try. I've never done anything like this before.
+
+On `sys.so`, that 360 MB is the system image `create_app` built, not the stock
+one. My build is non-incremental so it contains base Julia as well, and there's
+only the one in the package.
+
+`libjulia-codegen` is there because Julia links it regardless of how complete
+precompilation is. (We're stuck with that, right? Anything that hits dynamic dispatch at runtime needs codegen,
+so an application can't really drop it.) But this build has the precompile
+workload switched off entirely, so it leans on JIT more than the released binaries
+do, not less.
+
+As for depending on julia and using its libraries, that almost worked here. With `incremental = true`
+the system image builds against your julia's own `sys.so`, which is most of what
+you're describing, if I understand. That run failed later on library paths before it got to packaging, so I'm happy to measure it properly in the feedstock and see how much of the 596 MB goes away.
