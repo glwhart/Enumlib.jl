@@ -159,6 +159,111 @@ using Enumlib
         @test length(concentrations_in_range(cr_tern, 20)) == 231
     end
 
+    # ---- Charge neutrality on ConcentrationRange ----
+    @testset "ConcentrationRange(k) shorthand and charges" begin
+        @test ConcentrationRange(3) == ConcentrationRange([(0//1, 1//1) for _ in 1:3])
+        @test ConcentrationRange(2; charges = [1, -1]) != ConcentrationRange(2)
+        @test hash(ConcentrationRange(2; charges = [1, -1])) != hash(ConcentrationRange(2))
+        @test_throws ArgumentError ConcentrationRange(3; charges = [1, -1])
+        @test occursin("charges = [1, -1]", sprint(show, ConcentrationRange(2; charges = [1, -1])))
+
+        # Binary +1/−1: neutral iff equal counts — one vector at even n, none at odd n.
+        cr = ConcentrationRange(2; charges = [1, -1])
+        @test [multiplicities(c, 6) for c in concentrations_in_range(cr, 6)] == [[3, 3]]
+        @test isempty(concentrations_in_range(cr, 5))
+
+        # Filtered list == unfiltered list minus the charged vectors, by brute force.
+        q = [1, 3, 0, -2]
+        for n_total in 1:12
+            all_m = [multiplicities(c, n_total) for c in concentrations_in_range(ConcentrationRange(4), n_total)]
+            neutral = [multiplicities(c, n_total)
+                       for c in concentrations_in_range(ConcentrationRange(4; charges = q), n_total)]
+            @test neutral == filter(m -> sum(m .* q) == 0, all_m)
+        end
+
+        # All-zero charges: the filter keeps everything.
+        @test length(concentrations_in_range(ConcentrationRange(3; charges = [0, 0, 0]), 20)) == 231
+    end
+
+    @testset "Charge-neutral rocksalt enumeration" begin
+        # Rocksalt: cations Li⁺ (0), Fe³⁺ (1), vacancy (2) on the fcc cation
+        # sublattice; O²⁻ (3) fixed on the anion sublattice.
+        p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                          [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1, 2]),
+                       Site([0.5, 0.5, 0.5], [3])])
+        q = [1, 3, 0, -2]
+        is_neutral(s) = sum(q[l + 1] for l in s.labeling) == 0
+        key(e, s) = (e.supercells[s.supercell_id].hnf, s.labeling)
+        run(cr, n; kw...) = enumerate_structures(p, sites; supercells = VolumeRange(n:n),
+                                concentration = cr, partition_threshold = 1_000_000,
+                                skip_resource_check = true, kw...)
+
+        # Hand counts. n = 1: one cation must balance one O²⁻ — no +2 cation, so none.
+        # n = 2: the two cations must sum to +4, i.e. one Li and one Fe; the cation
+        # sublattice is fcc, and fcc has two inequivalent 1:1 orderings at n = 2
+        # (CuAu-type along [001], CuPt-type along [111]).
+        cr_q = ConcentrationRange(4; charges = q)
+        @test length(run(cr_q, 1)) == 0
+        @test length(run(cr_q, 2)) == 2
+
+        for n in 1:4
+            filtered = run(cr_q, n)
+            @test all(is_neutral, filtered)
+            # Same set as enumerating every composition and filtering afterwards.
+            unfiltered = run(ConcentrationRange(4), n)
+            @test Set(key(filtered, s) for s in filtered) ==
+                  Set(key(unfiltered, s) for s in unfiltered if is_neutral(s))
+            # Both coloring algorithms that take a site mask agree.
+            @test length(run(cr_q, n; algorithm = :multinomial_restricted)) == length(filtered)
+            # Polya count sees the same filtered compositions.
+            @test count_inequivalent(p, sites; supercells = VolumeRange(n:n),
+                                     concentration = cr_q) == length(filtered)
+            # The default path runs the resource check; its predicted total and
+            # partition count must see the filter too.
+            est = estimate_cost(p, sites; supercells = VolumeRange(n:n), concentration = cr_q)
+            @test est.total_count == length(filtered)
+            # partition_count sums over supercells, so divide out the supercell
+            # count, recovered from the same estimate on the uncharged range.
+            n_sc = estimate_cost(p, sites; supercells = VolumeRange(n:n),
+                                 concentration = ConcentrationRange(4)).partition_count ÷
+                   length(concentrations_in_range(ConcentrationRange(4), 2n))
+            @test est.partition_count == n_sc * length(concentrations_in_range(cr_q, 2n))
+            @test length(enumerate_structures(p, sites; supercells = VolumeRange(n:n),
+                                              concentration = cr_q)) == length(filtered)
+        end
+    end
+
+    @testset "Charge-neutral single-lattice binary" begin
+        # FCC with +1/−1 labels: the neutral compositions are exactly 1:1, so the
+        # charged full range must reproduce the pinned fixed-concentration counts
+        # and give nothing at odd n — on every algorithm that takes a range.
+        parent = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+        sites = Sites([Site([0.0, 0.0, 0.0], [0, 1])])
+        cr_q = ConcentrationRange(2; charges = [1, -1])
+        for n in 1:8, alg in (:auto, :multinomial, :recursive_stabilizer)
+            got = length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
+                                              concentration = cr_q, algorithm = alg))
+            want = isodd(n) ? 0 :
+                length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
+                    concentration = concentration_count([n ÷ 2, n ÷ 2]; n_total = n),
+                    algorithm = alg))
+            @test got == want
+        end
+        @test length(enumerate_structures(parent, sites; supercells = VolumeRange(8:8),
+                                          concentration = cr_q)) == 94   # HF 2012 anchor
+
+        # Partition gate counts the filtered list: one neutral partition at n = 12,
+        # where the uncharged full range has 13 and trips a threshold of 5.
+        @test_throws PartitionExplosionError enumerate_structures(parent, sites;
+            supercells = VolumeRange(12:12), concentration = ConcentrationRange(2),
+            partition_threshold = 5)
+        @test length(enumerate_structures(parent, sites; supercells = VolumeRange(12:12),
+                     concentration = cr_q, partition_threshold = 5)) ==
+              length(enumerate_structures(parent, sites; supercells = VolumeRange(12:12),
+                     concentration = concentration_count([6, 6]; n_total = 12)))
+    end
+
     # ---- multinomial_count, hash, unhash ----
     @testset "multinomial_count returns BigInt with correct values" begin
         @test multinomial_count([2, 2]) == 6

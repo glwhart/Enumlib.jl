@@ -120,7 +120,7 @@ function enumerate_structures(parent::ParentLattice{D}, sites::Sites{D};
                 # Regime A/B: k is the number of distinct labels at the
                 # (uniform) sites. Mirrors _validate_enumerate_inputs.
                 k_syn = length(sites.list[1].allowed_labels)
-                concentration = ConcentrationRange([(0//1, 1//1) for _ in 1:k_syn])
+                concentration = ConcentrationRange(k_syn)
                 algorithm = :recursive_stabilizer
                 # Partition decomposition is an implementation detail of the
                 # synthetic concentration; the user didn't ask for a
@@ -780,8 +780,11 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
     # concentrations. The per-partition path instead runs the dense DP once per
     # composition of n_total into k parts: 92 s for perovskite n = 3, and still
     # unfinished after 80 min at n = 4. This is the same shortcut `estimate_cost`
-    # already takes for its own synthesized range.
+    # already takes for its own synthesized range. A range carrying `charges` is
+    # constrained even with full bounds: the neutrality filter lives in
+    # `concentrations_in_range`, so it must take the per-partition path.
     unconstrained_range = concentration isa ConcentrationRange &&
+                          concentration.charges === nothing &&
                           all(b -> b == (0 // 1, 1 // 1), concentration.bounds)
     concentration_eff = unconstrained_range ? nothing : concentration
 
@@ -938,7 +941,7 @@ function estimate_cost(parent::ParentLattice{D}, sites::Sites{D};
                 :exhaustive
             else
                 k_syn = length(sites.list[1].allowed_labels)
-                concentration = ConcentrationRange([(0//1, 1//1) for _ in 1:k_syn])
+                concentration = ConcentrationRange(k_syn)
                 synthesized_concentration = true
                 :recursive_stabilizer
             end

@@ -126,7 +126,7 @@ function read_struct_enum_in(io::IO)
     # all-concentrations behavior. (Single-lattice and uniform multilattice
     # accept `nothing`; enumerate's :auto synthesizes the range for those.)
     if conc === nothing && nD > 1 && !all(l -> l == labelsets[1], labelsets)
-        conc = ConcentrationRange([(0//1, 1//1) for _ in 1:k])
+        conc = ConcentrationRange(k)
     end
 
     return (; title, latdim, parent, sites, selection, nmin = Nmin, nmax = Nmax,
@@ -183,9 +183,11 @@ function write_struct_enum_out(io::IO, e::Enumeration{D}; input, stdout_io::IO =
     else
         println(io, "Concentration check:"); println(io, "    T")
         println(io, "Including only structures of which the concentration   of each atom is in the range:")
+        q = input.concentration.charges
         for (t, (lo, hi)) in enumerate(input.concentration.bounds)
             println(io, @sprintf("Type %d:    %d/  %d --    %d/  %d", t,
-                                 numerator(lo), denominator(lo), numerator(hi), denominator(hi)))
+                                 numerator(lo), denominator(lo), numerator(hi), denominator(hi)) *
+                        (q === nothing ? "" : "    # charge $(q[t]); neutral compositions only"))
         end
     end
     println(io, "full list of labelings (including incomplete labelings) is used")

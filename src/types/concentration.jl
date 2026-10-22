@@ -234,7 +234,7 @@ end
 # ------------------------------------------------------------------------------
 
 """
-    ConcentrationRange(bounds::AbstractVector{Tuple{Rational, Rational}})
+    ConcentrationRange(bounds::AbstractVector{Tuple{Rational, Rational}}; charges = nothing)
 
 Per-species `(min, max)` bounds. Decomposes at each cell size into a list of `Concentration`s within the bounds via `concentrations_in_range`.
 
@@ -258,13 +258,34 @@ julia> cr = ConcentrationRange([(0//1, 1//1), (0//1, 1//1), (0//1, 1//3)]);
 julia> length(concentrations_in_range(cr, 6))
 18
 ```
+
+# Charge neutrality
+
+Pass `charges` (one integer per species, in label order; vacancies are `0`) to keep only globally neutral compositions: `concentrations_in_range` drops every multiplicity vector with `sum(a_i * charges[i]) != 0`. Neutrality depends only on the counts, not on where the species sit, so this is a filter on compositions; colorings are unaffected. Every caller of `concentrations_in_range` — enumeration, `count_inequivalent`, `estimate_cost` and the partition gate — sees the same filtered list.
+
+Rocksalt-style labels: `+1` and `+3` cations and a cation vacancy (labels 0–2), and `O²⁻` (label 3). Over 4 sites, three of the 35 multiplicity vectors are neutral:
+```jldoctest
+julia> cr = ConcentrationRange(4; charges = [1, 3, 0, -2]);
+
+julia> [multiplicities(c, 4) for c in concentrations_in_range(cr, 4)]
+3-element Vector{Vector{Int64}}:
+ [0, 0, 4, 0]
+ [1, 1, 0, 2]
+ [2, 0, 1, 1]
+```
+The filter knows nothing about sublattices. On a rocksalt parent with 2 cation and 2 anion sites only `[1, 1, 0, 2]` fits; the other two are kept here and give no colorings downstream, just as ill-fitting vectors do without `charges`.
 """
 struct ConcentrationRange
     bounds::Vector{Tuple{Rational{Int}, Rational{Int}}}
+    charges::Union{Nothing, Vector{Int}}   # one per species; `nothing` = no neutrality filter
 
-    function ConcentrationRange(bounds::AbstractVector)
+    function ConcentrationRange(bounds::AbstractVector; charges = nothing)
         length(bounds) >= 2 ||
             throw(ArgumentError("ConcentrationRange needs ≥ 2 species"))
+        charges === nothing || length(charges) == length(bounds) ||
+            throw(ArgumentError(
+                "charges has $(length(charges)) entries but there are " *
+                "$(length(bounds)) species; give one charge per species (vacancy = 0)"))
         for (i, (lo, hi)) in enumerate(bounds)
             (0 <= lo <= hi <= 1) ||
                 throw(ArgumentError(
@@ -276,9 +297,18 @@ struct ConcentrationRange
             throw(ArgumentError(
                 "ConcentrationRange has no feasible concentration: sum-of-lows " *
                 "= $(sum(lo for (lo, _) in bounds)), sum-of-highs = $(sum(hi for (_, hi) in bounds)). Need sum-of-lows ≤ 1 ≤ sum-of-highs."))
-        new([(Rational{Int}(lo), Rational{Int}(hi)) for (lo, hi) in bounds])
+        new([(Rational{Int}(lo), Rational{Int}(hi)) for (lo, hi) in bounds],
+            charges === nothing ? nothing : Vector{Int}(charges))
     end
 end
+
+"""
+    ConcentrationRange(k::Integer; charges = nothing)
+
+Full range for `k` species — every species in `[0, 1]` — optionally restricted to neutral compositions. Shorthand for `ConcentrationRange([(0//1, 1//1) for _ in 1:k]; charges)`.
+"""
+ConcentrationRange(k::Integer; charges = nothing) =
+    ConcentrationRange([(0//1, 1//1) for _ in 1:k]; charges)
 
 """
     n_species(cr::ConcentrationRange) -> Int
@@ -290,7 +320,7 @@ n_species(cr::ConcentrationRange) = length(cr.bounds)
 """
     concentrations_in_range(cr::ConcentrationRange, n_total::Integer) -> Vector{Concentration}
 
-Enumerate every integer-multiplicity vector `(a_1, ..., a_k)` with `sum(a_i) = n_total` and `lo_i ≤ a_i / n_total ≤ hi_i`, returning the corresponding `Concentration`s. Used by `enumerate(...)` to walk a concentration range.
+Enumerate every integer-multiplicity vector `(a_1, ..., a_k)` with `sum(a_i) = n_total` and `lo_i ≤ a_i / n_total ≤ hi_i`, returning the corresponding `Concentration`s. Used by `enumerate(...)` to walk a concentration range. If `cr` carries `charges`, only vectors with `sum(a_i * charges[i]) == 0` are returned.
 
 The default `partition_threshold = 100` checks the result of this function; if the count exceeds the threshold and `on_partition_overflow = :error`, `enumerate(...)` throws a `PartitionExplosionError` with a "narrow your range" message.
 
@@ -325,7 +355,8 @@ function concentrations_in_range(cr::ConcentrationRange, n_total::Integer)
             # Species k takes whatever's left.
             if per_species_min[k] <= remaining <= per_species_max[k]
                 counts[k] = remaining
-                push!(results, Concentration([c // n_total for c in counts]))
+                (cr.charges === nothing || sum(counts .* cr.charges) == 0) &&
+                    push!(results, Concentration([c // n_total for c in counts]))
             end
             return
         end
@@ -339,11 +370,14 @@ function concentrations_in_range(cr::ConcentrationRange, n_total::Integer)
     return results
 end
 
-Base.:(==)(a::ConcentrationRange, b::ConcentrationRange) = a.bounds == b.bounds
-Base.hash(cr::ConcentrationRange, h::UInt) = hash(cr.bounds, h)
+Base.:(==)(a::ConcentrationRange, b::ConcentrationRange) =
+    a.bounds == b.bounds && a.charges == b.charges
+Base.hash(cr::ConcentrationRange, h::UInt) = hash(cr.charges, hash(cr.bounds, h))
 
 function Base.show(io::IO, cr::ConcentrationRange)
     parts = ["($(numerator(lo))//$(denominator(lo)), $(numerator(hi))//$(denominator(hi)))"
              for (lo, hi) in cr.bounds]
-    print(io, "ConcentrationRange(", join(parts, ", "), ")")
+    print(io, "ConcentrationRange(", join(parts, ", "))
+    cr.charges === nothing || print(io, "; charges = ", cr.charges)
+    print(io, ")")
 end

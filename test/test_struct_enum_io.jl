@@ -115,6 +115,29 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
         end
     end
 
+    @testset "writer: charges annotate the Type lines without adding lines" begin
+        # makeStr locates data rows by header line count, so a charged range must
+        # leave the line count alone; the charges ride along as trailing comments.
+        inp = _readsen(_sen(; A = FCC2, dset = [[0.0,0,0],[0.25,0.25,0.25]],
+                            labels = [[0,1],[2,3]], nmin = 2, nmax = 2, conc = nothing))
+        inp_q = merge(inp, (concentration = ConcentrationRange(4; charges = [1, 2, -1, -2]),))
+        out = map((inp, inp_q)) do x
+            e = enumerate_structures(x.parent, x.sites; supercells = x.selection,
+                          concentration = x.concentration,
+                          partition_threshold = 1_000_000, skip_resource_check = true)
+            fbuf = IOBuffer()
+            Enumlib.write_struct_enum_out(fbuf, e; input = x, stdout_io = IOBuffer())
+            (split(String(take!(fbuf)), '\n'), e)
+        end
+        (lines, e), (lines_q, e_q) = out
+        hdr(ls) = findfirst(l -> startswith(l, "start   #tot"), ls)
+        @test hdr(lines) == hdr(lines_q)
+        @test !any(l -> occursin("# charge", l), lines)
+        @test count(l -> occursin(r"^Type \d+:.*# charge", l), lines_q) == 4
+        @test length(lines_q) - hdr(lines_q) == length(e_q) + 1   # data rows + trailing ""
+        @test 0 < length(e_q) < length(e)
+    end
+
     @testset "makestr.x — struct_enum.out → vasp.* POSCARs" begin
         # Full CLI path: enum.x writes struct_enum.out, makestr.x reads it back and
         # writes POSCARs. Pins the two contracts pymatgen's EnumlibAdaptor depends

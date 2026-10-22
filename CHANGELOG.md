@@ -2,6 +2,18 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## Unreleased
+
+### Added
+
+- **Charge-neutral enumeration.** `ConcentrationRange(bounds; charges = [...])` takes one integer charge per label (vacancy = `0`) and keeps only the globally neutral compositions. Neutrality depends only on the counts, so the filter sits in `concentrations_in_range`, and enumeration, `count_inequivalent`, `estimate_cost` and the partition-count limit all see the same filtered list; no coloring algorithm changed. It is a global condition only — local rules such as Pauling's electrostatic valence rule are not applied. Prompted by D. N. Bublikov's NaCl-type superstructure code ([dmitry-bublikov/NaCl-superstructure-simulator](https://github.com/dmitry-bublikov/NaCl-superstructure-simulator)), which enumerates exactly these compositions.
+- **`ConcentrationRange(k; charges = nothing)`**, the full range over `k` species — so "every neutral composition" is `ConcentrationRange(4; charges = [1, 3, 0, -2])`. Used internally wherever the full range was spelled out.
+- `write_struct_enum_out` annotates each concentration `Type` line with its charge when the range carries charges, as a trailing comment; the header's line count is unchanged, so `makeStr.py` still finds the data rows.
+
+### Fixed
+
+- **`count_inequivalent` treated any full-bounds `ConcentrationRange` as unrestricted** and skipped the per-composition count. That was exact while bounds were the only constraint a range could carry; with charges it would have counted every composition (96 instead of 5 for the rocksalt example at n = 4). The shortcut now applies only to ranges without charges.
+
 ## v0.4.0 — 2026-09-01
 
 ### Breaking

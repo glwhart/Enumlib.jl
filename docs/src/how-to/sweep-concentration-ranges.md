@@ -40,6 +40,29 @@ julia> length(e)
 216
 ```
 
+## Charge-neutral compositions
+
+For ionic parents, pass `charges` — one integer per label, vacancies `0` — and the range keeps only the globally neutral partitions. `ConcentrationRange(k)` is the full range over `k` species, so "every neutral composition" needs no bounds at all. Rocksalt with Li⁺, Fe³⁺ or a vacancy on the cation sublattice and O²⁻ fixed on the anion sublattice:
+
+```jldoctest neutral_recipe
+julia> using Enumlib
+
+julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0],
+                         [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]]);
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [0, 1, 2]),      # Li, Fe, vacancy
+                      Site([0.5, 0.5, 0.5], [3])]);         # O
+
+julia> cr = ConcentrationRange(4; charges = [1, 3, 0, -2]);
+
+julia> e = enumerate_structures(p, sites; supercells = VolumeRange(1:4), concentration = cr);
+
+julia> length(e)
+10
+```
+
+Neutrality depends only on the composition, so the filter removes whole partitions before any coloring is built; [`count_inequivalent`](@ref) and [`estimate_cost`](@ref) see the same filtered list. It is a global condition: local rules such as Pauling's electrostatic valence rule are not applied.
+
 ## The partition-count limit
 
 If a `ConcentrationRange` decomposes into many partitions per supercell, the cost can balloon. The default limit refuses the request when the partition count exceeds **100** at any single volume:
