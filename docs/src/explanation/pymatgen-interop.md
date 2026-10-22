@@ -59,10 +59,23 @@ Fortran drops, so counts can differ; the worked case is in `docs/notes/chunk6.5-
 enumeration, and two-dimensional / `surf`-mode enumeration, which the reader rejects with a
 clear error rather than guessing.
 
+One convention is easy to get wrong: d-vectors in `struct_enum.in` are **Cartesian**, in the
+units of the lattice vectors, not fractional. Pasting a POSCAR's `Direct` coordinates under
+lattice vectors given in Å puts every atom inside a box about 1 Å across; the Fortran
+`enum.x` then finds only the identity operation and reports every site as distinct. The
+Enumlib.jl reader warns when every d-vector lies in `[0, 1]` while the shortest lattice
+vector is longer than 2.
+
 ## Installation
 
-The per-platform tarballs bundle the Julia runtime, so no Julia installation is required —
-untar and put `bin/` on `PATH`. See the
+The executables are on conda-forge as `enumlib.jl`:
+
+```
+conda install -c conda-forge enumlib.jl
+```
+
+The per-platform tarballs also bundle the Julia runtime, so no Julia installation is
+required — untar and put `bin/` on `PATH`. See the
 [README](https://github.com/glwhart/Enumlib.jl#standalone-binaries-no-julia-required) for
 the download command, checksums, and the macOS Gatekeeper note.
 

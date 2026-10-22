@@ -55,6 +55,8 @@ Parse a Fortran-enumlib `struct_enum.in` stream into Enumlib.jl inputs. Returns
 
 ready to feed `enumerate_structures(parent, sites; supercells = selection, concentration)`.
 
+d-vectors are read as **Cartesian** coordinates, in the units of the lattice vectors, as in the Fortran `enum.x`. If every d-vector lies in `[0, 1]` while the shortest lattice vector is longer than 2, the reader warns that they look like fractional (POSCAR `Direct`) coordinates — the usual cause of a cell whose symmetry comes out as the identity alone.
+
 Scope (chunk 9.1, v0.3): `bulk` only; `full` mode only; single- and multilattice
 with per-d-vector allowed labels; optional concentration block. `surf`/2D, the
 inactive-site label encoding (a label ≥ `k`), explicit equivalencies, and `part`
@@ -169,6 +171,8 @@ Write `e` in Fortran-`enum.x`-compatible `struct_enum.out` form to `io`, plus th
 Fortran-style progress table (the `…RunTot` table pymatgen scans for the structure
 count) to `stdout_io`. `input` is the NamedTuple from [`read_struct_enum_in`](@ref);
 it supplies the header fields (title, eps, cell-size range, concentration).
+
+If `input.concentration` carries `charges`, each concentration `Type` line ends with a `# charge q` comment; no line is added, so the header layout `makeStr.py` depends on is unchanged.
 
 Per-row layout is the 27-token form `makeStr.py` parses by position
 (docs/notes/phase9-design.md §1c). The `Left transform` column is the SNF left

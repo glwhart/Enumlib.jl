@@ -65,7 +65,23 @@ julia> concentrations_in_range(ConcentrationRange([(0//1, 1//1), (0//1, 1//1)]),
 
 For binary 0:1, 1:3, 2:2, 3:1, 1:0 at `n = 4`. Note Enumlib does **not** auto-collapse label-exchange image pairs (the `[1:3]` and `[3:1]` pair, for example) — that's a deliberate design choice (different chemical species so the same composition swapped is a different material). Bound the range tighter — e.g., `(0//1, 1//2)` and `(1//2, 1//1)` — if you want only one half.
 
-The range can decompose into a lot of concentrations at high `n_total`. The [partition-explosion gate](multinomial-2012.md#partition-explosion) caps it via `partition_threshold` (default 50).
+The range can decompose into a lot of concentrations at high `n_total`. The [partition-explosion gate](multinomial-2012.md#partition-explosion) caps it via `partition_threshold` (default 100).
+
+## Charge neutrality is a property of the multiplicities
+
+For an ionic parent, give each label a formal charge `qᵢ` (a vacancy is `0`). A labeling is neutral when `Σ aᵢ qᵢ = 0` over its multiplicities `aᵢ`. The condition involves only the counts, never the positions, so every labeling with a given multiplicity vector is neutral or none is. That is why neutrality is a filter on compositions rather than a property of each coloring: `ConcentrationRange(bounds; charges)` drops the non-neutral vectors inside [`concentrations_in_range`](@ref), and everything downstream — enumeration, [`count_inequivalent`](@ref), [`estimate_cost`](@ref), the partition gate — iterates the shorter list. The coloring algorithms never see a charge.
+
+```jldoctest
+julia> using Enumlib
+
+julia> concentrations_in_range(ConcentrationRange(2; charges = [1, -1]), 4)
+1-element Vector{Concentration}:
+ Concentration(1//2, 1//2)
+```
+
+The filter knows nothing about sublattices. A neutral multiplicity vector that cannot be placed on the sites — say, more cations than there are cation sites — is kept, and simply yields no colorings, exactly as an ill-fitting vector does without charges.
+
+Global neutrality is the only charge condition Enumlib applies. Local rules, such as Pauling's electrostatic valence rule (the cation charges around each anion sum to that anion's charge times its coordination), depend on positions and so are properties of each coloring. They can be applied to the enumerated representatives afterwards: any such rule is unchanged by the parent's symmetry, so a representative passes exactly when every member of its orbit does. [Tutorial 05](../tutorials/05-charge-balanced-rocksalt.md) does this for rocksalt.
 
 ## Orbit size ≠ multiplicity vector
 

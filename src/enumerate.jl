@@ -25,6 +25,7 @@ Enumerate symmetry-inequivalent derivative structures of `parent` decorated by l
 - `concentration === nothing` → unrestricted.
 - `concentration::Concentration` → single fixed concentration; the multinomial-hash algorithm enumerates the exactly-`a_i`-of-each-species labelings.
 - `concentration::ConcentrationRange` → loops over `concentrations_in_range(cr, n)` for each supercell volume; gates against partition explosion via `partition_threshold` (default 100).
+- A `ConcentrationRange` with `charges` (see [`ConcentrationRange`](@ref)) keeps only the globally charge-neutral partitions; `partition_threshold` counts the filtered list.
 
 ## Super-periodicity policy
 
@@ -714,7 +715,7 @@ Count symmetry-inequivalent derivative structures *without enumerating them*. P�
 
 Heterogeneous `Sites` (per-site `allowed_labels` — zinc-blende, half/full-Heusler, perovskite, or any site pinned to one species) are counted with the label-restricted Pólya formulas, which intersect `allowed_labels` across each orbit. Uniform `Sites` keep the scalar-`k` fast path.
 
-An **unconstrained** `ConcentrationRange` (every species free over `[0, 1]`, as `read_struct_enum_in` synthesizes for `full` mode) is treated as no concentration constraint at all — exact, since every coloring has one concentration, and far cheaper than iterating every composition. Consequence: in that case the returned `by_concentration` is empty, because materializing it would mean enumerating every composition of the site count. Pass a narrower `ConcentrationRange` if you need that breakdown.
+An **unconstrained** `ConcentrationRange` (every species free over `[0, 1]` and no `charges`, as `read_struct_enum_in` synthesizes for `full` mode) is treated as no concentration constraint at all — exact, since every coloring has one concentration, and far cheaper than iterating every composition. Consequence: in that case the returned `by_concentration` is empty, because materializing it would mean enumerating every composition of the site count. Pass a narrower `ConcentrationRange` if you need that breakdown. A range with `charges` always takes the per-composition path, so the count includes only neutral compositions, and `by_concentration` lists them.
 
 Cost: O(|G| · n) per supercell for the unrestricted case; with Möbius correction add subgroup-enumeration of `T` (cheap at typical supercell sizes). Sub-second across the full reference corpus.
 

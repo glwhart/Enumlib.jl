@@ -26,6 +26,7 @@ makedocs(
             "tutorials/02-fixed-concentration.md",
             "tutorials/03-dft-training-database.md",
             "tutorials/04-multilattice-per-sublattice.md",
+            "tutorials/05-charge-balanced-rocksalt.md",
         ],
         "How-to guides" => [
             "how-to/index.md",

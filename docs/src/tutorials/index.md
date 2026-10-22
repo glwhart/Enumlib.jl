@@ -6,5 +6,6 @@ Walkthroughs that teach you the package by doing real work end-to-end. Read them
 2. **[Enumerating at a fixed concentration](02-fixed-concentration.md)** — the three `Concentration` constructors, divisibility, `ConcentrationRange`, the `breakdown = true` count. ~10 minutes.
 3. **[Generating a DFT/MLIP training database](03-dft-training-database.md)** — the DFT/MLIP roundtrip workflow: `write_enumeration_archive` → fill energies → `read_results` + `attach_results`. ~15 minutes.
 4. **[Multilattice with per-sublattice concentration](04-multilattice-per-sublattice.md)** — Regime C: heterogeneous sublattices with distinct species, and the `Concentration(sites, per_sublattice)` constructor that states composition per dset position. ~10 minutes.
+5. **[Charge-balanced rocksalt superstructures](05-charge-balanced-rocksalt.md)** — `ConcentrationRange(k; charges)` for global neutrality, Pauling's rule as a filter on the result, and Bublikov's NaFeO₂ and Li/Mg/Fe oxide counts on the 32-cation cube. ~10 minutes.
 
 After the tutorials, the [How-to guides](../how-to/index.md) cover specific recipes (multilattice, cost estimation, super-periodicity, ...) and the [Reference](../reference/index.md) is the full API.

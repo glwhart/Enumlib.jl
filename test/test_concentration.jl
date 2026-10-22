@@ -264,6 +264,59 @@ using Enumlib
                      concentration = concentration_count([6, 6]; n_total = 12)))
     end
 
+    @testset "Charge filter: orbit sums, invariances, edge cases" begin
+        A = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+        p = ParentLattice(A, [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]])
+        rs(cat, an) = Sites([Site([0.0, 0.0, 0.0], cat), Site([0.5, 0.5, 0.5], an)])
+        sites = rs([0, 1, 2], [3])                         # Li⁺, Fe³⁺, vacancy | O²⁻
+        q = [1, 3, 0, -2]
+        run(s, cr, sel; kw...) = enumerate_structures(p, s; supercells = sel, concentration = cr,
+                                     partition_threshold = 1_000_000, skip_resource_check = true, kw...)
+        canon(e) = Set((e.supercells[s.supercell_id].hnf, s.labeling) for s in e)
+
+        # Orbit sums: on one fixed cell with superperiodic structures kept, the orbit
+        # sizes of the neutral representatives must add up to every neutral labeling
+        # of that cell — n!/(a!b!c!) per neutral cation composition (O fills the anions).
+        for n in 2:4, h in enumerate_hnfs(VolumeRange(n:n), p)
+            e = run(sites, ConcentrationRange(4; charges = q), ExplicitHNFs([h]);
+                    include_superperiodic = true)
+            want = sum(factorial(n) ÷ (factorial(a) * factorial(b) * factorial(n - a - b))
+                       for a in 0:n for b in 0:(n - a) if a + 3b == 2n; init = 0)
+            @test sum(s.orbit_size for s in e; init = 0) == want
+        end
+
+        # Invariances: relabeling the cation species (charges carried along), scaling
+        # every charge, or flipping every sign must give the same structures.
+        for n in 1:4
+            base = run(sites, ConcentrationRange(4; charges = q), VolumeRange(n:n))
+            @test canon(run(sites, ConcentrationRange(4; charges = 3 .* q), VolumeRange(n:n))) == canon(base)
+            @test canon(run(sites, ConcentrationRange(4; charges = -q), VolumeRange(n:n))) == canon(base)
+            # Swap Li ↔ Fe (label 0 is now +3, label 1 is +1). Orbit representatives
+            # can differ after relabeling, so compare counts supercell by supercell.
+            swapped = run(sites, ConcentrationRange(4; charges = [3, 1, 0, -2]), VolumeRange(n:n))
+            per_cell(e) = sort([(string(e.supercells[s.supercell_id].hnf.matrix), s.orbit_size) for s in e])
+            @test per_cell(swapped) == per_cell(base)
+        end
+
+        # Charges that can never balance: nothing to enumerate, and no error.
+        never = ConcentrationRange(4; charges = [1, 3, 1, 2])
+        @test isempty(concentrations_in_range(never, 8))
+        @test length(run(sites, never, VolumeRange(1:4))) == 0
+        @test count_inequivalent(p, sites; supercells = VolumeRange(1:4), concentration = never) == 0
+
+        # A label shared by both sublattices (vacancies on cation and anion sites —
+        # Schottky-type): its one charge applies on either sublattice. Same set as
+        # enumerating everything and keeping the neutral structures afterwards.
+        sch = rs([0, 1, 2], [3, 2])
+        neutral(s) = sum(q[l + 1] for l in s.labeling) == 0
+        for n in 1:3
+            f = run(sch, ConcentrationRange(4; charges = q), VolumeRange(n:n))
+            u = run(sch, ConcentrationRange(4), VolumeRange(n:n))
+            @test canon(f) == Set((u.supercells[s.supercell_id].hnf, s.labeling) for s in u if neutral(s))
+            @test any(s -> any(==(2), s.labeling[n+1:end]), f)   # anion vacancies do occur
+        end
+    end
+
     # ---- multinomial_count, hash, unhash ----
     @testset "multinomial_count returns BigInt with correct values" begin
         @test multinomial_count([2, 2]) == 6
