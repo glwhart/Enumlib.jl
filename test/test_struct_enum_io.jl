@@ -115,6 +115,27 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
         end
     end
 
+    @testset "reader warns when d-vectors look fractional" begin
+        # Rocksalt with the lattice in Å (a = 4.2). Written correctly, the second
+        # d-vector is Cartesian (2.1, 2.1, 2.1). The classic mistake writes the
+        # POSCAR's Direct coordinates (0.5, 0.5, 0.5) instead — the same text that is
+        # *correct* when the lattice is given in units of a, so only the lattice
+        # scale tells them apart.
+        A_ang = 4.2 * FCC2
+        sen(A, cart) = _sen(; A, dset = [zeros(3), A \ cart], labels = [[0, 1], [2]],
+                            nmin = 1, nmax = 2, conc = nothing)
+        mistake = sen(A_ang, [0.5, 0.5, 0.5])
+        @test_logs (:warn, r"look like fractional") match_mode = :any (try
+            _readsen(mistake)
+        catch
+        end)
+        @test_nowarn _readsen(sen(A_ang, [2.1, 2.1, 2.1]))     # correct, in Å
+        @test_nowarn _readsen(sen(FCC2, [0.5, 0.5, 0.5]))      # correct, in units of a
+        # One site at the origin is in [0, 1] under any convention — no warning.
+        @test_nowarn _readsen(_sen(; A = A_ang, dset = [zeros(3)], labels = [[0, 1]],
+                                   nmin = 1, nmax = 2, conc = nothing))
+    end
+
     @testset "writer: charges annotate the Type lines without adding lines" begin
         # makeStr locates data rows by header line count, so a charged range must
         # leave the line count alone; the charges ride along as trailing comments.

@@ -25,6 +25,27 @@ function _seio_try_ints(s::AbstractString)
     return vals
 end
 
+# struct_enum.in d-vectors are Cartesian, in the lattice vectors' units. A common
+# mistake is pasting a POSCAR's Direct (fractional) coordinates instead; the atoms
+# then collapse into a ~1-unit box, symmetry detection fails or finds only the
+# identity, and nothing downstream says why. Flag the signature: ≥ 2 sites, every
+# Cartesian coordinate in [0, 1], while the shortest lattice vector is > 2 — i.e.
+# all atoms packed into a corner less than half the cell across. A warning, not an
+# error: a cell like that is unusual, not impossible.
+function _warn_if_fractional_dvectors(A::AbstractMatrix, positions::AbstractVector)
+    length(positions) >= 2 || return nothing
+    cart = [A * p for p in positions]
+    tol = 1e-8
+    all(c -> all(x -> -tol <= x <= 1 + tol, c), cart) || return nothing
+    shortest = minimum(norm(A[:, j]) for j in 1:size(A, 2))
+    shortest > 2 || return nothing
+    @warn "struct_enum.in: every d-vector lies in [0, 1] but the shortest lattice " *
+          "vector is $(round(shortest; digits = 2)). d-vectors are read as Cartesian, " *
+          "in the units of the lattice vectors; these look like fractional (POSCAR " *
+          "\"Direct\") coordinates. If so, multiply each by the lattice vectors."
+    return nothing
+end
+
 """
     read_struct_enum_in(io::IO) -> NamedTuple
 
@@ -80,6 +101,7 @@ function read_struct_enum_in(io::IO)
         push!(positions, frac)
         push!(labelsets, labs)
     end
+    _warn_if_fractional_dvectors(A, positions)
 
     # Optional 'Equivalencies' keyword; otherwise this line is 'Nmin Nmax'.
     if startswith(uppercase(sig[i]), "E")
