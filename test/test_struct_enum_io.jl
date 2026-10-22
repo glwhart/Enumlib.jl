@@ -280,7 +280,10 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
         base(; kw...) = _sen(; A = FCC, dset = [[0.0,0,0]], labels = [[0,1]],
                              nmin = 1, nmax = 2, conc = nothing, kw...)
         @test_throws ArgumentError _readsen(replace(base(), "bulk" => "surf"))   # 2D deferred
-        @test_throws ArgumentError _readsen(replace(base(), "full" => "part"))   # part sunset
+        @test_throws ArgumentError _readsen(replace(base(), "full" => "part"))   # part unsupported
+        # ...and the message tells the user what to change.
+        msg = try _readsen(replace(base(), "full" => "part")); "" catch err; sprint(showerror, err) end
+        @test occursin("full list of labelings", msg) && occursin("AAAB", msg)
         @test_throws ArgumentError _readsen(replace(base(), "0/1" => "0/1/5"))   # label ≥ k marker
     end
 end

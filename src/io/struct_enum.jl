@@ -59,8 +59,10 @@ d-vectors are read as **Cartesian** coordinates, in the units of the lattice vec
 
 Scope (chunk 9.1, v0.3): `bulk` only; `full` mode only; single- and multilattice
 with per-d-vector allowed labels; optional concentration block. `surf`/2D, the
-inactive-site label encoding (a label ≥ `k`), explicit equivalencies, and `part`
-mode are deferred and raise `ArgumentError` — see docs/notes/phase9-design.md §4.
+inactive-site label encoding (a label ≥ `k`) and explicit equivalencies are deferred and
+raise `ArgumentError` — see docs/notes/phase9-design.md §4. `part` mode is unsupported by
+design: the Fortran uses it to merge label-exchange duplicates (AAAB with BBBA), which
+Enumlib.jl never does, and the error says to change the line to `full`.
 """
 function read_struct_enum_in(io::IO)
     # Keep the data part of every non-blank, non-comment line, in order. Mirrors
@@ -118,8 +120,18 @@ function read_struct_enum_in(io::IO)
     eps  = _seio_floats(_next())[1]
 
     mode = lowercase(split(_next())[1])
+    # Fortran `part` mode also merges label-exchange duplicates (AAAB with BBBA).
+    # Enumlib.jl reduces by site symmetry only, so it has no such mode; and for
+    # distinct species, where swapping labels gives a different material, `full`
+    # is the right request anyway. Say so, so the user can fix the line.
+    startswith(mode, "part") && throw(ArgumentError(
+        "struct_enum.in: 'part' mode is not supported. In the Fortran enum.x it also " *
+        "merges structures that differ only by swapping species (AAAB with BBBA), which " *
+        "is wrong when the labels are different elements. Enumlib.jl enumerates the " *
+        "full list; change the line to " *
+        "'full list of labelings'."))
     startswith(mode, "full") || throw(ArgumentError(
-        "struct_enum.in: only 'full' mode is supported ('part' is being sunset); got '$mode'"))
+        "struct_enum.in: expected 'full' after the finite-precision line; got '$mode'"))
 
     # Optional concentration block: up to k lines of `num_low num_high denom`.
     conc = nothing
