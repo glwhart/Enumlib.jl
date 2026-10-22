@@ -1,6 +1,6 @@
 name: Release binaries
 
-# Builds the standalone `enum.x` / `polya.x` app per platform with PackageCompiler
+# Builds the standalone `enum.x` / `polya.x` / `makestr.x` app per platform with PackageCompiler
 # and attaches the tarballs to the GitHub Release for the tag.
 #
 # Two triggers:
