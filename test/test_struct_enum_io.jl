@@ -136,6 +136,40 @@ const HCP  = (a = 1.0; c = sqrt(8/3); [a -a/2 0.0; 0.0 a*sqrt(3)/2 0.0; 0.0 0.0 
                                    nmin = 1, nmax = 2, conc = nothing))
     end
 
+    @testset "enum.x enumerates every composition in range, with no partition limit" begin
+        # Rocksalt carbide: five metals share the cation site, carbon alone on the
+        # anion site, n = 4. Without a concentration block the reader synthesizes
+        # the full range — 1287 compositions of 8 sites, over the API's default
+        # partition limit of 100 — and a block spanning [0, 1] for every species is
+        # the same range given explicitly. The Fortran enum.x enumerates both, and a
+        # CLI user cannot raise the limit, so enum.x must not apply it. The count is
+        # the fcc five-species count at n = 4, since the carbon site is fixed.
+        carbide(conc) = _sen(; A = FCC, dset = [zeros(3), FCC \ [0.5, 0.5, 0.5]],
+                             labels = [[0, 1, 2, 3, 4], [5]], nmin = 4, nmax = 4, conc)
+        fcc5 = count_inequivalent(ParentLattice(FCC),
+                   Sites([Site([0.0, 0.0, 0.0], [0, 1, 2, 3, 4])]); supercells = VolumeRange(4:4))
+        @test fcc5 == 675
+        saved = copy(Base.ARGS)
+        try
+            for conc in (nothing, [(0, 1, 1) for _ in 1:6])
+                mktempdir() do dir
+                    cd(dir) do
+                        write("struct_enum.in", carbide(conc))
+                        empty!(Base.ARGS)
+                        @test redirect_stdout(devnull) do; Enumlib.enum_main(); end == 0
+                        rows = split(read("struct_enum.out", String), '\n')
+                        hdr = findfirst(l -> startswith(l, "start   #tot"), rows)
+                        data = filter(!isempty, rows[hdr+1:end])
+                        @test length(data) == fcc5
+                        @test all(r -> parse(Int, split(r)[4]) > 0, data)   # labdegn never 0
+                    end
+                end
+            end
+        finally
+            append!(empty!(Base.ARGS), saved)
+        end
+    end
+
     @testset "writer: charges annotate the Type lines without adding lines" begin
         # makeStr locates data rows by header line count, so a charged range must
         # leave the line count alone; the charges ride along as trailing comments.

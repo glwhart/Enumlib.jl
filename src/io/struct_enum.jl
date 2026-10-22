@@ -51,7 +51,7 @@ end
 
 Parse a Fortran-enumlib `struct_enum.in` stream into Enumlib.jl inputs. Returns
 
-    (; title, latdim, parent, sites, selection, concentration, eps, mode)
+    (; title, latdim, parent, sites, selection, nmin, nmax, concentration, eps, mode)
 
 ready to feed `enumerate_structures(parent, sites; supercells = selection, concentration)`.
 

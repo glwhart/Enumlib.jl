@@ -16,6 +16,7 @@ All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 1
 
 ### Fixed
 
+- **`enum.x` refused inputs with many compositions.** It ran the enumeration with the API's partition-count limit (100 compositions per cell size), so a multilattice input with several species — a rocksalt high-entropy carbide with five metals and carbon at n = 4 has 1287 compositions of its 8 sites — stopped with an error about `ConcentrationRange` bounds and `partition_threshold`, neither of which a `struct_enum.in` user can set. This happened both without a concentration block (where the reader synthesizes the full range) and with a wide one. The Fortran `enum.x` has no such limit, so the drop-in no longer applies it; the memory-budget check still does. Found by running a user's HEC input.
 - **The concentration explanation page gave the partition-count limit's default as 50.** It is 100.
 
 - **`count_inequivalent` treated any full-bounds `ConcentrationRange` as unrestricted** and skipped the per-composition count. That was exact while bounds were the only constraint a range could carry; with charges it would have counted every composition (96 instead of 5 for the rocksalt example at n = 4). The shortcut now applies only to ranges without charges.

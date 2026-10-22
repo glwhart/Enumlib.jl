@@ -50,7 +50,9 @@ swap invisible to callers. Two details of the Fortran command line are also carr
 forward: argument 1 is an optional input filename (defaulting to `struct_enum.in`), and the
 Fortran's second positional argument — the legacy `origCrossOutAlgorithm` switch — is
 accepted, warned about, and ignored, since Enumlib.jl chooses its algorithm automatically
-and the resulting structures are unaffected.
+and the resulting structures are unaffected. Like the Fortran, `enum.x` enumerates every
+composition in the file's range, however many there are; the partition-count limit of the
+Julia API does not apply to it, though the memory-budget check does.
 
 Results are not always identical, and the difference is intentional. For symmetry-equivalent
 sublattices with overlapping label sets, Enumlib.jl keeps symmetry operations that the

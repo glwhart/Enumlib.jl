@@ -146,8 +146,13 @@ function enum_main()::Cint
     end
     try
         inp = read_struct_enum_in(_cli_input_file("enum.x", args))
+        # No partition-count limit here. The Fortran enum.x enumerates every
+        # composition in the file's range (all of them when there is no
+        # concentration block, in which case the reader synthesizes the full range),
+        # and a CLI user has no way to raise the limit. The memory-budget check
+        # still applies.
         e = enumerate_structures(inp.parent, inp.sites; supercells = inp.selection,
-                      concentration = inp.concentration)
+                      concentration = inp.concentration, partition_threshold = typemax(Int))
         open("struct_enum.out", "w") do io
             write_struct_enum_out(io, e; input = inp, stdout_io = stdout)
         end
