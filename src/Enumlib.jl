@@ -55,6 +55,8 @@ export
     # v0.2 type catalog (chunk 11a/b/c) — POSCAR I/O
     to_poscar, write_enumeration_archive,
     read_results, attach_results,
+    # Reading structures back (inverse of to_poscar)
+    from_poscar, structure_lookup,
     # Cell utilities
     avg_cell_radius
     # NOTE: chunk 13b.1 unexports the legacy lattice-coord API, internal
@@ -424,6 +426,8 @@ using .Polya: polya_count, cycle_structure, aperiodic_orbit_count
 include("enumerate.jl")
 # --- chunk 11a: POSCAR writer (must come after all types) ---
 include("io/poscar.jl")
+# --- reading structures back: Cartesian -> (HNF, labeling), and matching to an enumeration ---
+include("io/from_structure.jl")
 # --- chunk 9.1a: Fortran struct_enum.in reader for the drop-in enum.x CLI ---
 include("io/struct_enum.jl")
 include("io/struct_enum_out.jl")
