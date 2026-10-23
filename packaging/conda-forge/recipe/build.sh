@@ -131,7 +131,15 @@ if [ -d "${JULIA_LIBDIR}" ]; then
 fi
 echo "materialised $(wc -l < "${LINK_MANIFEST}" | tr -d ' ') host symlink(s) for the build"
 
-"${JULIA}" --project=build -e 'using Pkg; Pkg.instantiate()'
+# Pin PackageCompiler to 2.4.3. With 2.4.5, create_app fails here with "No direct
+# dependencies outside of the sysimage found matching ["Enumlib"]", in ensurecompiled,
+# after the fresh base sysimage is built; 2.4.4 changed that function
+# (JuliaLang/PackageCompiler.jl#1135). 2.4.3 built 0.4.0 on this feedstock and 2.4.5
+# broke 0.4.1, with the same recipe and the same julia build. The GitHub release
+# builds, on julia-actions Julia, are not affected. build/Project.toml allows any 2.x,
+# so the pin lives here until upstream is fixed.
+"${JULIA}" --project=build -e 'using Pkg; Pkg.add(name = "PackageCompiler", version = "2.4.3"); Pkg.instantiate()'
+
 # --- Precompile workload, and why this build does not run it -------------------
 # The sysimage step used to segfault here. With mkitti's incremental = true the
 # crash arrived in 45 s instead of 23 min and Julia named the expression:

@@ -1,5 +1,5 @@
 context:
-  version: "0.4.0"
+  version: "0.4.2"
 
 package:
   name: enumlib.jl
@@ -9,7 +9,7 @@ package:
 # the application to be compiled in the recipe (staged-recipes#34550).
 source:
   url: https://github.com/glwhart/Enumlib.jl/archive/refs/tags/v${{ version }}.tar.gz
-  sha256: 2b2ffd05f93e4c2af831633f69d5d64780dccbec578b005cbae3516b7789789b
+  sha256: 323591bb984afbd417f6535c7710385fdb960f54f56de71c9d805f49dba08bcb
 
 build:
   number: 0
