@@ -2,7 +2,7 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
-## Unreleased
+## v0.4.2 — 2026-10-23
 
 ### Performance
 
