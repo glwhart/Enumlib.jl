@@ -2,6 +2,12 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## Unreleased
+
+### Performance
+
+- **The recursive-stabilizer tree is 14–43× faster on large symmetry groups.** At every node it checked each operation of the stabilizer by building that operation's location vector from scratch: two fresh arrays, a site-mask lookup per position, and every rank a sum of binomial coefficients, each computed by repeated division. Binomial arithmetic alone was half the run time. The check only needs to know whether the permuted partial precedes the current one, and since each color's rank is a colex rank, that is settled by the highest position where the two differ; it now scans down from the top, reads the permuted partial through the permutation instead of copying it, and stops at the first difference. Branch decoding uses a binomial table built once per call. Output is byte-identical — the same structures, in the same order, with the same orbit sizes — across single-lattice, multilattice, site-restricted and charged cases. On Bublikov's 32-cation rocksalt cube (3072 symmetry operations), the 404,582 Na₁₆Fe₁₆ orderings took 12,514 s before and 292 s after, and the rate no longer falls as the problem grows.
+
 ## v0.4.1 — 2026-10-22
 
 ### Added

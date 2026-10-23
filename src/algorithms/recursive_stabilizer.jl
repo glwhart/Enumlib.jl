@@ -41,13 +41,32 @@ function getUniqueColorings_recursive_stabilizer(perm_group,
     end
 
     output = Vector{Vector{Int8}}()
-    # Initial state: empty partial, full perm_group as the stabilizer, empty loc.
+    # Initial state: empty partial, full perm_group as the stabilizer.
     partial = fill(Int8(-1), n)        # -1 means "unfilled"
-    current_loc = Int[]
-    _descend!(output, partial, perm_group, current_loc,
-              multiplicities, 0, n, k, site_mask)
+    binom = _binomial_table(n)
+    _descend!(output, partial, perm_group, multiplicities, 0, n, k, site_mask, binom)
     return output
 end
+
+# binom[m+1, j+1] == binomial(m, j) for 0 ≤ j ≤ m ≤ n, saturating at typemax(Int)
+# instead of overflowing. Built once per call: the branch decoder looks these up
+# in its innermost loop, where computing them afresh dominated the run time.
+# Saturation is safe there — every lookup is compared against a rank smaller
+# than the (checked, unsaturated) branching factor, so a saturated entry
+# compares correctly, and the entries it subtracts are never saturated.
+function _binomial_table(n::Int)
+    binom = zeros(Int, n + 1, n + 1)
+    for m in 0:n
+        binom[m + 1, 1] = 1
+        for j in 1:m
+            a, b = binom[m, j], binom[m, j + 1]          # C(m-1, j-1), C(m-1, j)
+            s = a + b
+            binom[m + 1, j + 1] = (s < a || s < b) ? typemax(Int) : s
+        end
+    end
+    return binom
+end
+_binom(binom, m, j) = (0 <= j <= m) ? binom[m + 1, j + 1] : 0
 
 # Recursive descent. At depth `ℓ` we've placed colors `0..ℓ-1`. Place color ℓ
 # now (taking `multiplicities[ℓ+1]` positions from the unfilled set).
@@ -55,9 +74,9 @@ end
 # `site_mask` (or `nothing`) restricts which positions can carry each color.
 # When supplied, position `pos` can carry color `c` only if `site_mask[pos, c+1]`
 # is true. The branching at each depth filters unfilled positions accordingly.
-function _descend!(output, partial, parent_stab, current_loc,
+function _descend!(output, partial, parent_stab,
                    multiplicities, depth, n, k,
-                   site_mask::Union{Nothing, BitMatrix})
+                   site_mask::Union{Nothing, BitMatrix}, binom)
     if depth == k - 1
         # Last color is determined by what's left. Materialize the leaf.
         # Super-periodicity is the caller's responsibility (it needs
@@ -91,10 +110,8 @@ function _descend!(output, partial, parent_stab, current_loc,
 
     if a_here == 0
         # No positions for this color — descend without placing.
-        push!(current_loc, 0)
-        _descend!(output, partial, parent_stab, current_loc,
-                  multiplicities, depth + 1, n, k, site_mask)
-        pop!(current_loc)
+        _descend!(output, partial, parent_stab, multiplicities, depth + 1, n, k,
+                  site_mask, binom)
         return
     end
 
@@ -110,128 +127,92 @@ function _descend!(output, partial, parent_stab, current_loc,
         throw(ArgumentError(
             "branching factor $(branching) exceeds typemax(Int) at depth $depth"))
 
+    chosen_slot_idxs = Vector{Int}(undef, a_here)
     for x in 0:branching-1
-        # Decode x to a subset of unfilled-slot indices (0-indexed).
-        chosen_slot_idxs = _inverse_colex_rank(x, a_here, n_unfilled)
-        # Translate to absolute positions.
-        chosen_positions = [unfilled_positions[i + 1] for i in chosen_slot_idxs]
+        # Decode x to a subset of unfilled-slot indices (0-indexed). Branches run
+        # in colex order of the subset, which fixes the order of the output.
+        _inverse_colex_rank!(chosen_slot_idxs, x, a_here, binom)
         # Place the color.
-        for pos in chosen_positions
-            partial[pos] = Int8(depth)
+        for i in chosen_slot_idxs
+            partial[unfilled_positions[i + 1]] = Int8(depth)
         end
-        push!(current_loc, x)
 
-        # Canonicality check: walk parent stabilizer; if any g maps loc to
-        # a lex-smaller loc, this is a duplicate.
-        if _is_canonical(partial, parent_stab, multiplicities, depth + 1, current_loc,
-                         site_mask)
+        # Canonicality check: if any g in the parent stabilizer maps the partial
+        # to a smaller one, this is a duplicate.
+        if _is_canonical(partial, parent_stab, depth + 1)
             # Compute the new stabilizer — filter parent_stab to perms that
             # fix the new partial.
             new_stab = _stabilize_partial(parent_stab, partial)
-            _descend!(output, partial, new_stab, current_loc,
-                      multiplicities, depth + 1, n, k, site_mask)
+            _descend!(output, partial, new_stab, multiplicities, depth + 1, n, k,
+                      site_mask, binom)
         end
 
-        # Backtrack: un-place the color, pop loc.
-        for pos in chosen_positions
-            partial[pos] = Int8(-1)
+        # Backtrack: un-place the color.
+        for i in chosen_slot_idxs
+            partial[unfilled_positions[i + 1]] = Int8(-1)
         end
-        pop!(current_loc)
     end
 end
 
-# Inverse colex rank: given rank `x` (0-indexed), find which `a` of `n` slots
-# (0-indexed) it corresponds to. Returns sorted ascending. Mirrors the body
-# of chunk 6's `multinomial_unhash` for a single color.
-function _inverse_colex_rank(x::Int, a::Int, n::Int)
-    a == 0 && return Int[]
-    positions = Int[]
+# Inverse colex rank: given rank `x` (0-indexed), write into `positions` which
+# `a` slots (0-indexed, ascending) it corresponds to. Mirrors the body of
+# chunk 6's `multinomial_unhash` for a single color; binomials come from the
+# table built in `getUniqueColorings_recursive_stabilizer`.
+function _inverse_colex_rank!(positions::Vector{Int}, x::Int, a::Int, binom)
     x_remaining = x
     for j in a:-1:1
         c = j - 1
-        while binomial(c + 1, j) <= x_remaining
+        while _binom(binom, c + 1, j) <= x_remaining
             c += 1
         end
-        push!(positions, c)
-        x_remaining -= binomial(c, j)
+        positions[j] = c                 # largest first, so filling j = a…1 sorts it
+        x_remaining -= _binom(binom, c, j)
     end
-    sort!(positions)
     return positions
 end
 
-# Compute the location vector of `partial` at the given `depth` (number of
-# colors placed). Returns Vector{Int} of length `depth`.
+# Canonicality check. A partial is canonical when no g in `parent_stab` maps it
+# to a lex-smaller location vector — the vector of per-color colex ranks
+# (chunk 6's `multinomial_hash`, stopped at `depth`) of each color's positions
+# among the slots left for it.
 #
-# This is the same per-color rank computation as chunk 6's `multinomial_hash`,
-# but stops at depth ℓ rather than going to k.
+# The ranks never need computing. Compare color by color: while earlier colors
+# occupy the same positions in both partials, both have the same slots left for
+# the next color, numbered the same way, so comparing that color's colex ranks
+# is comparing its two position sets in colex order — decided by the largest
+# position where they differ. Scanning positions from the top, the first one
+# where exactly one partial has this color settles it: if it is the current
+# partial's, the permuted one is smaller. The first color that differs decides
+# the whole comparison.
 #
-# When `site_mask` is supplied (chunk 6.5b), the slot enumeration only counts
-# positions where `site_mask[pos, color+1]` is true — matching the branching
-# rank in `_descend!`. Without this site-aware ranking, the canonical check
-# compares apples to oranges (current_loc is the rank in site-restricted slots,
-# but the original implementation computed rank in *all* unconsumed slots), and
-# legitimately-equivalent labelings survive canonicalization.
-function _location_vector(partial::AbstractVector, multiplicities, depth::Int,
-                          site_mask::Union{Nothing, BitMatrix} = nothing)
-    n = length(partial)
-    loc = Int[]
-    consumed = falses(n)
-
-    for color in 0:depth-1
-        a_color = multiplicities[color + 1]
-        if a_color == 0
-            push!(loc, 0)
-            continue
-        end
-
-        # x_color = colex rank of color's positions among slots that are
-        # (a) still unconsumed AND (b) site_mask-allowed for this color.
-        x_color = 0
-        slot_idx = 0
-        m = 0
-        for pos in 1:n
-            consumed[pos] && continue
-            # Skip positions that this color can't occupy. They don't count as
-            # slots — branching at `_descend!` skipped them too.
-            if site_mask !== nothing && !site_mask[pos, color + 1]
-                continue
-            end
-            if partial[pos] == Int8(color)
-                m += 1
-                x_color += binomial(slot_idx, m)
-                consumed[pos] = true
-            end
-            slot_idx += 1
-        end
-        push!(loc, x_color)
-    end
-    return loc
-end
-
-# Canonicality check. Walks `parent_stab`; for each `g`, computes the
-# location vector of `partial[g]` (the permuted partial) at this depth.
-# Returns false if any `permuted_loc` is lex-smaller than `current_loc`,
-# true otherwise. `site_mask` (or `nothing`) must match what `_descend!`
-# used for branching, so both encodings agree on which positions are
-# valid slots at each depth.
-function _is_canonical(partial::AbstractVector, parent_stab,
-                       multiplicities, depth::Int, current_loc,
-                       site_mask::Union{Nothing, BitMatrix})
-    permuted = similar(partial)
+# The site mask needs no special handling, because `parent_stab` maps allowed
+# positions to allowed positions (the caller filters the group by the mask), so
+# every color sits only on slots it may use in both partials. This replaced a
+# version that built each location vector with binomial sums and fresh arrays
+# for every g, which was most of the run time on large groups. The permuted
+# partial is read through `g` rather than copied, since the comparison usually
+# settles within the first few positions from the top.
+function _is_canonical(partial::AbstractVector, parent_stab, depth::Int)
     for g in parent_stab
-        # permuted = partial[g]
-        for i in eachindex(partial)
-            permuted[i] = partial[g[i]]
-        end
-        # If permuted == partial, identity-like effect — skip (loc unchanged).
-        permuted == partial && continue
-        permuted_loc = _location_vector(permuted, multiplicities, depth, site_mask)
-        # Lex-compare.
-        if permuted_loc < current_loc
-            return false
-        end
+        _permuted_colex_less(partial, g, depth) && return false
     end
     return true
+end
+
+# True when `partial[g]` precedes `partial` in the order described above.
+function _permuted_colex_less(partial::AbstractVector, g::AbstractVector, depth::Int)
+    n = length(partial)
+    length(g) == n || throw(DimensionMismatch("permutation length ≠ partial length"))
+    for color in 0:depth-1
+        c = Int8(color)
+        for pos in n:-1:1
+            @inbounds in_perm = partial[g[pos]] == c
+            @inbounds in_self = partial[pos] == c
+            in_perm == in_self && continue
+            return in_self               # partial holds the larger position: partial[g] is smaller
+        end
+    end
+    return false                         # equal through `depth`
 end
 
 # Stabilizer of the partial coloring under parent_stab — the subgroup of
