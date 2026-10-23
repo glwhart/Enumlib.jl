@@ -2,3 +2,8 @@ Manifest.toml
 docs/build/
 docs/site/
 .DS_Store
+
+# Session leftovers: the hook-written work log, the opening prompt, scratch scripts
+WORKLOG.md
+firstprompt.md
+scratch/
