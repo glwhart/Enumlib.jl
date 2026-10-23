@@ -2,6 +2,13 @@
 
 All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 12 lock in `docs/notes/v0.2-plan.md`).
 
+## Unreleased
+
+### Added
+
+- **`site_positions(hnf, parent)`**, the position of every site of a supercell as fractional coordinates of the supercell vectors, in labeling order, so site `i` carries `s.labeling[i]`. It is the public name for the internal `supercell_fractional_positions`, which `to_poscar` and `from_poscar` use, and it is what any rule depending on where atoms sit (neighbor shells, local charge balance) needs. Tutorial 05 and the Bublikov cross-check now use it.
+- **Charges by element: `ConcentrationRange(sites; charges = Dict(:Na => 1, :Fe => 3, :O => -2))`.** The full range over the species of `sites`, restricted to neutral compositions, with the charges resolved through `species_symbols(sites)`. A charge vector has to follow the label order, which with atomic symbols is the order elements first appear in the `Sites`, and a mismatch silently selects the wrong compositions; the by-element form errors on a missing or unknown element instead. The vector form is unchanged.
+
 ## v0.4.2 — 2026-10-23
 
 ### Performance

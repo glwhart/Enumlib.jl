@@ -53,7 +53,7 @@ export
     EnumerationCostEstimate, EnumerationTooLargeError,
     estimate_cost, format_bytes,
     # v0.2 type catalog (chunk 11a/b/c) — POSCAR I/O
-    to_poscar, write_enumeration_archive,
+    to_poscar, write_enumeration_archive, site_positions,
     read_results, attach_results,
     # Reading structures back (inverse of to_poscar)
     from_poscar, structure_lookup,

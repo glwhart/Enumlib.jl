@@ -311,6 +311,40 @@ ConcentrationRange(k::Integer; charges = nothing) =
     ConcentrationRange([(0//1, 1//1) for _ in 1:k]; charges)
 
 """
+    ConcentrationRange(sites::Sites; charges::AbstractDict{Symbol,<:Integer})
+
+Full range over the species of `sites`, restricted to neutral compositions, with charges given by element instead of by label position. `sites` must use atomic symbols; every symbol needs a charge, and no others are allowed. This avoids lining a charge vector up with `species_symbols(sites)` by hand, where a mismatch silently selects the wrong compositions.
+
+# Examples
+
+```jldoctest
+julia> using Enumlib
+
+julia> sites = Sites([Site([0.0, 0.0, 0.0], [:Na, :Fe]), Site([0.5, 0.5, 0.5], [:O])]);
+
+julia> cr = ConcentrationRange(sites; charges = Dict(:O => -2, :Na => 1, :Fe => 3));
+
+julia> cr == ConcentrationRange(3; charges = [1, 3, -2])     # label order is Na, Fe, O
+true
+```
+"""
+function ConcentrationRange(sites::Sites; charges::AbstractDict{Symbol,<:Integer})
+    syms = species_symbols(sites)
+    syms === nothing && throw(ArgumentError(
+        "charges by element need Sites built from atomic symbols; these Sites use integer " *
+        "labels, so give charges as a vector in label order: ConcentrationRange(k; charges = [...])"))
+    missing_syms = [s for s in syms if !haskey(charges, s)]
+    isempty(missing_syms) || throw(ArgumentError(
+        "no charge given for $(join(missing_syms, ", ")); every species in the Sites needs one " *
+        "(a vacancy is 0)"))
+    extra = [s for s in keys(charges) if s ∉ syms]
+    isempty(extra) || throw(ArgumentError(
+        "charges given for $(join(sort(extra), ", ")), which the Sites do not contain " *
+        "(species: $(join(syms, ", ")))"))
+    return ConcentrationRange(length(syms); charges = [charges[s] for s in syms])
+end
+
+"""
     n_species(cr::ConcentrationRange) -> Int
 
 Number of species (length of the per-species `(min, max)` bounds vector).

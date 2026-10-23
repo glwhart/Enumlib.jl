@@ -61,6 +61,8 @@ julia> length(e)
 10
 ```
 
+With atomic symbols, give the charges by element and let the `Sites` supply the label order: `ConcentrationRange(sites; charges = Dict(:Li => 1, :Fe => 3, :Va => 0, :O => -2))`.
+
 Neutrality depends only on the composition, so the filter removes whole partitions before any coloring is built; [`count_inequivalent`](@ref) and [`estimate_cost`](@ref) see the same filtered list. It is a global condition: local rules such as Pauling's electrostatic valence rule are not applied.
 
 ## The partition-count limit

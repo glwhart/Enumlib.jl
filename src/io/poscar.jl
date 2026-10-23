@@ -357,6 +357,43 @@ function supercell_fractional_positions(hnf::HNF{3}, parent::ParentLattice{3})
     return positions
 end
 
+"""
+    site_positions(hnf::HNF{3}, parent::ParentLattice{3}) -> Vector{NTuple{3,Float64}}
+
+Position of every site of the supercell `hnf` of `parent`, as fractional coordinates of the supercell's own lattice vectors (the columns of `basis(parent) * hnf.matrix`). The order matches the labeling of any structure enumerated in that supercell: site `i` carries label `s.labeling[i]`. For a multilattice the sites come in blocks, all cells of the first d-vector, then all cells of the second, and so on.
+
+Use it for anything that depends on where atoms sit, such as neighbor shells or a local charge-balance rule; multiply by the supercell vectors to get Cartesian coordinates.
+
+# Examples
+
+Rocksalt in a two-cell supercell: two cation sites, then two anion sites.
+```jldoctest
+julia> using Enumlib
+
+julia> A = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0];
+
+julia> p = ParentLattice(A, [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]]);
+
+julia> h = HNF{3}([1 0 0; 0 1 0; 0 0 2]);
+
+julia> site_positions(h, p)
+4-element Vector{Tuple{Float64, Float64, Float64}}:
+ (0.0, 0.0, 0.0)
+ (0.0, 0.0, 0.5)
+ (0.5, 0.5, 0.25)
+ (0.5, 0.5, 0.75)
+
+julia> L = A * h.matrix;                       # supercell vectors (columns)
+
+julia> L * collect(site_positions(h, p)[3])    # Cartesian position of the first anion
+3-element Vector{Float64}:
+ 0.5
+ 0.5
+ 0.5
+```
+"""
+site_positions(hnf::HNF{3}, parent::ParentLattice{3}) = supercell_fractional_positions(hnf, parent)
+
 # ============================================================================
 # Chunk 11b — bulk write to a tarball + TOML manifest.
 # ============================================================================

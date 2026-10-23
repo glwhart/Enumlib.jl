@@ -181,6 +181,16 @@ using Enumlib
             @test neutral == filter(m -> sum(m .* q) == 0, all_m)
         end
 
+        # Charges by element resolve through the Sites' label order.
+        sym_sites = Sites([Site([0.0, 0.0, 0.0], [:Fe, :Li, :Va]), Site([0.5, 0.5, 0.5], [:O])])
+        @test ConcentrationRange(sym_sites; charges = Dict(:O => -2, :Va => 0, :Li => 1, :Fe => 3)) ==
+              ConcentrationRange(4; charges = [3, 1, 0, -2])          # labels: Fe, Li, Va, O
+        @test_throws ArgumentError ConcentrationRange(sym_sites; charges = Dict(:Fe => 3, :Li => 1, :O => -2))
+        @test_throws ArgumentError ConcentrationRange(sym_sites;
+            charges = Dict(:Fe => 3, :Li => 1, :Va => 0, :O => -2, :Cl => -1))
+        @test_throws ArgumentError ConcentrationRange(Sites([Site([0.0, 0.0, 0.0], [0, 1])]);
+            charges = Dict(:Na => 1, :Cl => -1))                       # integer labels
+
         # All-zero charges: the filter keeps everything.
         @test length(concentrations_in_range(ConcentrationRange(3; charges = [0, 0, 0]), 20)) == 231
     end

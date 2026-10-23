@@ -1,9 +1,10 @@
 # POSCAR I/O and result attachment
 
-Public API for `to_poscar`, `write_enumeration_archive`, `read_results`, and `attach_results`.
+Public API for `to_poscar`, `site_positions`, `write_enumeration_archive`, `read_results`, and `attach_results`.
 
 ```@docs
 to_poscar
+site_positions
 write_enumeration_archive
 read_results
 attach_results

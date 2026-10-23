@@ -29,7 +29,7 @@ using LinearAlgebra
     @test A * cube.matrix ≈ [2 2 2; 2 0 2; 2 2 0]          # spans 2x̂, 2ŷ, 2ẑ
 
     # Six cation neighbors of each anion (indices 1:32 are cations, 33:64 anions).
-    frac = Enumlib.supercell_fractional_positions(cube, P)
+    frac = site_positions(cube, P)
     cart = [(A * cube.matrix) * collect(f) for f in frac]
     mi(d) = d .- 2 .* round.(d ./ 2)                        # minimum image, period 2a
     nb = [[c for c in 1:32 if isapprox(norm(mi(cart[c] - cart[32 + a])), 0.5; atol = 1e-6)]

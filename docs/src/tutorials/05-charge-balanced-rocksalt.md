@@ -30,14 +30,14 @@ julia> species_symbols(sites)
  :O
 ```
 
-`species_symbols` gives the label order, and the charges below follow it.
+`species_symbols` gives the label order: Na is label 0, Fe label 1, O label 2. Each structure's `labeling` uses these labels.
 
 ## Step 1 — only neutral compositions
 
-`ConcentrationRange(k; charges)` is the full composition range over `k` species, restricted to neutral ones. NaFeO₂ needs `n(Na) + 3 n(Fe) = 2 n(O)`:
+`ConcentrationRange(sites; charges)` is the full composition range over the species of `sites`, restricted to neutral ones, with a charge for each element. NaFeO₂ needs `n(Na) + 3 n(Fe) = 2 n(O)`:
 
 ```jldoctest rocksalt
-julia> cr = ConcentrationRange(3; charges = [1, 3, -2]);
+julia> cr = ConcentrationRange(sites; charges = Dict(:Na => 1, :Fe => 3, :O => -2));
 
 julia> [count_inequivalent(parent, sites; supercells = VolumeRange(n:n), concentration = cr) for n in 1:8]
 8-element Vector{BigInt}:
@@ -51,7 +51,7 @@ julia> [count_inequivalent(parent, sites; supercells = VolumeRange(n:n), concent
  94
 ```
 
-With oxygen filling every anion site, neutrality forces Na:Fe = 1:1, which is impossible in a cell with an odd number of cations. The even-cell counts are the familiar fcc 1:1 binary counts — 94 at eight cations is the Hart–Forcade value — because the anion sublattice is fixed and the cation sublattice is fcc. Without `charges` the same cells hold every composition, 631 structures in all; the filter removes them before any coloring is built.
+With oxygen filling every anion site, neutrality forces Na:Fe = 1:1, which is impossible in a cell with an odd number of cations. The even-cell counts are the familiar fcc 1:1 binary counts — 94 at eight cations is the Hart–Forcade value — because the anion sublattice is fixed and the cation sublattice is fcc. Without `charges` the same cells hold every composition, 631 structures in all; the filter removes them before any coloring is built. For integer labels, give the charges as a vector in label order instead: `ConcentrationRange(3; charges = [1, 3, -2])` is the same range.
 
 ```jldoctest rocksalt
 julia> e = enumerate_structures(parent, sites; supercells = VolumeRange(1:8), concentration = cr);
@@ -67,12 +67,12 @@ Each O²⁻ has six cation neighbors at distance `a/2`, and the rule asks that t
 The filter builds each supercell's Cartesian site positions and counts every periodic image within reach, so that a small cell, where one cation can be several of an anion's neighbors, is handled correctly:
 
 ```jldoctest rocksalt
-julia> charge = [1, 3, -2];
+julia> charge = [1, 3, -2];                 # by label: Na, Fe, O
 
 julia> function pauling_balanced(s, e)
            h = e.supercells[s.supercell_id].hnf
            L = A * h.matrix                                     # supercell vectors
-           frac = Enumlib.supercell_fractional_positions(h, parent)
+           frac = site_positions(h, parent)
            n = length(frac) ÷ 2                                  # cations first, then anions
            cart = [L * collect(f) for f in frac]
            images = [L * [i, j, k] for i in -2:2 for j in -2:2 for k in -2:2]
