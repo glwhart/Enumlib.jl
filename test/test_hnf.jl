@@ -231,7 +231,7 @@ using LinearAlgebra: det
         end
     end
 
-    @testset "_colhnf3 recovers each HNF from any basis of its lattice" begin
+    @testset "_lower_hnf recovers each HNF from any basis of its lattice" begin
         rng_state = 20261120
         nextrand(lo, hi) = (rng_state = mod(1103515245 * rng_state + 12345, 2^31); lo + rng_state % (hi - lo + 1))
         elementary = [[1 0 0; 0 1 0; 0 0 1], [0 1 0; 1 0 0; 0 0 1], [1 0 0; 0 0 1; 0 1 0], [-1 0 0; 0 1 0; 0 0 1]]
@@ -246,7 +246,7 @@ using LinearAlgebra: det
                     i != j && (E[i, j] = nextrand(-3, 3))
                     U = U * E * elementary[nextrand(1, 4)]
                 end
-                L = Enumlib._colhnf3(H * U)
+                L = Enumlib._lower_hnf(H * U)
                 ok_back &= L == H
                 ok_form &= L[1, 2] == 0 && L[1, 3] == 0 && L[2, 3] == 0 &&
                            all(L[i, i] > 0 for i in 1:3) &&

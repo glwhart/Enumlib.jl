@@ -95,7 +95,7 @@ Return `(canonical_hnfs, class_sizes)` where `class_sizes[i]` is the number of v
 
 The canonical HNFs and their ordering match what `getSymInequivHNFs(d, LG)` returns. Used to populate `Supercell.hnf_degeneracy` (mirroring Fortran enumlib's `hnf_degen`).
 
-Each class is found by following its orbit: for every HNF not yet classified (in list order), apply every rotation `g`, bring `g*H` to Hermite form (`_colhnf3`) and look it up in a table of the volume-`d` list. The cost grows as (number of HNFs) × |LG|. The pairwise version this replaced (`_getSymInequivHNFs_with_degens_pairwise`, kept as the test reference) grew as (number of HNFs)² × |LG| and was most of the run time of exhaustive enumerations and `count_inequivalent`. Both give identical classes, representatives (smallest index in each class) and class sizes: two superlattices are equivalent exactly when some `g` maps one onto the other, and the loop meets each class first at its smallest index.
+Each class is found by following its orbit: for every HNF not yet classified (in list order), apply every rotation `g`, bring `g*H` to Hermite form (`_lower_hnf`, in `src/io/from_structure.jl`) and look it up in a table of the volume-`d` list. The cost grows as (number of HNFs) × |LG|. The pairwise version this replaced (`_getSymInequivHNFs_with_degens_pairwise`, kept as the test reference) grew as (number of HNFs)² × |LG| and was most of the run time of exhaustive enumerations and `count_inequivalent`. Both give identical classes, representatives (smallest index in each class) and class sizes: two superlattices are equivalent exactly when some `g` maps one onto the other, and the loop meets each class first at its smallest index.
 """
 function _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
     HNFList = getAllHNFs(d)
@@ -106,7 +106,7 @@ function _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
         class_id[i] == 0 || continue
         class_id[i] = i
         for g in LG
-            j = index[_hnfkey(_colhnf3(g * HNFList[i]))]
+            j = index[_hnfkey(_lower_hnf(g * HNFList[i]))]
             class_id[j] == 0 && (class_id[j] = i)
         end
     end
@@ -118,44 +118,6 @@ end
 
 # The six entries on and below the diagonal: a unique name for a 3x3 HNF in getAllHNFs's form.
 _hnfkey(H) = (H[1,1], H[2,1], H[2,2], H[3,1], H[3,2], H[3,3])
-
-"""
-    _colhnf3(M) -> Matrix{Int}
-
-Column-style Hermite normal form of an integer 3×3 matrix with nonzero determinant: `L = M*U` with `U` unimodular, `L` lower triangular with a positive diagonal and `0 ≤ L[i,j] < L[i,i]` for `j < i`. This is the form `getAllHNFs` lists, so the columns of `M` and of `L` span the same superlattice and `L` names it uniquely.
-
-Row by row, the entries right of the diagonal are cleared by Euclid's algorithm on columns (subtract a multiple of one column from another, swap, repeat) and the diagonal made positive; then the entries below the diagonal are reduced into `[0, diagonal)` by subtracting multiples of the diagonal's column, row 2 before row 3 so the later step cannot undo the earlier one.
-"""
-function _colhnf3(M::AbstractMatrix{<:Integer})
-    A = Matrix{Int}(M)
-    for r in 1:3
-        for c in r+1:3
-            while A[r, c] != 0
-                q = div(A[r, r], A[r, c])
-                for k in 1:3
-                    A[k, r] -= q * A[k, c]
-                end
-                for k in 1:3
-                    A[k, r], A[k, c] = A[k, c], A[k, r]
-                end
-            end
-        end
-        if A[r, r] < 0
-            for k in 1:3
-                A[k, r] = -A[k, r]
-            end
-        end
-    end
-    for r in 2:3, c in 1:r-1
-        q = fld(A[r, c], A[r, r])
-        if q != 0
-            for k in 1:3
-                A[k, c] -= q * A[k, r]
-            end
-        end
-    end
-    return A
-end
 
 """
     _getSymInequivHNFs_with_degens_pairwise(d, LG)
