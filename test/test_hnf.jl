@@ -190,4 +190,71 @@ using LinearAlgebra: det
         @test occursin("SNF diag:", s)
     end
 
+    # ---- symmetry reduction of supercells: orbit-following (20 Nov 2026) against the old pairwise method ----
+    lattices = [
+        ("FCC", ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])),
+        ("BCC", ParentLattice([-0.5 0.5 0.5; 0.5 -0.5 0.5; 0.5 0.5 -0.5])),
+        ("simple cubic", ParentLattice([1.0 0 0; 0 1.0 0; 0 0 1.0])),
+        ("tetragonal", ParentLattice([1.0 0 0; 0 1.0 0; 0 0 1.3])),
+        ("orthorhombic", ParentLattice([1.0 0 0; 0 1.2 0; 0 0 1.45])),
+        ("HCP", ParentLattice([1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 sqrt(8/3)],
+                              [[0.0, 0.0, 0.0], [1/3, 2/3, 1/2]])),
+    ]
+
+    @testset "supercell reduction matches the pairwise method" begin
+        for (name, p) in lattices
+            LG = lattice_rotations(p)
+            same = all(1:12) do d
+                Enumlib._getSymInequivHNFs_with_degens(d, LG) ==
+                    Enumlib._getSymInequivHNFs_with_degens_pairwise(d, LG)
+            end
+            @test same
+        end
+    end
+
+    @testset "class sizes: orbit-stabilizer and totals" begin
+        # Independent of both reductions: a class's size must be |LG| / (number of rotations fixing its
+        # representative), with the fixing rotations from getFixingOps; and the sizes at a volume add up to
+        # the number of HNFs at that volume.
+        for (name, p) in lattices
+            LG = lattice_rotations(p)
+            ok_orbit = true; ok_total = true
+            for d in 1:16
+                canon, sizes = Enumlib._getSymInequivHNFs_with_degens(d, LG)
+                ok_total &= sum(sizes) == length(Enumlib.getAllHNFs(d))
+                for (H, s) in zip(canon, sizes)
+                    ok_orbit &= s == length(LG) ÷ count(Enumlib.getFixingOps(H, LG))
+                end
+            end
+            @test ok_orbit
+            @test ok_total
+        end
+    end
+
+    @testset "_colhnf3 recovers each HNF from any basis of its lattice" begin
+        rng_state = 20261120
+        nextrand(lo, hi) = (rng_state = mod(1103515245 * rng_state + 12345, 2^31); lo + rng_state % (hi - lo + 1))
+        elementary = [[1 0 0; 0 1 0; 0 0 1], [0 1 0; 1 0 0; 0 0 1], [1 0 0; 0 0 1; 0 1 0], [-1 0 0; 0 1 0; 0 0 1]]
+        ok_back = true; ok_form = true
+        for d in 1:12, H in Enumlib.getAllHNFs(d)
+            for _ in 1:3
+                # a random unimodular U (determinant ±1): products of elementary column operations
+                U = [1 0 0; 0 1 0; 0 0 1]
+                for _ in 1:6
+                    i, j = nextrand(1, 3), nextrand(1, 3)
+                    E = [1 0 0; 0 1 0; 0 0 1]
+                    i != j && (E[i, j] = nextrand(-3, 3))
+                    U = U * E * elementary[nextrand(1, 4)]
+                end
+                L = Enumlib._colhnf3(H * U)
+                ok_back &= L == H
+                ok_form &= L[1, 2] == 0 && L[1, 3] == 0 && L[2, 3] == 0 &&
+                           all(L[i, i] > 0 for i in 1:3) &&
+                           0 <= L[2, 1] < L[2, 2] && 0 <= L[3, 1] < L[3, 3] && 0 <= L[3, 2] < L[3, 3]
+            end
+        end
+        @test ok_back
+        @test ok_form
+    end
+
 end
