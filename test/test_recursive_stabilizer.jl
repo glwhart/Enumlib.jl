@@ -193,4 +193,23 @@ using Enumlib
                                                 include_superperiodic = true) == 379926
     end
 
+    # ---- the tree steps through subsets; the order must match decoding ranks ----
+    @testset "_next_colex! visits subsets in the order of _inverse_colex_rank!" begin
+        binom = Enumlib._binomial_table(14)
+        buf = Int[]
+        for m in 1:14, a in 1:m
+            idx = collect(0:a-1)
+            resize!(buf, a)
+            N = binomial(m, a)
+            same = true
+            for x in 0:N-1
+                Enumlib._inverse_colex_rank!(buf, x, a, binom)
+                same &= (buf == idx)
+                more = Enumlib._next_colex!(idx, m)
+                same &= (more == (x < N - 1))
+            end
+            @test same
+        end
+    end
+
 end

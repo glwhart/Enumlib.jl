@@ -127,11 +127,13 @@ function _descend!(output, partial, parent_stab,
         throw(ArgumentError(
             "branching factor $(branching) exceeds typemax(Int) at depth $depth"))
 
-    chosen_slot_idxs = Vector{Int}(undef, a_here)
-    for x in 0:branching-1
-        # Decode x to a subset of unfilled-slot indices (0-indexed). Branches run
-        # in colex order of the subset, which fixes the order of the output.
-        _inverse_colex_rank!(chosen_slot_idxs, x, a_here, binom)
+    # Subsets of unfilled-slot indices (0-indexed), visited in colex order, which
+    # fixes the order of the output. Each subset is stepped from the previous one
+    # (`_next_colex!`) rather than decoded from its rank, which cut run times by
+    # 1.3–1.6× (docs/notes/necklace-enumeration.md §5). The order is the same as
+    # decoding ranks 0, 1, 2, … with `_inverse_colex_rank!`.
+    chosen_slot_idxs = collect(0:a_here-1)       # first subset in colex order
+    while true
         # Place the color.
         for i in chosen_slot_idxs
             partial[unfilled_positions[i + 1]] = Int8(depth)
@@ -151,13 +153,40 @@ function _descend!(output, partial, parent_stab,
         for i in chosen_slot_idxs
             partial[unfilled_positions[i + 1]] = Int8(-1)
         end
+
+        _next_colex!(chosen_slot_idxs, n_unfilled) || break
     end
+end
+
+# Step `idx` (0-indexed slots, ascending, length a) to the next a-subset of
+# 0:m-1 in colex order; return false if `idx` was the last one. Colex order
+# compares subsets from the largest element down, so the next subset keeps the
+# large elements and raises the smallest element that can move up by one without
+# landing on the element above it (the largest may rise while below m). Every
+# element below it resets to 0, 1, 2, …. A step changes fewer than two entries
+# on average, against a walk up the binomial table per element when decoding.
+function _next_colex!(idx::Vector{Int}, m::Int)
+    a = length(idx)
+    j = 1
+    while j < a && idx[j] + 1 == idx[j + 1]
+        j += 1
+    end
+    if j == a && idx[a] + 1 >= m
+        return false
+    end
+    idx[j] += 1
+    for i in 1:j-1
+        idx[i] = i - 1
+    end
+    return true
 end
 
 # Inverse colex rank: given rank `x` (0-indexed), write into `positions` which
 # `a` slots (0-indexed, ascending) it corresponds to. Mirrors the body of
 # chunk 6's `multinomial_unhash` for a single color; binomials come from the
-# table built in `getUniqueColorings_recursive_stabilizer`.
+# table built in `getUniqueColorings_recursive_stabilizer`. The tree no longer
+# calls it (it steps with `_next_colex!`), but the tests use it as the reference
+# for the colex order.
 function _inverse_colex_rank!(positions::Vector{Int}, x::Int, a::Int, binom)
     x_remaining = x
     for j in a:-1:1
