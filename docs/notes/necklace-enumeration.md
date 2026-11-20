@@ -18,8 +18,9 @@ placing the first species fixes the whole colouring.
   rules it out, because the current check already rejects a candidate after comparing it with about
   5 group elements.
 - The real cost is that the tree tries every placement of the first species and throws away 97–98%
-  of them. A fixed-content necklace generator could cut the number tried by about a factor of n.
-  The estimated gain is about 2.5× overall.
+  of them. A fixed-density necklace generator could cut the number tried by about a factor of n.
+  Measured on 20 Nov 2026 (§7), the best case is about 1.8–2.2× overall on binary runs, judged not
+  worth a second code path for now.
 - A cheaper first step, with no new theory, is to step through placements one after another instead
   of decoding each from its index. That would save about 1.4×.
 
@@ -299,8 +300,90 @@ There are two ways to try fewer sets. Both are recollection about the literature
    augmentation, which accepts a child according to how the new site was added, not by comparing
    whole sets. That would be a redesign of the tree, not a local change.
 
+## 7. Option 2 assessed: papers read and best case measured (20 Nov 2026)
+
+Gus's criterion: not worth adopting if it complicates the code without a big speedup.
+
+### What the papers say (read from the PDFs this time)
+
+- **Ruskey and Sawada, "An efficient algorithm for generating necklaces with fixed density",
+  SIAM J. Comput. 29 (1999) 671–684.** This is the binary case we need. Each necklace is
+  represented by its lexicographically least rotation (§2), and the necklaces are listed in
+  lexicographic order. The core procedure `GenFix(t, p)` (Fig. 3.7) is about 25 lines of
+  pseudocode. It stores the positions of the nonzero characters, which for binary is exactly the
+  set of sites of one species, and runs in constant amortized time for any density (§4). The same
+  procedure lists either all necklaces or only Lyndon words through a one-line test in `PrintIt`
+  (Fig. 3.2: Lyndon if p = n, necklace if n mod p = 0). §2 gives the counts
+  N₂(n, d) = (1/n) Σ_{j | gcd(n,d)} φ(j) C(n/j, d/j), and L₂(n, d) with μ in place of φ.
+- **Sawada, "A fast algorithm to generate necklaces with fixed content", Theor. Comput. Sci. 301
+  (2003) 477–489.** This is the k-ary generalization (fixed number of each symbol). It is not
+  needed here, because each level of the tree places one species, which is a binary choice.
+- **Sawada, Williams and Wong, "Necklaces and Lyndon words in colexicographic and binary reflected
+  Gray code order" (2017).** It lists all binary necklaces in colex order in constant amortized
+  time, through an auxiliary set called pseudo-necklaces. For the fixed-density colex case it cites
+  Sawada and Williams, "A Gray code for fixed-density necklaces and Lyndon words in constant
+  amortized time" (its ref. [12]), which I have not read.
+- **Gabrić and Sawada, "Necklaces and Lyndon words in colexicographic order" (arXiv 2607.05324,
+  July 2026).** This is k-ary colex. Its weight option is an upper bound on weight, not a fixed
+  density.
+
+### How it would plug into Enumlib
+
+- For every FCC supercell at n = 7, 13, 17 and 19, and for 33 of 58 at n = 16 and 50 of 60 at
+  n = 18, the translations in `perm_group[1:n]` are exactly the cyclic shifts i ↦ i + s (mod n) of
+  the site order. So a necklace generator works on the site indices directly, with no relabeling.
+- Enumlib's canonical set is the colex-smallest image, comparing from the largest position. In
+  terms of the 0/1 indicator string, that is the lexicographically smallest rotation of the string
+  read right to left. So the translation-canonical sets are the reversed fixed-density necklaces.
+  By the same reversal, `GenFix`'s lexicographic order should reproduce the tree's colex order,
+  which would keep the output order and the checksum tests unchanged. This is my reasoning only.
+  The emulation below sorted its sets directly and did not test a generator's order.
+- It replaces only the first level of the tree. For binary alloys that is all of the work, and the
+  Lyndon-only option would also make the super-periodicity filter unnecessary there. For three or
+  more species the deeper levels and the filter stay as they are.
+
+### Best case, measured
+
+`bench/tree-profile/necklace_bound.jl` takes each cyclic FCC supercell and each binary
+concentration. It compares the tree as it is with a loop that is handed, for free, only the
+first-species sets that are smallest under translation, and runs the full-group canonical check on
+each. The generator's own cost is left out, so this is the best case. The two outputs were
+identical for every supercell and concentration, in content and in order.
+
+In this table, "tree on cyclic" is the time the tree spends on the cyclic supercells, summed over
+supercells and concentrations (best of 3 per call). "Best case" is the same work with free
+translation-canonical sets. "Whole run" is a full `enumerate_structures` call at that volume (best
+of 2). The last column is the whole run with the tree's cyclic share replaced by the best case.
+The parts were timed separately, so that column is approximate.
+
+| FCC binary | sets tried → translation-canonical | tree on cyclic → best case | whole run | whole run, best case |
+|---|---|---|---|---|
+| n=16 | 2.16 M → 136 k | 0.128 s → 0.034 s (3.8×) | 0.47 s | ≈0.38 s (1.25×) |
+| n=17 | 2.75 M → 162 k | 0.161 s → 0.039 s (4.2×) | 0.22 s | ≈0.10 s (2.2×) |
+| n=18 | 13.1 M → 730 k | 0.814 s → 0.189 s (4.3×) | 1.40 s | ≈0.78 s (1.8×) |
+| n=19 | 13.1 M → 690 k | 0.839 s → 0.207 s (4.1×) | 1.47 s | ≈0.84 s (1.75×) |
+
+The tree's work falls by about 4×, not by n, because the sets that survive translation are the
+expensive ones. Each still goes through a full canonical check against the rotations, where
+rejected sets used to stop after about 5 group elements.
+
+### Assessment
+
+- **Gain.** At most about 1.8–2.2× on binary runs at n = 17–19, and 1.25× at n = 16, where many
+  supercells are not cyclic. A real generator costs something, so the actual gain would be lower.
+  For ternary and higher, only the first level speeds up, so the gain would be smaller still.
+- **Code.** About 25 lines for `GenFix`, a test of whether a supercell's translations are cyclic
+  shifts, a second branch at the first level of `_descend!`, and the reversal between indicator
+  strings and site sets. Probably 60–100 lines with tests, as a separate path used only for some
+  supercells.
+- **Recommendation.** Not worth it for now. The best case is under 2× on the cases that already run
+  in a second or two, and it adds a second code path that applies only to some supercells. Revisit
+  if binary enumerations at n ≥ 22 become routine.
+
 ## Open questions
 
 - How do the shares in section 3 change at n = 22–24, and for HCP or other multilattices?
-- What fraction of the time goes to supercells whose translation group isn't cyclic?
-- Read the Sawada fixed-content and colex papers properly before committing to option 2.
+- What fraction of the time goes to supercells whose translation group isn't cyclic? (Partly
+  answered in §7: 25 of 58 at n = 16, 10 of 60 at n = 18, none at squarefree n.)
+- ~~Read the Sawada fixed-content and colex papers properly before committing to option 2.~~ Done,
+  §7. The fixed-density colex paper (Sawada and Williams) is still unread.
