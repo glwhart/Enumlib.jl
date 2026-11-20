@@ -122,7 +122,12 @@ all samples overstate the time outside the tree. Read the tree view of the main 
 3. **Least-rotation canonical check.** Rejected. It costs up to 48 least-rotation computations of
    length n per candidate, against about 5 cheap comparisons now.
 4. **Super-periodicity filter.** It costs 9% at n=18. It copies an array per check (`getindex` →
-   `similar` in the profile). Avoiding that copy is probably easy.
+   `similar` in the profile). Adopted 2026-11-20: the check now compares entry by entry with no
+   copy. Identical output, full suite passes, FCC binary n=20 7.58 s → 6.64 s, ternary n=12
+   0.65 s → 0.46 s (`bench/tree-profile/compare_superperiodic.jl`). For binary alloys in cyclic
+   supercells, a Lyndon-word generator (option 2) would make this filter unnecessary, because it
+   produces only aperiodic sets. For three or more species the filter is still needed, since a
+   first-species set can repeat within a smaller cell when the full structure does not.
 5. **Counting.** Nothing to gain. Pólya counting already takes milliseconds.
 
 ## 5. Option 1, tested in memory and then adopted (19 Nov 2026)

@@ -267,12 +267,23 @@ end
 # so we walk that prefix. Used as the single post-filter for both :multinomial and
 # :recursive_stabilizer — chunk 6.5b moved the per-algorithm checks here so n_cells
 # (the multilattice-correct translation count) is in scope at call time.
+#
+# The translated coloring is compared entry by entry, stopping at the first
+# difference, instead of being built as a new array for every translation
+# (`coloring[g] == coloring`). That copy was most of this check's cost, about 9%
+# of the run time at FCC binary n=18 (docs/notes/necklace-enumeration.md §3).
 function _is_super_periodic(coloring::AbstractVector, perm_group::AbstractVector,
                             n_cells::Int)
     for ig in 2:min(n_cells, length(perm_group))
-        if coloring[perm_group[ig]] == coloring
-            return true
+        g = perm_group[ig]
+        fixed = true
+        @inbounds for i in eachindex(coloring)
+            if coloring[g[i]] != coloring[i]
+                fixed = false
+                break
+            end
         end
+        fixed && return true
     end
     return false
 end
