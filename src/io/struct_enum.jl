@@ -233,25 +233,35 @@ function write_struct_enum_out(io::IO, e::Enumeration{D}; input, stdout_io::IO =
     println(io, "start   #tot      HNF     Hdegn   labdegn   Totdegn   #size idx    pg    SNF             HNF                 Left transform                          labeling")
 
     # ---- data rows (27 tokens each) ----
+    # Everything that depends only on the supercell (its running HNF number and the
+    # 18 tokens SNF, HNF, Left transform) is formatted once, the first time a
+    # structure on that supercell is written. hnf_index[id] == 0 means "not seen yet".
     volcount = Dict{Int,Int}()
-    hnf_index = Dict{Int,Int}(); next_hnf = 0
+    hnf_index = zeros(Int, length(e.supercells)); next_hnf = 0
+    sc_tokens = Vector{String}(undef, length(e.supercells))
     for (strN, s) in enumerate(e.structures)
-        sc = e.supercells[s.supercell_id]
-        H  = sc.hnf.matrix
+        id = s.supercell_id
+        sc = e.supercells[id]
         n  = volume(sc.hnf)
         volcount[n] = get(volcount, n, 0) + 1
-        if !haskey(hnf_index, s.supercell_id)
-            next_hnf += 1; hnf_index[s.supercell_id] = next_hnf
+        if hnf_index[id] == 0
+            next_hnf += 1; hnf_index[id] = next_hnf
+            H = sc.hnf.matrix
+            _, U, _ = NormalForms.snf(H)             # U = SNF left transform (= getPermG's L_snf)
+            L = round.(Int, U)
+            sc_tokens[id] = join((sc.snf[1], sc.snf[2], sc.snf[3],
+                                  H[1,1], H[2,1], H[2,2], H[3,1], H[3,2], H[3,3],
+                                  L[1,1], L[1,2], L[1,3], L[2,1], L[2,2], L[2,3],
+                                  L[3,1], L[3,2], L[3,3]), " ")
         end
-        _, U, _ = NormalForms.snf(H)                 # U = SNF left transform (= getPermG's L_snf)
-        L = round.(Int, U)
         labdeg = s.orbit_size
-        row = (strN, hnf_index[s.supercell_id], sc.hnf_degeneracy, labdeg,
-               sc.hnf_degeneracy * labdeg, strN, n, sc.n_stabilizer_ops,
-               sc.snf[1], sc.snf[2], sc.snf[3],
-               H[1,1], H[2,1], H[2,2], H[3,1], H[3,2], H[3,3],
-               L[1,1], L[1,2], L[1,3], L[2,1], L[2,2], L[2,3], L[3,1], L[3,2], L[3,3])
-        println(io, join(row, " "), " ", join(Int.(to_labeling(s))))
+        print(io, strN, ' ', hnf_index[id], ' ', sc.hnf_degeneracy, ' ', labdeg, ' ',
+              sc.hnf_degeneracy * labdeg, ' ', strN, ' ', n, ' ', sc.n_stabilizer_ops, ' ',
+              sc_tokens[id], ' ')
+        for c in to_labeling(s)
+            0 <= c <= 9 ? write(io, UInt8('0') + UInt8(c)) : print(io, Int(c))
+        end
+        write(io, '\n')
     end
 
     # ---- stdout progress table: pymatgen reads the last (RunTot) token ----
