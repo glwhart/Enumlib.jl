@@ -393,22 +393,25 @@ them and return the full Burnside orbit space (research.md §5.2.1).
 function getUniqueColorings(k, pG; include_superperiodic::Bool = false,
                             n_translations::Int = length(pG[1]))
     n = length(pG[1])
-    idx = ntuple(i->0:k-1, n)
     mul = [k^(i-1) for i ∈ reverse(1:n)]
     hashTbl = trues(k^n)
+    c = zeros(Int, n)    # base-k digits of coloring i-1, last digit fastest
     # Super-periodicity is detected by checking fix-by-translation: pG[1..n_T]
     # is identity-rotation × translation-subgroup (size n_T = |T| = n_cells).
     # For single-lattice n_T = n = n_cells; for multilattice the caller passes
     # n_T = n_cells (n = n_D · n_cells). The legacy default n_T = n preserves
     # single-lattice behavior.
-    for (i, ic) in enumerate(CartesianIndices(idx))
-        c = reverse(Tuple(ic))
+    for i in 1:k^n
+        if i > 1         # step c to the next coloring (add 1 in base k)
+            j = n; while c[j] == k-1; c[j] = 0; j -= 1; end; c[j] += 1
+        end
         if !hashTbl[i] continue end
-        for (ig, g) ∈ enumerate(pG[2:end])
-            test = coloring_hash(mul, c[g]) + 1
-            # `ig < n_translations` selects pG[2..n_T] — the n_T-1 non-identity
+        for ig in 2:length(pG)
+            g = pG[ig]; test = 1    # test = hash of c[g], plus 1
+            @inbounds for j in 1:n; test += mul[j] * c[g[j]]; end
+            # `ig ≤ n_translations` selects pG[2..n_T] — the n_T-1 non-identity
             # pure translations. A coloring fixed by one of those is super-periodic.
-            if test > i || (!include_superperiodic && test == i && ig < n_translations)
+            if test > i || (!include_superperiodic && test == i && ig <= n_translations)
                 hashTbl[test] = false
             end
         end
