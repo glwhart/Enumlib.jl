@@ -362,6 +362,81 @@ let
     end
 end
 
+# ============================================================================
+# Section 7 — site-restricted multilattices at realistic sizes.
+#
+# Section 4 stops at n=2/3, where each call takes well under a millisecond
+# and a fixed per-call cost can dominate. Section 7 runs the same kind of
+# cases at the sizes people actually enumerate, each taking between about
+# 6 ms and 4 s on main (2026-11-20, Intel Xeon W-3245):
+#
+#   - zinc-blende ({0,1} ⊕ {2,3}), n=6 and n=8
+#   - half-Heusler Y=Z={2}, n=6 and n=8
+#   - perovskite ABO₃ (A={0,1}, B={2,3}, three O sites fixed at {4}), n=4
+#     and n=5 (same setup as test/test_enumerate.jl)
+#
+# `:auto` runs with the resource check on (what a user gets by default);
+# `partition_threshold` is raised because the default of 100 refuses these
+# full ConcentrationRange sweeps. `:multinomial_restricted` is far slower on
+# these masks, so it runs only at the largest size that stays near a few
+# seconds (n=4 for zinc-blende and half-Heusler). On the perovskite it takes
+# more than 3 minutes already at n=3, so it is left out.
+#
+# Each line prints the structure count so results files from different
+# versions can be checked against each other.
+# ============================================================================
+
+println()
+println("Section 7 — site-restricted multilattices at realistic sizes")
+println("-"^78)
+
+let
+    fcc = [0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]
+    p_zb = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]])
+    s_zb = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.25, 0.25, 0.25], [2, 3])])
+    p_hh = ParentLattice(fcc, [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25], [0.75, 0.75, 0.75]])
+    s_hh = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.25, 0.25, 0.25], [2]),
+                  Site([0.75, 0.75, 0.75], [2])])
+    p_pv = ParentLattice([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0],
+                         [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5],
+                          [0.5, 0.5, 0.0], [0.5, 0.0, 0.5], [0.0, 0.5, 0.5]])
+    s_pv = Sites([Site([0.0, 0.0, 0.0], [0, 1]),
+                  Site([0.5, 0.5, 0.5], [2, 3]),
+                  Site([0.5, 0.5, 0.0], [4]),
+                  Site([0.5, 0.0, 0.5], [4]),
+                  Site([0.0, 0.5, 0.5], [4])])
+
+    auto_tree = (:auto, :recursive_stabilizer)
+    cases = [
+        ("zinc-blende",          p_zb, s_zb, 4, 4, (:multinomial_restricted,)),
+        ("zinc-blende",          p_zb, s_zb, 4, 6, auto_tree),
+        ("zinc-blende",          p_zb, s_zb, 4, 8, auto_tree),
+        ("half-Heusler Y=Z={2}", p_hh, s_hh, 3, 4, (:multinomial_restricted,)),
+        ("half-Heusler Y=Z={2}", p_hh, s_hh, 3, 6, auto_tree),
+        ("half-Heusler Y=Z={2}", p_hh, s_hh, 3, 8, auto_tree),
+        ("perovskite ABO3",      p_pv, s_pv, 5, 4, auto_tree),
+        ("perovskite ABO3",      p_pv, s_pv, 5, 5, auto_tree),
+    ]
+    for (name, parent, sites, k, n, algs) in cases
+        cr = ConcentrationRange([(0//1, 1//1) for _ in 1:k])
+        for alg in algs
+            kw = alg == :auto ? (; partition_threshold = 1_000_000) :
+                 (; algorithm = alg, partition_threshold = 1_000_000, skip_resource_check = true)
+            count = length(enumerate_structures(parent, sites; supercells = VolumeRange(n:n),
+                                                concentration = cr, kw...))
+            print("  $(rpad("$name n=$n", 26))$(rpad(":$alg", 26))")
+            b = @benchmark enumerate_structures($parent, $sites;
+                                     supercells = VolumeRange($n:$n),
+                                     concentration = $cr, $kw...) samples=3 evals=1
+            println(lpad(BenchmarkTools.prettytime(minimum(b).time), 11),
+                    "  (", BenchmarkTools.prettymemory(minimum(b).memory),
+                    ", ", minimum(b).allocs, " allocs)  count=", count)
+        end
+    end
+end
+
 println()
 println("="^78)
 println("Done.")

@@ -37,6 +37,7 @@ First run will instantiate; subsequent runs use the cached `Manifest.toml`.
 | 4 | Regime C: zinc-blende (dense mask) + half-Heusler Y=Z={2} (sparse mask), n=2/3 | `:multinomial_restricted` vs `:recursive_stabilizer` | works — chunks 6.5a/6.5b/6.5c head-to-head |
 | 5 | Full-sweep (all concentrations): FCC binary/ternary, HCP binary | `:exhaustive` vs `:recursive_stabilizer` (via full `ConcentrationRange`) | works |
 | 6 | Fixed-concentration at scale: FCC binary n=14/16/18 at 50% | `:multinomial` vs `:recursive_stabilizer` | works — validates the 80% threshold |
+| 7 | Site-restricted multilattices at realistic sizes: zinc-blende n=6/8, half-Heusler Y=Z={2} n=6/8, perovskite ABO₃ n=4/5 (plus `:multinomial_restricted` at n=4 for zinc-blende and half-Heusler) | `:auto` (resource check on), `:recursive_stabilizer`, `:multinomial_restricted` | works — prints structure counts for cross-version checks |
 
 The Section 4 numbers settle why `:auto` picks `:recursive_stabilizer` for
 Regime C: on the dense zinc-blende case `:recursive_stabilizer` is ~9× faster
@@ -62,6 +63,17 @@ n=14 7:7 the bitmap is 2.2× faster; n=18 9:9 it's 5.2× faster and uses
 Confirms the v0.3.0 `_multinomial_bitmap_fits` 80%-of-budget threshold is
 well-calibrated: keep the bitmap as long as it fits, then switch to the
 tree. No tuning needed.
+
+Section 7 (added 2026-11-20) checks whether the 1.3–2× slowdown that
+Section 4 showed against v0.3.0 at n=2/3 carries over to realistic sizes. It
+does not. With `:recursive_stabilizer` on main, zinc-blende n=8 takes 0.65–0.69 s
+(v0.4.2 0.73 s, v0.3.0 2.47 s) and half-Heusler n=8 takes 61–64 ms (v0.4.2
+70 ms, v0.3.0 266 ms); the perovskite is the same on all three versions to
+within the 15% scatter between repeated runs. `:multinomial_restricted` is
+unchanged across versions. Structure counts agree on all three versions. On
+v0.3.0, `:auto` (with the resource check on) took 24 s at half-Heusler n=6,
+against 19 ms for `:recursive_stabilizer` with the check skipped, so the
+`:auto` rows were not timed on v0.3.0; we did not find which step takes the time.
 
 ## When to extend
 
