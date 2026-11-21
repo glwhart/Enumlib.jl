@@ -212,6 +212,18 @@ using LinearAlgebra: det
         end
     end
 
+    @testset "reduction of a filtered list (radius path) matches the pairwise method" begin
+        # The radius test can keep only part of a class, so test lists that cut classes: every other HNF of
+        # volumes 1-8. The pairwise answer: first member of each class in the list, and its count in the list.
+        for (name, p) in lattices
+            LG = lattice_rotations(p)
+            L = reduce(vcat, Enumlib.getAllHNFs(d) for d in 1:8)[1:2:end]
+            rep = [findfirst(m -> Enumlib.basesAreEquiv(m, h, LG), L) for h in L]
+            reps = unique(rep)
+            @test Enumlib._reduce_by_orbits(L, LG) == (L[reps], [count(==(r), rep) for r in reps])
+        end
+    end
+
     @testset "class sizes: orbit-stabilizer and totals" begin
         # Independent of both reductions: a class's size must be |LG| / (number of rotations fixing its
         # representative), with the fixing rotations from getFixingOps; and the sizes at a volume add up to

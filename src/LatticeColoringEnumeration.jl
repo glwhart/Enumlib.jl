@@ -97,8 +97,12 @@ The canonical HNFs and their ordering match what `getSymInequivHNFs(d, LG)` retu
 
 Each class is found by following its orbit: for every HNF not yet classified (in list order), apply every rotation `g`, bring `g*H` to Hermite form (`_lower_hnf`, in `src/io/from_structure.jl`) and look it up in a table of the volume-`d` list. The cost grows as (number of HNFs) × |LG|. The pairwise version this replaced (`_getSymInequivHNFs_with_degens_pairwise`, kept as the test reference) grew as (number of HNFs)² × |LG| and was most of the run time of exhaustive enumerations and `count_inequivalent`. Both give identical classes, representatives (smallest index in each class) and class sizes: two superlattices are equivalent exactly when some `g` maps one onto the other, and the loop meets each class first at its smallest index.
 """
-function _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
-    HNFList = getAllHNFs(d)
+_getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}}) = _reduce_by_orbits(getAllHNFs(d), LG)
+
+# The orbit-following reduction on any list of HNFs: all of one volume, or the survivors of a radius cut
+# (several volumes). Images of `g` that are not in the list are skipped, so, exactly as in the pairwise method,
+# a class's representative is its first member in the list and its size counts only the members in the list.
+function _reduce_by_orbits(HNFList, LG::Vector{Matrix{Int}})
     n = length(HNFList)
     index = Dict{NTuple{6,Int},Int}(_hnfkey(HNFList[i]) => i for i in 1:n)
     class_id = zeros(Int, n)          # 0 = not yet classified; else the canonical index of its class
@@ -106,8 +110,8 @@ function _getSymInequivHNFs_with_degens(d, LG::Vector{Matrix{Int}})
         class_id[i] == 0 || continue
         class_id[i] = i
         for g in LG
-            j = index[_hnfkey(_lower_hnf(g * HNFList[i]))]
-            class_id[j] == 0 && (class_id[j] = i)
+            j = get(index, _hnfkey(_lower_hnf(g * HNFList[i])), 0)
+            j > 0 && class_id[j] == 0 && (class_id[j] = i)
         end
     end
     canonical_indices = findall(i -> class_id[i] == i, 1:n)

@@ -121,42 +121,7 @@ function enumerate_hnfs(s::VolumeRange, parent::ParentLattice{D}) where D
     return result
 end
 
-function enumerate_hnfs(s::RadiusBound, parent::ParentLattice{D}) where D
-    parent_radius = avg_cell_radius(parent.A)
-    cutoff = s.max_radius_ratio * parent_radius
-    LG = lattice_rotations(parent)
-
-    # Collect every HNF (no symmetry reduction yet) up to max_volume whose avg
-    # cell radius is within the bound. Apply symmetry reduction once at the end —
-    # cheaper than reducing per-volume since many small-volume HNFs survive the
-    # radius cut.
-    survivors = Matrix{Int}[]
-    for n in 1:s.max_volume
-        for m in getAllHNFs(n)
-            r = avg_cell_radius(parent.A * m)
-            if r <= cutoff
-                push!(survivors, m)
-            end
-        end
-    end
-    isempty(survivors) && return HNF{D}[]
-
-    # Symmetry-reduce the survivors using basesAreEquiv (lattice-coord version
-    # from the legacy code). Same algorithm as getSymInequivHNFs but on a
-    # pre-filtered list rather than on getAllHNFs(n) per volume.
-    n_surv = length(survivors)
-    mask = trues(n_surv)
-    for i in 1:n_surv-1
-        mask[i] || continue
-        for j in i+1:n_surv
-            mask[j] || continue
-            if basesAreEquiv(survivors[i], survivors[j], LG)
-                mask[j] = false
-            end
-        end
-    end
-    return [HNF{D}(survivors[i]) for i in findall(mask)]
-end
+enumerate_hnfs(s::RadiusBound, parent::ParentLattice) = first.(_enumerate_hnfs_with_degeneracies(s, parent))
 
 enumerate_hnfs(s::ExplicitHNFs{D}, parent::ParentLattice{D}) where D = copy(s.hnfs)
 
@@ -179,7 +144,6 @@ end
 function _enumerate_hnfs_with_degeneracies(s::RadiusBound, parent::ParentLattice{D}) where D
     parent_radius = avg_cell_radius(parent.A)
     cutoff = s.max_radius_ratio * parent_radius
-    LG = lattice_rotations(parent)
 
     survivors = Matrix{Int}[]
     for n in 1:s.max_volume
@@ -187,21 +151,8 @@ function _enumerate_hnfs_with_degeneracies(s::RadiusBound, parent::ParentLattice
             avg_cell_radius(parent.A * m) <= cutoff && push!(survivors, m)
         end
     end
-    isempty(survivors) && return Tuple{HNF{D}, Int}[]
-
-    # Symmetry-reduce the radius-survivors with class-size tracking. Same
-    # algorithm as `_getSymInequivHNFs_with_degens` but on a pre-filtered list.
-    n_surv = length(survivors)
-    class_id = collect(1:n_surv)
-    for i in 1:n_surv-1
-        class_id[i] == i || continue
-        for j in i+1:n_surv
-            class_id[j] == j || continue
-            basesAreEquiv(survivors[i], survivors[j], LG) && (class_id[j] = i)
-        end
-    end
-    canonical = findall(i -> class_id[i] == i, 1:n_surv)
-    return [(HNF{D}(survivors[i]), count(==(i), class_id)) for i in canonical]
+    canonical, sizes = _reduce_by_orbits(survivors, lattice_rotations(parent))
+    return [(HNF{D}(h), k) for (h, k) in zip(canonical, sizes)]
 end
 
 # ExplicitHNFs: user-supplied HNFs aren't necessarily canonical reps, so each
