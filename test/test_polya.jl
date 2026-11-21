@@ -61,6 +61,34 @@ using Enumlib
         @test aperiodic_orbit_count(c4, (1, 1, 4), 2) == 3
     end
 
+    # ---- Joint orbits by union-find, without member lists ----
+    @testset "joint-orbit count, sizes and members" begin
+        P = Enumlib.Polya
+        g = [2, 3, 1, 5, 4, 6, 8, 7]              # cycles (1 2 3)(4 5)(6)(7 8)
+        roots = zeros(Int, 8)
+        @test P._joint_orbit_roots!(roots, g, Vector{Int}[]) == 4
+        @test sort(P._orbit_sizes(roots, 4), rev = true) == cycle_structure(g)
+        @test sort(sort.(P._orbit_members(roots))) == [[1, 2, 3], [4, 5], [6], [7, 8]]
+        # Adding the permutation (3 4)(6 7) joins three of those orbits.
+        h = [1, 2, 4, 3, 5, 7, 6, 8]
+        @test P._joint_orbit_roots!(roots, g, [h]) == 2
+        @test sort(sort.(P._orbit_members(roots))) == [[1, 2, 3, 4, 5], [6, 7, 8]]
+    end
+
+    # ---- One subgroup store shared across supercells gives the same counts ----
+    @testset "aperiodic_orbit_count with a shared subgroup_cache" begin
+        P = Enumlib.Polya
+        p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0])
+        scs = [Supercell(h, p) for h in enumerate_hnfs(VolumeRange(1:8), p)]
+        diags = [(sc.snf[1], sc.snf[2], sc.snf[3]) for sc in scs]
+        cache = P.SubgroupCache()
+        shared = [aperiodic_orbit_count(sc.permutation_group, d, 3; subgroup_cache = cache)
+                  for (sc, d) in zip(scs, diags)]
+        @test shared == [aperiodic_orbit_count(sc.permutation_group, d, 3)
+                         for (sc, d) in zip(scs, diags)]
+        @test length(cache) == length(unique(diags)) < length(scs)
+    end
+
     # ---- count_inequivalent against locked enumerate(...) reference values ----
     # The strongest cross-validation: every count_inequivalent must match
     # length(enumerate(...)) at the chunk-5/6/6.2 locked references, on both

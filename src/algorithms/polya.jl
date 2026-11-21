@@ -32,6 +32,15 @@ using ..Enumlib: ParentLattice, Sites, Supercell, HNF
 
 export polya_count, cycle_structure, aperiodic_orbit_count
 
+# Store for the subgroups H of a supercell's translation group T with μ(H) ≠ 0,
+# each as (permutations of the supercell positions, μ(H)), keyed by
+# (SNF diagonal, n_D). They depend on nothing else, and a volume range has far
+# fewer distinct SNF diagonals than supercells (24 among the 271 FCC supercells
+# of volumes 1–16), so `count_inequivalent` passes one store through all of its
+# supercells via the `subgroup_cache` keyword of `aperiodic_orbit_count`. Without
+# that keyword each call starts an empty one.
+const SubgroupCache = Dict{Tuple{NTuple{3,Int}, Int}, Vector{Tuple{Vector{Vector{Int}}, Int}}}
+
 """
     cycle_structure(perm) -> Vector{Int}
 
@@ -148,6 +157,8 @@ This formulation is correct for non-normal H (subgroups of T need not be normal 
 
 At typical supercell sizes (|T| ≤ ~32), subgroup enumeration is cheap; the inner per-(g, H) joint-orbit computation is `O(n + |H|)` via union-find.
 
+The optional keyword `subgroup_cache` takes a `Polya.SubgroupCache()` to reuse across calls: supercells with the same SNF diagonal share the subgroups of `T`, so a caller counting many supercells (as `count_inequivalent` does) computes them once per diagonal.
+
 # Examples
 Same cyclic `C_4` case as [`polya_count`](@ref), showing the aperiodic-vs-raw contrast. The SNF diagonal `(1, 1, 4)` says `T = Z/4` (the 1×1×4 supercell's translation subgroup).
 
@@ -167,15 +178,18 @@ julia> aperiodic_orbit_count(c4, (1, 1, 4), [2, 2])
 1
 ```
 """
-function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int}, k::Integer)::BigInt
-    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
+function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int}, k::Integer;
+                               subgroup_cache::SubgroupCache = SubgroupCache())::BigInt
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal,
+                                       subgroup_cache) do roots, n_orbits
         # Unrestricted k-coloring fixed-count: k^(num joint orbits).
-        BigInt(k)^length(orbits)
+        BigInt(k)^n_orbits
     end
 end
 
 function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
-                               multiplicities::AbstractVector{<:Integer})::BigInt
+                               multiplicities::AbstractVector{<:Integer};
+                               subgroup_cache::SubgroupCache = SubgroupCache())::BigInt
     isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
     nT = prod(snf_diagonal)
     n_D, rem = divrem(length(perm_group[1]), nT)
@@ -189,10 +203,12 @@ function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
         throw(DimensionMismatch(
             "sum(multiplicities) = $sum_m ≠ n_D · prod(snf_diagonal) = $n_total " *
             "(n_D = $n_D inferred from permutation length)"))
-    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal,
+                                       subgroup_cache) do roots, n_orbits
         # Fixed-multiplicity fixed-count: polynomial coefficient on orbit sizes
         # (the "cycle structure" for the polynomial DP).
-        _fixed_colorings_at_concentration(length.(orbits), multiplicities)
+        _fixed_colorings_at_concentration(_orbit_sizes(roots, n_orbits),
+                                          multiplicities)
     end
 end
 
@@ -246,19 +262,24 @@ across each joint orbit instead of assuming all `k` labels everywhere.
 Use these whenever the `Sites` are heterogeneous — see the restricted [`polya_count`](@ref).
 """
 function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
-                               allowed_labels::AbstractVector{BitSet})::BigInt
+                               allowed_labels::AbstractVector{BitSet};
+                               subgroup_cache::SubgroupCache = SubgroupCache())::BigInt
     _check_allowed_length(perm_group, allowed_labels)
-    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
-        _fixed_colorings_restricted(orbits, allowed_labels)
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal,
+                                       subgroup_cache) do roots, n_orbits
+        _fixed_colorings_restricted(_orbit_members(roots), allowed_labels)
     end
 end
 
 function aperiodic_orbit_count(perm_group, snf_diagonal::NTuple{3,Int},
                                allowed_labels::AbstractVector{BitSet},
-                               multiplicities::AbstractVector{<:Integer})::BigInt
+                               multiplicities::AbstractVector{<:Integer};
+                               subgroup_cache::SubgroupCache = SubgroupCache())::BigInt
     _check_allowed_length(perm_group, allowed_labels)
-    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal) do orbits
-        _fixed_colorings_at_concentration(orbits, allowed_labels, multiplicities)
+    return _aperiodic_orbit_count_impl(perm_group, snf_diagonal,
+                                       subgroup_cache) do roots, n_orbits
+        _fixed_colorings_at_concentration(_orbit_members(roots), allowed_labels,
+                                          multiplicities)
     end
 end
 
@@ -316,7 +337,7 @@ function _fixed_colorings_at_concentration(cycle_lengths::AbstractVector{<:Integ
     return state[ntuple(i -> multiplicities[i] + 1, k)...]
 end
 
-# Cycles of one permutation as member-position lists — the `_joint_orbits` shape
+# Cycles of one permutation as member-position lists — the `_orbit_members` shape
 # for a single permutation with no extra subgroup.
 function _cycle_members(perm::AbstractVector{<:Integer})::Vector{Vector{Int}}
     n = length(perm)
@@ -402,13 +423,28 @@ function _check_allowed_length(perm_group, allowed_labels::AbstractVector{BitSet
     return nothing
 end
 
+# Pre-materialize each subgroup H as a list of permutations on n_total = n_D·|T|
+# positions. For multilattice (n_D > 1), translations act identically on each
+# dset block: dset positions don't move under a pure translation, so the
+# n_T-position perm is block-replicated with offsets (i-1)·nT. This mirrors the
+# layout in `getPermG(h, fixingOps, parent)` where rotations combine with
+# translations as `iR[full_iT]` with `full_iT = vcat((iT .+ (i-1)*n for i in 1:n_D)...)`.
+function _translation_subgroups!(cache::SubgroupCache, snf_diagonal::NTuple{3,Int}, n_D::Int)
+    return get!(cache, (snf_diagonal, n_D)) do
+        [(_translation_perms(snf_diagonal, H, n_D), mu)
+         for (H, mu) in _subgroups_with_mobius(snf_diagonal) if mu != 0]
+    end
+end
+
 # Driver. Walks (g, H) pairs and sums μ_T(H) · |fix(g) ∩ fix(H)|. The closure
-# `fix_count(orbits::Vector{Vector{Int}})` returns the labeling-fixed-count given
-# the joint-orbit partition (each orbit as its member positions): `k^(length)`
-# for unrestricted, polynomial-DP for fixed-multiplicity, and the
-# allowed_labels-intersection variants when sites are label-restricted.
+# `fix_count(roots, n_orbits)` returns the labeling-fixed-count given the
+# joint-orbit partition (`roots[i]` is the representative position of i's
+# orbit; see `_joint_orbit_roots!`): `k^n_orbits` for unrestricted,
+# polynomial-DP for fixed-multiplicity, and the allowed_labels-intersection
+# variants when sites are label-restricted.
 function _aperiodic_orbit_count_impl(fix_count::Function, perm_group,
-                                     snf_diagonal::NTuple{3,Int})::BigInt
+                                     snf_diagonal::NTuple{3,Int},
+                                     cache::SubgroupCache)::BigInt
     isempty(perm_group) && throw(ArgumentError("perm_group must be non-empty"))
     nT = prod(snf_diagonal)
     L = length(perm_group[1])
@@ -417,23 +453,14 @@ function _aperiodic_orbit_count_impl(fix_count::Function, perm_group,
         throw(DimensionMismatch(
             "permutation length $L is not a multiple of " *
             "prod(snf_diagonal) = $nT"))
-    n_total = n_D * nT
 
-    # Pre-materialize each subgroup H as a list of permutations on n_total
-    # positions. For multilattice (n_D > 1), translations act identically on
-    # each dset block: dset positions don't move under a pure translation, so
-    # the n_T-position perm is block-replicated with offsets (i-1)·nT. This
-    # mirrors the layout in `getPermG(h, fixingOps, parent)` where rotations
-    # combine with translations as `iR[full_iT]` with
-    # `full_iT = vcat((iT .+ (i-1)*n for i in 1:n_D)...)`.
-    H_perms_with_mu = [(_translation_perms(snf_diagonal, H, n_D), mu)
-                       for (H, mu) in _subgroups_with_mobius(snf_diagonal) if mu != 0]
-
+    subgroups = _translation_subgroups!(cache, snf_diagonal, n_D)
     total_sum = BigInt(0)
+    roots = Vector{Int}(undef, L)
     for g in perm_group
-        for (H_perms, mu) in H_perms_with_mu
-            orbits = _joint_orbits(g, H_perms, n_total)
-            total_sum += mu * fix_count(orbits)
+        for (H_perms, mu) in subgroups
+            n_orbits = _joint_orbit_roots!(roots, g, H_perms)
+            total_sum += mu * fix_count(roots, n_orbits)
         end
     end
     return total_sum ÷ length(perm_group)
@@ -585,54 +612,89 @@ function _translation_perms(snf_diagonal::NTuple{3,Int},
     return perms
 end
 
-# Joint-orbit partition of `{g} ∪ H_perms` acting on `n` positions.
+# Joint-orbit partition of `{g} ∪ H_perms` acting on the positions 1:length(roots).
 #
-# Returns the orbit-size multiset (a partition of n). A labeling is fixed by
-# every element of this set iff it's constant on each joint orbit. So this
-# partition is the "cycle structure" used by both the unrestricted (k^cycles)
-# and fixed-multiplicity (polynomial-coefficient DP) fixed-count formulas.
+# A labeling is fixed by every element of this set iff it's constant on each
+# joint orbit. So this partition is the "cycle structure" used by both the
+# unrestricted (k^orbits) and fixed-multiplicity (polynomial-coefficient DP)
+# fixed-count formulas.
 #
-# Implementation: union-find. Initialize each position as its own component;
-# for each perm `p` (g and every H-perm) and each i, union(i, p[i]).
-function _joint_orbits(g::AbstractVector{<:Integer},
-                       H_perms::AbstractVector,
-                       n::Int)::Vector{Vector{Int}}
-    parent = collect(1:n)
-
-    function find(i)
-        root = i
-        while parent[root] != root
-            root = parent[root]
-        end
-        # Path compression.
-        j = i
-        while parent[j] != root
-            parent[j], j = root, parent[j]
-        end
-        return root
-    end
-
-    function union(i, j)
-        ri, rj = find(i), find(j)
-        ri == rj && return
-        parent[ri] = rj
-    end
-
+# Implementation: union-find in the caller's buffer `roots`, so no per-call
+# allocation. Each position starts as its own orbit; for each perm `p` (g and
+# every H-perm) and each i, merge the orbits of i and p[i]. On return
+# `roots[i]` is the representative position of i's orbit, and the function
+# returns the number of orbits. The unrestricted count needs only that number;
+# `_orbit_sizes` and `_orbit_members` recover the rest when it is needed.
+function _joint_orbit_roots!(roots::Vector{Int}, g::AbstractVector{<:Integer},
+                             H_perms::AbstractVector)
+    n = length(roots)
     for i in 1:n
-        union(i, g[i])
+        roots[i] = i
     end
-    for p in H_perms, i in 1:n
-        union(i, p[i])
+    n_orbits = n
+    n_orbits -= _merge_orbits!(roots, g)
+    for p in H_perms
+        n_orbits -= _merge_orbits!(roots, p)
     end
-
-    # Group positions by orbit root. Membership (not just sizes) is what the
-    # restricted-label fixed-counts need: a joint orbit's usable labels are the
-    # intersection of its positions' allowed_labels.
-    groups = Dict{Int, Vector{Int}}()
+    # Point every position straight at its representative.
     for i in 1:n
-        push!(get!(groups, find(i), Int[]), i)
+        roots[i] = _find_root!(roots, i)
     end
-    return collect(values(groups))
+    return n_orbits
+end
+
+# Merge the orbit of i with that of p[i] for every i; return the number of merges.
+function _merge_orbits!(roots::Vector{Int}, p::AbstractVector{<:Integer})
+    merges = 0
+    @inbounds for i in eachindex(roots)
+        a = _find_root!(roots, i)
+        b = _find_root!(roots, p[i])
+        if a != b
+            roots[a] = b
+            merges += 1
+        end
+    end
+    return merges
+end
+
+# Representative of i's orbit, halving the path to it on the way up.
+function _find_root!(roots::Vector{Int}, i::Integer)
+    @inbounds while roots[i] != i
+        roots[i] = roots[roots[i]]
+        i = roots[i]
+    end
+    return i
+end
+
+# Orbit sizes from a finished `roots` (any order; the fixed counts don't depend on it).
+function _orbit_sizes(roots::Vector{Int}, n_orbits::Int)
+    size_at = zeros(Int, length(roots))
+    for r in roots
+        size_at[r] += 1
+    end
+    sizes = Vector{Int}(undef, n_orbits)
+    j = 0
+    for s in size_at
+        s == 0 && continue
+        sizes[j += 1] = s
+    end
+    return sizes
+end
+
+# Orbits as member-position lists, from a finished `roots`. Membership (not just
+# sizes) is what the restricted-label fixed-counts need: a joint orbit's usable
+# labels are the intersection of its positions' allowed_labels.
+function _orbit_members(roots::Vector{Int})
+    slot = zeros(Int, length(roots))     # slot[r] = index in `members` of root r's orbit
+    members = Vector{Vector{Int}}()
+    for (i, r) in enumerate(roots)
+        if slot[r] == 0
+            push!(members, Int[])
+            slot[r] = length(members)
+        end
+        push!(members[slot[r]], i)
+    end
+    return members
 end
 
 end  # module Polya

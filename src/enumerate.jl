@@ -802,6 +802,10 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
 
     hnfs_with_degens = _enumerate_hnfs_with_degeneracies(supercells, parent_eff)
 
+    # Supercells with the same SNF diagonal share the subgroups of their
+    # translation group; keep them for the length of this call.
+    subgroup_cache = Polya.SubgroupCache()
+
     total = BigInt(0)
     by_volume_dict = Dict{Int, BigInt}()
     by_concentration_dict = Dict{Concentration, BigInt}()
@@ -848,23 +852,24 @@ function count_inequivalent(parent::ParentLattice{D}, sites::Sites{D};
                 if allowed_pos === nothing
                     include_superperiodic ?
                         Polya.polya_count(sc.permutation_group, k) :
-                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, k)
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, k; subgroup_cache)
                 else
                     include_superperiodic ?
                         Polya.polya_count(sc.permutation_group, allowed_pos) :
-                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, allowed_pos)
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, allowed_pos;
+                                                    subgroup_cache)
                 end
             else
                 mults = multiplicities(c, n_total)
                 if allowed_pos === nothing
                     include_superperiodic ?
                         Polya.polya_count(sc.permutation_group, mults) :
-                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, mults)
+                        Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag, mults; subgroup_cache)
                 else
                     include_superperiodic ?
                         Polya.polya_count(sc.permutation_group, allowed_pos, mults) :
                         Polya.aperiodic_orbit_count(sc.permutation_group, snf_diag,
-                                                    allowed_pos, mults)
+                                                    allowed_pos, mults; subgroup_cache)
                 end
             end
 
