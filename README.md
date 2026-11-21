@@ -128,6 +128,23 @@ One deliberate difference in results: for symmetry-equivalent sublattices with o
 
 Reach for the Fortran tool if you need arrow or 2D enumeration; otherwise `Enumlib.jl` covers the same ground, either as composable Julia functions or through the drop-in executables.
 
+### Speed compared with the Fortran
+
+We timed both codes on the same `struct_enum.in` inputs (Intel Xeon W-3245 Mac, Julia 1.12, one thread, November 2026). The two codes produced the same structures in every case, checked one by one up to symmetry: each structure in the Fortran output matches exactly one in ours, although the representative labeling chosen for a structure can differ. Called from Julia, `Enumlib.jl` enumerates and writes `struct_enum.out` 3 to 12 times faster than the Fortran `enum.x`:
+
+| Case (supercell volumes) | Structures | Fortran `enum.x` | `Enumlib.jl` from Julia | standalone `enum.x` |
+|---|---|---|---|---|
+| fcc binary (1–12) | 10,850 | 1.8 s | 0.17 s | 1.2 s |
+| fcc binary (1–16) | 163,373 | 6.4 s | 1.6 s | 2.6 s |
+| bcc binary (1–12) | 10,850 | 1.8 s | 0.23 s | 1.1 s |
+| fcc ternary (1–10) | 79,260 | 1.1 s | 0.25 s | 1.4 s |
+| hcp binary (1–8) | 98,415 | 1.5 s | 0.45 s | 1.6 s |
+| hcp ternary (1–6) | 584,531 | 4.5 s | 1.3 s | 2.9 s |
+
+The standalone `enum.x` (the release binaries and the conda-forge package) starts the Julia runtime on every call, which takes about 0.85 s. It is faster than the Fortran on the larger cases and slower on runs the Fortran finishes in about a second. These times are for a build that compiles the enumeration code ahead of time, which the conda-forge package does from version 0.5.0. Earlier conda-forge builds compiled it on every call and took 7 to 9 s.
+
+For questions of size alone, [`count_inequivalent`](https://glwhart.github.io/Enumlib.jl/dev/how-to/count-without-enumerating/) gives the number of structures without enumerating them. On an hcp ternary case at volume 8, where the Fortran took about 9 minutes to enumerate 49,947,870 structures, it returns that number in about 0.1 s.
+
 ## Contributing and releasing
 
 Release procedure — register first, tag second — is documented in [RELEASING.md](RELEASING.md).
