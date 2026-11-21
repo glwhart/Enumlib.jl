@@ -42,8 +42,12 @@ elapsed = @elapsed create_app(
     cpu_target = CPU_TARGET,
     executables = ["enum" => "enum_main", "polya" => "polya_main",
                    "makestr" => "makestr_main"],
-    # Precompilation is driven by the package's own PrecompileTools workload plus
-    # the smoke test below; incremental = false keeps the app self-contained.
+    # The app keeps native code only for the methods compiled while it is built.
+    # The package's PrecompileTools workload supplies them when it is on, but the
+    # conda recipe turns it off, and enum.x then compiled for about 6.5 s on every
+    # call. This example run supplies them in both builds.
+    precompile_execution_file = joinpath(@__DIR__, "precompile_app.jl"),
+    # incremental = false keeps the app self-contained.
     incremental = false,
     filter_stdlibs = false,
     # Lazy artifacts pulled in Qt, X11 and GR baggage that nothing in Enumlib's

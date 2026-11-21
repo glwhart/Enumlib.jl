@@ -145,8 +145,10 @@ echo "materialised $(wc -l < "${LINK_MANIFEST}" | tr -d ' ') host symlink(s) for
 # crash arrived in 45 s instead of 23 min and Julia named the expression:
 # src/Enumlib.jl:475, this package's PrecompileTools @setup_workload. It runs a
 # small enumeration at precompile time so a cold call in a REPL does not pay ~19 s
-# of JIT; an application gets its native code from create_app regardless, so the
-# packaged result loses nothing by skipping it.
+# of JIT. The app needs that native code too: without it, enum.x from this recipe
+# compiled for about 6.5 s on every call (measured Nov 2026). build_app.jl now
+# supplies it with its own example run (build/precompile_app.jl, passed to
+# create_app as precompile_execution_file), which does not hit the crash.
 #
 # PrecompileTools supports this directly -- `const enabled =
 # @load_preference("precompile_workloads", true)` -- so set the preference rather
