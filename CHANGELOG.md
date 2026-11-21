@@ -4,6 +4,10 @@ All notable changes to Enumlib.jl. SemVer commitment begins with v0.2.0 (Phase 1
 
 ## Unreleased
 
+### Changed
+
+- **`RadiusBound` now measures a supercell by the mean length of its Minkowski-reduced basis vectors** (new exported function `mean_reduced_length`), compared as a ratio to the parent's value, instead of by `avg_cell_radius`. The old measure, the mean distance from the center of the reduced cell to its corners, depends on which reduced basis is chosen: when reduced vectors tie in length a lattice has several reduced bases with different body diagonals. A supercell and its rotated copy could then fall on opposite sides of the cut, so the selection kept part of a symmetry class and gave that class a degeneracy counting only the copies kept. On FCC, among all HNFs up to volume 16 and all lattice rotations, the old value differed between a supercell and its rotated copy in 16,512 of 142,080 pairs, and FCC 2.5/16, FCC 3.0/32, BCC 3.0/24 and BCC 2.5/20 each had classes cut this way. In 3D the reduced lengths are the successive minima of the lattice, so the new measure is the same for every rotated copy and whole classes are kept or dropped. The same `max_radius_ratio` now keeps more supercells (FCC 2.0 up to volume 20: 50 classes, was 32). `avg_cell_radius` itself is unchanged, as is the radius in POSCAR headers and archive filenames.
+
 ### Added
 
 - **`site_positions(hnf, parent)`**, the position of every site of a supercell as fractional coordinates of the supercell vectors, in labeling order, so site `i` carries `s.labeling[i]`. It is the public name for the internal `supercell_fractional_positions`, which `to_poscar` and `from_poscar` use, and it is what any rule depending on where atoms sit (neighbor shells, local charge balance) needs. Tutorial 05 and the Bublikov cross-check now use it.

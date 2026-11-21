@@ -4,7 +4,7 @@
 User-facing description of "which supercells should we enumerate over?". Three concrete subtypes:
 
 - `VolumeRange(range)` — enumerate all symmetry-inequivalent HNFs of supercell volume in `range`.
-- `RadiusBound(; max_radius_ratio, max_volume)` — enumerate HNFs whose `avg_cell_radius` is at most `max_radius_ratio` times the parent cell's, with a `max_volume` safety stop.
+- `RadiusBound(; max_radius_ratio, max_volume)` — enumerate HNFs whose `mean_reduced_length` is at most `max_radius_ratio` times the parent cell's, with a `max_volume` safety stop.
 - `ExplicitHNFs(hnfs)` — pass a hand-curated list of HNFs through; no symmetry reduction happens (the user has already done it).
 
 The dispatcher `enumerate_hnfs(::SupercellSelection, parent)` turns any selection into a concrete `Vector{HNF{D}}` that downstream code can iterate over uniformly.
@@ -39,9 +39,11 @@ end
 """
     RadiusBound(; max_radius_ratio::Real, max_volume::Integer = typemax(Int))
 
-Enumerate symmetry-inequivalent HNFs whose Minkowski-reduced cell radius (per `avg_cell_radius`) is at most `max_radius_ratio` times the parent cell's own radius. The `max_volume` is a safety stop — without it, very large `max_radius_ratio` values would scan unbounded volumes.
+Enumerate symmetry-inequivalent HNFs whose size, measured by [`mean_reduced_length`](@ref), is at most `max_radius_ratio` times the parent cell's own value. The `max_volume` is a safety stop — without it, very large `max_radius_ratio` values would scan unbounded volumes.
 
-The radius measure is the *average* distance from cell center to the 8 corners of the Minkowski-reduced basis. Average gives finer tie-breaking than max-distance and is more descriptive for elongated cells.
+The size of a cell is the mean length of its three Minkowski-reduced basis vectors. In 3D these lengths are the successive minima of the lattice, so they do not depend on which reduced basis is chosen, and a supercell and its rotated copies under the parent's symmetry are always kept or dropped together. Each kept class therefore carries its full orbit as its degeneracy.
+
+In v0.4.2 and earlier the measure was [`avg_cell_radius`](@ref), the mean distance from the center of the reduced cell to its corners. That value depends on which reduced basis `minkReduce` returns when reduced vectors tie in length, so the cut could keep part of a symmetry class and drop the rest.
 """
 struct RadiusBound <: SupercellSelection
     max_radius_ratio::Float64
@@ -92,7 +94,7 @@ ExplicitHNFs(hnfs::AbstractVector{HNF{D}}) where D = ExplicitHNFs{D}(hnfs)
 Turn a `SupercellSelection` into a concrete `Vector{HNF{D}}` for the `parent` lattice. Three methods, one per subtype:
 
 - `VolumeRange`: loop through volumes in the range; concatenate per-volume `getSymInequivHNFs` results.
-- `RadiusBound`: scan volumes 1..`max_volume`, compute each candidate's `avg_cell_radius`, keep those within the bound, then symmetry-reduce.
+- `RadiusBound`: scan volumes 1..`max_volume`, compute each candidate's `mean_reduced_length`, keep those within the bound, then symmetry-reduce.
 - `ExplicitHNFs`: pass through unchanged.
 
 Downstream code (`enumerate(...)`) treats the returned vector uniformly regardless of which selection produced it.
@@ -142,13 +144,15 @@ function _enumerate_hnfs_with_degeneracies(s::VolumeRange, parent::ParentLattice
 end
 
 function _enumerate_hnfs_with_degeneracies(s::RadiusBound, parent::ParentLattice{D}) where D
-    parent_radius = avg_cell_radius(parent.A)
-    cutoff = s.max_radius_ratio * parent_radius
+    # The measure is a lattice invariant, so rotated copies of a supercell agree
+    # up to rounding; the small relative slack keeps a cell that sits exactly on
+    # the cutoff from being kept in one orientation and dropped in another.
+    cutoff = s.max_radius_ratio * mean_reduced_length(parent.A) * (1 + 1e-9)
 
     survivors = Matrix{Int}[]
     for n in 1:s.max_volume
         for m in getAllHNFs(n)
-            avg_cell_radius(parent.A * m) <= cutoff && push!(survivors, m)
+            mean_reduced_length(parent.A * m) <= cutoff && push!(survivors, m)
         end
     end
     canonical, sizes = _reduce_by_orbits(survivors, lattice_rotations(parent))

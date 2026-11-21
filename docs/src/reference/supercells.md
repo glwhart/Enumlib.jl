@@ -12,4 +12,5 @@ RadiusBound
 ExplicitHNFs
 enumerate_hnfs
 avg_cell_radius
+mean_reduced_length
 ```

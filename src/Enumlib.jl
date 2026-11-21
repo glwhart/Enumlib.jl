@@ -58,7 +58,8 @@ export
     # Reading structures back (inverse of to_poscar)
     from_poscar, structure_lookup,
     # Cell utilities
-    avg_cell_radius
+    avg_cell_radius,
+    mean_reduced_length
     # NOTE: chunk 13b.1 unexports the legacy lattice-coord API, internal
     # helpers, and cluster-equivalence helpers. Internal helpers stay in
     # the module — call them as `Enumlib.foo(...)` if you need them. The
@@ -68,7 +69,9 @@ export
 """
     avg_cell_radius(B) -> Float64
 
-Get the average distance from the center of the unit cell `B` to its 8 corners. Used as a unit-cell size measure for the radius-based supercell selection ([`RadiusBound`](@ref)). Minkowski-reduces the basis first so the measure is independent of the user's cell representation (e.g., a skewed basis and its Minkowski-reduced equivalent get the same value).
+Get the average distance from the center of the unit cell `B` to its 8 corners. The same quantity appears in the POSCAR headers and archive filenames written by [`to_poscar`](@ref) and [`write_enumeration_archive`](@ref). Minkowski-reduces the basis first so the measure is usually independent of the user's cell representation (e.g., a skewed basis and its Minkowski-reduced equivalent get the same value).
+
+When reduced basis vectors tie in length, a lattice has several reduced bases with different body diagonals, and the value can depend on which one `minkReduce` returns. For that reason [`RadiusBound`](@ref) selects supercells by [`mean_reduced_length`](@ref) instead.
 
 Average distance (rather than max) gives finer tie-breaking — 8 corner distances rarely all match pairwise — and is more descriptive for elongated cells (max gets dominated by the longest direction; avg weights all axes smoothly). For a cube `avg ≈ max ≈ side·√3/2` so the difference only shows up for non-cubic cells.
 
@@ -88,6 +91,24 @@ function avg_cell_radius(B)
                A[:,1]+A[:,2], A[:,1]+A[:,3], A[:,2]+A[:,3], A[:,1]+A[:,2]+A[:,3]]
     distances = [norm(center - c) for c in corners]
     return sum(distances) / length(distances)
+end
+
+"""
+    mean_reduced_length(B) -> Float64
+
+The mean length of the Minkowski-reduced basis vectors of the lattice spanned by the columns of `B`. This is the size measure used by [`RadiusBound`](@ref).
+
+In three dimensions the lengths of a Minkowski-reduced basis are the successive minima of the lattice, so they are the same whichever reduced basis is chosen. The value is therefore a property of the lattice: a supercell and its rotated copy under a parent symmetry operation always get the same value. [`avg_cell_radius`](@ref) does not have this property, because when reduced vectors tie in length the lattice has several reduced bases with different body diagonals.
+
+# Examples
+```jldoctest
+julia> mean_reduced_length([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 4.0])
+2.0
+```
+"""
+function mean_reduced_length(B)
+    A = minkReduce(B)
+    return sum(norm(A[:, i]) for i in axes(A, 2)) / size(A, 2)
 end
 
 # --- cluster equivalence (no enum-file deps) ---

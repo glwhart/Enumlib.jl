@@ -15,7 +15,7 @@ julia> p = ParentLattice([0.0 0.5 0.5; 0.5 0.0 0.5; 0.5 0.5 0.0]);   # FCC primi
 | Selection | Use when | Example |
 |---|---|---|
 | [`VolumeRange`](@ref) | "all supercells of volume N to M" | `VolumeRange(2:8)` |
-| [`RadiusBound`](@ref) | "supercells whose physical size (cell radius) is ≤ X" | `RadiusBound(; max_radius_ratio = 2.0)` |
+| [`RadiusBound`](@ref) | "supercells whose physical size (mean reduced basis length) is ≤ X" | `RadiusBound(; max_radius_ratio = 2.0)` |
 | [`ExplicitHNFs`](@ref) | "this specific list of HNFs" — regression tests, literature reference cases | (see below) |
 
 ## VolumeRange — most common
@@ -43,13 +43,13 @@ Two HNFs at volume 2, three at volume 3, seven at volume 4 — the FCC inequival
 
 ## RadiusBound — when cell *shape* matters
 
-For DFT convergence and similar applications, the supercell's physical *size* (distance between periodic images) may be a more useful criterion for enumeration than atom count (i.e., volume). `RadiusBound` enumerates HNFs whose Minkowski-reduced cell radius is at most `max_radius_ratio` times the parent cell's radius:
+For DFT convergence and similar applications, the supercell's physical *size* (distance between periodic images) may be a more useful criterion for enumeration than atom count (i.e., volume). `RadiusBound` enumerates HNFs whose mean Minkowski-reduced basis length ([`mean_reduced_length`](@ref)) is at most `max_radius_ratio` times the parent cell's. These lengths are the successive minima of the lattice, so the cut never separates a supercell from its rotated copies:
 
 ```jldoctest supcells_recipe
-julia> sel = RadiusBound(; max_radius_ratio = 1.5, max_volume = 8);  # ≤ 1.5x parent radius, hard cap at vol 8
+julia> sel = RadiusBound(; max_radius_ratio = 1.5, max_volume = 8);  # ≤ 1.5x parent size, hard cap at vol 8
 
 julia> length(enumerate_hnfs(sel, p))
-5
+10
 ```
 
 The `max_volume` is a **safety stop** — without it, a generous `max_radius_ratio` could scan very large volumes, leading to a combinatorial explosion.
@@ -71,6 +71,6 @@ Useful for regression tests, literature reference cases, or when you want to stu
 
 ## See also
 
-- Reference: [`SupercellSelection`](@ref), [`VolumeRange`](@ref), [`RadiusBound`](@ref), [`ExplicitHNFs`](@ref), [`enumerate_hnfs`](@ref), [`avg_cell_radius`](@ref), [`HNF`](@ref), [`Supercell`](@ref).
+- Reference: [`SupercellSelection`](@ref), [`VolumeRange`](@ref), [`RadiusBound`](@ref), [`ExplicitHNFs`](@ref), [`enumerate_hnfs`](@ref), [`mean_reduced_length`](@ref), [`avg_cell_radius`](@ref), [`HNF`](@ref), [`Supercell`](@ref).
 - How-to: [Describe substitution sites](describe-substitution-sites.md) — done first; [Enumerate at fixed concentration](enumerate-at-fixed-concentration.md) — the next step.
 - Explanation: [Algorithm overview](../explanation/algorithm-overview.md).

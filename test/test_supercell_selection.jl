@@ -76,13 +76,64 @@ using LinearAlgebra: norm
         # primitive parent, max_radius_ratio = 2.0, max_volume = 20.
         parent = ParentLattice([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5])
         result = enumerate_hnfs(RadiusBound(max_radius_ratio = 2.0, max_volume = 20), parent)
-        @test length(result) == 32
-        # All survivors have volume ≤ 9 (an empirical observation worth pinning).
-        @test maximum(volume(h) for h in result) <= 9
-        # All survivors are within the radius cutoff.
-        parent_r = avg_cell_radius(parent.A)
+        # 32 classes (largest volume 9) while the measure was avg_cell_radius;
+        # 50 (largest volume 10) since it is mean_reduced_length.
+        @test length(result) == 50
+        @test maximum(volume(h) for h in result) == 10
+        # All survivors are within the cutoff.
+        parent_L = mean_reduced_length(parent.A)
         for h in result
-            @test avg_cell_radius(parent.A * h.matrix) <= 2.0 * parent_r + 1e-9
+            @test mean_reduced_length(parent.A * h.matrix) <= 2.0 * parent_L * (1 + 1e-9)
+        end
+    end
+
+    @testset "mean_reduced_length" begin
+        @test mean_reduced_length([1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 4.0]) ≈ 2.0
+        # A skewed basis of the same lattice gives the same value.
+        @test mean_reduced_length([1.0 3.0 0.0; 0.0 1.0 0.0; 0.0 -4.0 4.0]) ≈ 2.0
+        # FCC primitive: three nearest-neighbor vectors of length √2/2.
+        @test mean_reduced_length([0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5]) ≈ sqrt(2)/2
+    end
+
+    # The selection measure is a lattice invariant, so the cut never keeps part
+    # of a symmetry class: every rotated copy of a kept HNF is also within the
+    # bound, and each class's degeneracy is its full orbit at that volume. With
+    # avg_cell_radius as the measure, FCC at ratio 2.5 / volume 16 and BCC at
+    # 2.5 / 20 each had classes cut in this way.
+    @testset "RadiusBound keeps whole symmetry classes" begin
+        lats = (
+            fcc = [0.5 0.5 0.0; 0.5 0.0 0.5; 0.0 0.5 0.5],
+            bcc = [-0.5 0.5 0.5; 0.5 -0.5 0.5; 0.5 0.5 -0.5],
+            hcp = [1.0 -0.5 0.0; 0.0 sqrt(3)/2 0.0; 0.0 0.0 1.633],
+        )
+        settings = [(:fcc, 2.5, 16), (:fcc, 2.0, 12), (:bcc, 2.5, 20), (:bcc, 2.0, 12),
+                    (:hcp, 2.5, 12), (:hcp, 2.0, 12)]
+        for (name, ratio, vmax) in settings
+            parent = ParentLattice(lats[name])
+            LG = Enumlib.lattice_rotations(parent)
+            cutoff = ratio * mean_reduced_length(parent.A) * (1 + 1e-9)
+            kept = Enumlib._enumerate_hnfs_with_degeneracies(
+                RadiusBound(max_radius_ratio = ratio, max_volume = vmax), parent)
+            @test !isempty(kept)
+            # Degeneracy of every class from the volume-based reduction, keyed by
+            # each member of the orbit.
+            vol_degen = Dict{Matrix{Int},Int}()
+            for n in unique(volume(h) for (h, _) in kept)
+                for (h, k) in Enumlib.getSymInequivHNFs_with_degeneracies(n, parent)
+                    for g in LG
+                        vol_degen[Enumlib._lower_hnf(g * h.matrix)] = k
+                    end
+                end
+            end
+            closed = true
+            degen_ok = true
+            for (h, k) in kept
+                orbit = unique(Enumlib._lower_hnf(g * h.matrix) for g in LG)
+                closed &= all(m -> mean_reduced_length(parent.A * m) <= cutoff, orbit)
+                degen_ok &= (k == length(orbit) == vol_degen[h.matrix])
+            end
+            @test closed
+            @test degen_ok
         end
     end
 
